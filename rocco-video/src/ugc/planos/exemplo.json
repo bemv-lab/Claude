@@ -1,0 +1,413 @@
+{
+ "arolls": [
+  {
+   "src": "teste-ugc/trecho-01.mp4",
+   "de": 0.0,
+   "ate": 6.6
+  },
+  {
+   "src": "teste-ugc/trecho-02.mp4",
+   "de": 6.6,
+   "ate": 16.267
+  },
+  {
+   "src": "teste-ugc/trecho-03.mp4",
+   "de": 16.267,
+   "ate": 23.1
+  },
+  {
+   "src": "teste-ugc/trecho-04.mp4",
+   "de": 23.1,
+   "ate": 31.637
+  }
+ ],
+ "audio": "teste-ugc/voz.wav",
+ "duracao": 31.637,
+ "palavras": [
+  {
+   "text": "O",
+   "start": 0.2,
+   "end": 0.267
+  },
+  {
+   "text": "primeiro",
+   "start": 0.267,
+   "end": 0.733
+  },
+  {
+   "text": "botão",
+   "start": 0.733,
+   "end": 1.067
+  },
+  {
+   "text": "fechado",
+   "start": 1.067,
+   "end": 1.533
+  },
+  {
+   "text": "sozinho",
+   "start": 1.533,
+   "end": 2.033
+  },
+  {
+   "text": "demora.",
+   "start": 2.033,
+   "end": 2.8
+  },
+  {
+   "text": "E",
+   "start": 2.8,
+   "end": 2.9
+  },
+  {
+   "text": "tudo",
+   "start": 2.9,
+   "end": 3.133
+  },
+  {
+   "text": "bem.",
+   "start": 3.133,
+   "end": 4.0
+  },
+  {
+   "text": "Sou",
+   "start": 4.0,
+   "end": 4.2
+  },
+  {
+   "text": "a",
+   "start": 4.2,
+   "end": 4.3
+  },
+  {
+   "text": "Tília,",
+   "start": 4.3,
+   "end": 5.0
+  },
+  {
+   "text": "personagem",
+   "start": 5.0,
+   "end": 5.7
+  },
+  {
+   "text": "da",
+   "start": 5.7,
+   "end": 5.833
+  },
+  {
+   "text": "Rocco.",
+   "start": 5.833,
+   "end": 6.6
+  },
+  {
+   "text": "A",
+   "start": 6.6,
+   "end": 6.7
+  },
+  {
+   "text": "Pasta",
+   "start": 6.7,
+   "end": 7.067
+  },
+  {
+   "text": "de",
+   "start": 7.067,
+   "end": 7.167
+  },
+  {
+   "text": "Descobertas",
+   "start": 7.167,
+   "end": 7.967
+  },
+  {
+   "text": "tem",
+   "start": 7.967,
+   "end": 8.167
+  },
+  {
+   "text": "zíperes,",
+   "start": 8.167,
+   "end": 8.933
+  },
+  {
+   "text": "botões,",
+   "start": 8.933,
+   "end": 9.7
+  },
+  {
+   "text": "fivelas,",
+   "start": 9.7,
+   "end": 10.5
+  },
+  {
+   "text": "cadarços,",
+   "start": 10.5,
+   "end": 11.433
+  },
+  {
+   "text": "ábaco",
+   "start": 11.433,
+   "end": 11.833
+  },
+  {
+   "text": "e",
+   "start": 11.833,
+   "end": 11.933
+  },
+  {
+   "text": "relógio.",
+   "start": 11.933,
+   "end": 12.833
+  },
+  {
+   "text": "Abrir,",
+   "start": 12.833,
+   "end": 13.5
+  },
+  {
+   "text": "fechar,",
+   "start": 13.5,
+   "end": 14.2
+  },
+  {
+   "text": "encaixar,",
+   "start": 14.2,
+   "end": 15.067
+  },
+  {
+   "text": "tentar",
+   "start": 15.067,
+   "end": 15.467
+  },
+  {
+   "text": "de",
+   "start": 15.467,
+   "end": 15.6
+  },
+  {
+   "text": "novo.",
+   "start": 15.6,
+   "end": 16.267
+  },
+  {
+   "text": "No",
+   "start": 16.267,
+   "end": 16.4
+  },
+  {
+   "text": "tempo",
+   "start": 16.4,
+   "end": 16.767
+  },
+  {
+   "text": "da",
+   "start": 16.767,
+   "end": 16.9
+  },
+  {
+   "text": "criança.",
+   "start": 16.9,
+   "end": 17.867
+  },
+  {
+   "text": "E",
+   "start": 17.867,
+   "end": 17.933
+  },
+  {
+   "text": "quando",
+   "start": 17.933,
+   "end": 18.367
+  },
+  {
+   "text": "consegue,",
+   "start": 18.367,
+   "end": 19.1
+  },
+  {
+   "text": "aquele",
+   "start": 19.1,
+   "end": 19.433
+  },
+  {
+   "text": "pequeno",
+   "start": 19.433,
+   "end": 19.833
+  },
+  {
+   "text": "sorriso",
+   "start": 19.833,
+   "end": 20.267
+  },
+  {
+   "text": "diz",
+   "start": 20.267,
+   "end": 20.533
+  },
+  {
+   "text": "tudo.",
+   "start": 20.533,
+   "end": 21.167
+  },
+  {
+   "text": "Por",
+   "start": 21.167,
+   "end": 21.367
+  },
+  {
+   "text": "isso",
+   "start": 21.367,
+   "end": 21.567
+  },
+  {
+   "text": "a",
+   "start": 21.567,
+   "end": 21.7
+  },
+  {
+   "text": "Rocco",
+   "start": 21.7,
+   "end": 22.067
+  },
+  {
+   "text": "escolheu.",
+   "start": 22.067,
+   "end": 23.1
+  },
+  {
+   "text": "Três",
+   "start": 23.1,
+   "end": 23.433
+  },
+  {
+   "text": "a",
+   "start": 23.433,
+   "end": 23.533
+  },
+  {
+   "text": "seis",
+   "start": 23.533,
+   "end": 23.867
+  },
+  {
+   "text": "anos,",
+   "start": 23.867,
+   "end": 24.367
+  },
+  {
+   "text": "sem",
+   "start": 24.367,
+   "end": 24.667
+  },
+  {
+   "text": "tela,",
+   "start": 24.667,
+   "end": 25.167
+  },
+  {
+   "text": "com",
+   "start": 25.167,
+   "end": 25.333
+  },
+  {
+   "text": "alças",
+   "start": 25.333,
+   "end": 25.767
+  },
+  {
+   "text": "para",
+   "start": 25.767,
+   "end": 26.0
+  },
+  {
+   "text": "levar",
+   "start": 26.0,
+   "end": 26.367
+  },
+  {
+   "text": "junto.",
+   "start": 26.367,
+   "end": 27.133
+  },
+  {
+   "text": "Vale",
+   "start": 27.133,
+   "end": 27.4
+  },
+  {
+   "text": "olhar",
+   "start": 27.4,
+   "end": 27.733
+  },
+  {
+   "text": "de",
+   "start": 27.733,
+   "end": 27.833
+  },
+  {
+   "text": "perto.",
+   "start": 27.833,
+   "end": 28.6
+  },
+  {
+   "text": "O",
+   "start": 28.6,
+   "end": 28.667
+  },
+  {
+   "text": "link",
+   "start": 28.667,
+   "end": 28.967
+  },
+  {
+   "text": "está",
+   "start": 28.967,
+   "end": 29.233
+  },
+  {
+   "text": "aqui",
+   "start": 29.233,
+   "end": 29.5
+  },
+  {
+   "text": "embaixo.",
+   "start": 29.5,
+   "end": 30.433
+  }
+ ],
+ "titulo": {
+  "texto": "O primeiro botão demora. E tudo bem.",
+  "ate": 3.4
+ },
+ "assinatura": "Bárbara · Rocco Kids",
+ "aviso": "versão animada com IA da gravação original",
+ "insercoes": [
+  {
+   "tipo": "imagem",
+   "src": "teste-ugc/produto-aberta.png",
+   "de": 7.57,
+   "ate": 12.83,
+   "modo": "tela-cheia",
+   "texto": "Pasta de Descobertas"
+  },
+  {
+   "tipo": "imagem",
+   "src": "teste-ugc/produto-fechada.png",
+   "de": 21.17,
+   "ate": 23.1,
+   "modo": "janela",
+   "texto": "Por que a Rocco escolheu"
+  },
+  {
+   "tipo": "cartao",
+   "texto": "3 a 6 anos · sem tela\ncom alças",
+   "de": 23.1,
+   "ate": 27.13
+  }
+ ],
+ "cta": {
+  "texto": "Pasta de Descobertas",
+  "site": "roccokids.com.br"
+ },
+ "prototipo": true
+}

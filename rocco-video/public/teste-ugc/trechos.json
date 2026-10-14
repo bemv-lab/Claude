@@ -1,0 +1,25 @@
+{
+ "duracao": 31.637,
+ "trechos": [
+  {
+   "arquivo": "trecho-01.mp4",
+   "de": 0.0,
+   "ate": 6.6
+  },
+  {
+   "arquivo": "trecho-02.mp4",
+   "de": 6.6,
+   "ate": 16.267
+  },
+  {
+   "arquivo": "trecho-03.mp4",
+   "de": 16.267,
+   "ate": 23.1
+  },
+  {
+   "arquivo": "trecho-04.mp4",
+   "de": 23.1,
+   "ate": 31.637
+  }
+ ]
+}

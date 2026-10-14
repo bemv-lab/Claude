@@ -429,9 +429,9 @@ const Legenda: React.FC<{texto: string; f: number; ini: number; fim: number}> = 
   );
 };
 
-export type TiliaPastaProps = {fala: Fala; audio: string; prototipo: boolean};
+export type TiliaPastaProps = {fala: Fala; audio: string; prototipo: boolean; limpo?: boolean};
 
-export const TiliaPasta: React.FC<TiliaPastaProps> = ({fala, audio, prototipo}) => {
+export const TiliaPasta: React.FC<TiliaPastaProps> = ({fala, audio, prototipo, limpo = false}) => {
   const f = useCurrentFrame();
   const linha = useMemo(() => montarLinha(fala), [fala]);
   const idx = Math.max(0, linha.cenas.findIndex((c) => f >= c.inicio && f < c.fim));
@@ -454,12 +454,12 @@ export const TiliaPasta: React.FC<TiliaPastaProps> = ({fala, audio, prototipo}) 
           {saida.palco}
         </svg>
       </AbsoluteFill>
-      {saida.sobre}
-      {legenda && <Legenda texto={legenda} f={f} ini={cena.inicio} fim={cena.fim} />}
-      <div style={{position: 'absolute', top: 276, width: '100%', display: 'flex', justifyContent: 'center', opacity: seloOp}}>
+      {!limpo && saida.sobre}
+      {!limpo && legenda && <Legenda texto={legenda} f={f} ini={cena.inicio} fim={cena.fim} />}
+      <div style={{position: 'absolute', top: 276, width: '100%', display: 'flex', justifyContent: 'center', opacity: limpo ? 0 : seloOp}}>
         <div style={{padding: '4px 16px', borderRadius: 16, background: 'rgba(247,244,238,0.88)', fontFamily: FONTE, fontSize: 30, color: COR.texto}}>Tília · personagem animada da Rocco Kids</div>
       </div>
-      {prototipo && (
+      {prototipo && !limpo && (
         <div
           style={{
             position: 'absolute',
