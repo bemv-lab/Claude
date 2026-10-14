@@ -17,5 +17,9 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.9.3"
   }
 }
