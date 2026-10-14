@@ -38,6 +38,8 @@ O download do Chrome do Remotion é bloqueado neste ambiente, por isso os comand
 B=/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell
 npx remotion render src/index.ts Tilia-Pasta out/tilia-pasta.mp4 --browser-executable=$B --concurrency=4 --crf=20
 npx remotion still src/index.ts Tilia-Folha out/folha-tilia.png --browser-executable=$B
+# áudio no padrão de Reels/Meta (-14 LUFS) e MP4 pronto para streaming
+python3 -I scripts/finalizar_audio.py out/tilia-pasta.mp4 out/tilia-pasta-final.mp4
 ```
 
 ## Regras que o vídeo segue
