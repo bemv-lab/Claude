@@ -70,9 +70,9 @@ if a.roteiro:
             for w in seg_asr:
                 melhor, nota = None, 0.6
                 for jj in range(j, len(seg_ref)):
-                    r = difflib.SequenceMatcher(a=core(w['text']), b=core(seg_ref[jj])).ratio()
-                    if r > nota:
-                        melhor, nota = jj, r
+                    sim = difflib.SequenceMatcher(a=core(w['text']), b=core(seg_ref[jj])).ratio()
+                    if sim > nota:
+                        melhor, nota = jj, sim
                 if melhor is None:
                     out.append(w)  # fala fora do roteiro: mantém o que foi dito
                 else:
