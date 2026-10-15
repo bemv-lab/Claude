@@ -3,3 +3,5 @@ out/
 *.log
 .env
 public/lotes/
+__pycache__/
+*.pyc
