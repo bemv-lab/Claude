@@ -1,0 +1,29 @@
+{
+ "personagem": "Bárbara de feltro",
+ "arquivo": "mestra.png",
+ "tamanho": "768x1376 (vertical, quase 9:16)",
+ "criada_em": "2026-10-15",
+ "ferramenta": "app Gemini (geração de imagem), feita pela Bárbara a partir de uma foto dela",
+ "prompt_base": "docs/feltro-mestra.md, seção Prompt (pode ter sido ajustado no app)",
+ "checklist": {
+  "parece_com_ela": "escolhida e enviada pela Bárbara",
+  "proporcao_adulta": "sim",
+  "boca": "levemente aberta, mas com dentes claros em vez do interior escuro; aceita, porque no teste em vídeo a boca animou bem",
+  "olhos_e_cabelo": "olhos abertos, cabelo fora do rosto",
+  "enquadramento": "vertical, do meio do peito para cima, centralizada",
+  "sem_produto_texto_logo": "sim"
+ },
+ "testes": [
+  {
+   "data": "2026-10-15",
+   "motor": "vídeo gerado direto no app Gemini a partir da imagem e do texto (10 s, 1280x720)",
+   "resultado": "personagem aprovada como referência visual; não usar em anúncio",
+   "motivos": [
+    "voz criada pelo Gemini, não a gravação da Bárbara: a mesma frase durou 9,6 s contra 5,4 s na gravação real, e a voz ficou cerca de 1,5 semitom mais grave (mediana 203 Hz contra 222 Hz)",
+    "formato horizontal 16:9",
+    "inventou uma bolsa e um caderno de feltro nas mãos, o que pode parecer o produto"
+   ]
+  }
+ ],
+ "regras": "A imagem dá só a aparência. Movimento e fala vêm sempre da gravação real da Bárbara. Produto nunca em feltro."
+}

@@ -2,6 +2,8 @@
 
 A imagem-mestra é o ativo de marca: o mesmo personagem em todos os vídeos. O motor de feltro (Runway Act-Two) aplica nela a sua boca, as expressões e os gestos de cada gravação. A aparência da boneca vem da imagem. Do vídeo vêm só o movimento e a fala.
 
+**Status:** aprovada em 15/10/2026 (app Gemini). Está em `public/feltro/mestra.png`, com o registro em `public/feltro/biblia.json`.
+
 ## Passo a passo
 
 1. **Foto de referência.** Use um dos quadros que o Claude extrai da sua gravação (frente, olhos abertos, boca quase fechada), ou tire uma foto nova: de frente, do meio do peito para cima, luz de janela, fundo liso.
@@ -41,3 +43,12 @@ A imagem-mestra é o ativo de marca: o mesmo personagem em todos os vídeos. O m
 - A imagem precisa ter um rosto reconhecível, de frente e bem visível, e uma pose parecida com a do vídeo (mesmo enquadramento e tamanho de cabeça).
 - O trecho de performance tem de 3 a 30 segundos.
 - O custo é de 5 créditos por segundo gerado (cerca de US$ 0,05 pela API). O plano grátis da Runway não inclui o Act-Two: é preciso o plano Standard ou superior, ou créditos pela API.
+
+## Vídeo feito direto no Gemini não serve para o anúncio
+
+O Gemini cria o vídeo e também uma voz nova a partir do texto. Essa voz não é a da Bárbara, então quebra a regra da voz real. No teste de 15/10 o vídeo também saiu horizontal e com objetos inventados nas mãos. Serve só como referência de personagem.
+
+O motor de feltro precisa partir da gravação real:
+
+- **Runway Act-Two (automático):** usa o vídeo dela como guia de rosto e gestos. Roda na fábrica com `--motor runway`.
+- **Imagem + áudio (teste manual):** uma ferramenta anima a imagem-mestra a partir da voz real (ex.: OmniHuman no ElevenLabs, ou Hedra). Entram `mestra.png` e o MP3 do trecho. O vídeo que volta precisa ter a mesma duração do áudio, e o Claude encaixa na versão B.
