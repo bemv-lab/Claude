@@ -1,0 +1,39 @@
+{
+ "fotos": {
+  "730c0bfc5cb102b2ce99ccc1ef190bb1a9b7980adb7148ab7a1d6f3b0189884b|gemini_image3.1_flash|2026-10-15b|v1|1248:832": {
+   "id": "9fd7614a-7dbb-454b-a7cf-2dd4db980728",
+   "estimado": 7,
+   "creditos": 7,
+   "foto": "public/produto/pasta-de-descobertas/aberta.jpg",
+   "arquivo": "public/produto/pasta-de-descobertas/tratadas/gemini/aberta-r1.png"
+  },
+  "730c0bfc5cb102b2ce99ccc1ef190bb1a9b7980adb7148ab7a1d6f3b0189884b|gemini_image3_pro|2026-10-15b|v2|1152:896": {
+   "id": "0a5088ac-e062-42d1-ae75-e48f1c7f06a3",
+   "estimado": 20,
+   "creditos": 20,
+   "foto": "public/produto/pasta-de-descobertas/aberta.jpg",
+   "arquivo": "public/produto/pasta-de-descobertas/tratadas/gemini/aberta-r2.png"
+  },
+  "730c0bfc5cb102b2ce99ccc1ef190bb1a9b7980adb7148ab7a1d6f3b0189884b|gemini_image3_pro|2026-10-15b|v3|2400:1792": {
+   "id": "6cb444ea-cdeb-4c70-bcf2-fd9dd2d9cd61",
+   "estimado": 20,
+   "creditos": 20,
+   "foto": "public/produto/pasta-de-descobertas/aberta.jpg",
+   "arquivo": "public/produto/pasta-de-descobertas/tratadas/gemini/aberta-r3.png"
+  },
+  "3c22d82b1ebf29fdeb8be70f439f72e591d848f0e9dec5f5fa3493da06276f25|gemini_image3_pro|2026-10-15b|v3|2400:1792": {
+   "id": "e14e9ca7-def6-4cbf-b314-81222ae694cf",
+   "estimado": 20,
+   "creditos": 20,
+   "foto": "public/produto/pasta-de-descobertas/aberta2.jpg",
+   "arquivo": "public/produto/pasta-de-descobertas/tratadas/gemini/aberta2-r3.png"
+  },
+  "abf2ce95618bbdb0781a7a44cad6f5afeab89a1bd64baa75920adc3961623552|gemini_image3_pro|2026-10-15b|v3|2400:1792": {
+   "id": "b6f41b4b-6b1a-45f6-a587-bcb5f91ec245",
+   "estimado": 20,
+   "creditos": 20,
+   "foto": "public/produto/pasta-de-descobertas/fechada.jpg",
+   "arquivo": "public/produto/pasta-de-descobertas/tratadas/gemini/fechada-r3.png"
+  }
+ }
+}
