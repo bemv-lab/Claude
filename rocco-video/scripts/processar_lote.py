@@ -344,8 +344,12 @@ def processar(args, video, lote_pub, lote_out, gasto):
             except subprocess.CalledProcessError as e:
                 feltros.append(None)
                 rel["avisos"].append(f"feltro falhou em {t['arquivo']}: {(e.stderr or e.stdout or '').strip()[-300:]}")
-        with open(estado, encoding="utf-8") as fh:
-            gasto["creditos"] = sum(x.get("creditos", 0) for x in json.load(fh)["tarefas"].values())
+        if os.path.exists(estado):  # não existe se nenhuma tarefa chegou a ser criada (ex.: Runway fora do ar)
+            with open(estado, encoding="utf-8") as fh:
+                gasto["creditos"] = sum(x.get("creditos", 0) for x in json.load(fh)["tarefas"].values())
+        if not any(feltros):  # sem nenhum trecho em feltro, A e B seriam cópias da C com aviso de IA
+            rel["avisos"].append("nenhum trecho virou feltro: saiu só a versão C")
+            feltros = None
 
     # 6-7: versões
     base = {
@@ -364,7 +368,7 @@ def processar(args, video, lote_pub, lote_out, gasto):
     if feltros:
         a = [dict(r, src=f) if f else r for r, f in zip(reais, feltros)]
         versoes["A"] = a
-        if len(reais) >= 3:
+        if len(reais) >= 3 and (feltros[0] or feltros[-1]):
             versoes["B"] = [a[0]] + reais[1:-1] + [a[-1]]
     tmp = os.path.join(pub, "props")
     os.makedirs(tmp, exist_ok=True)
