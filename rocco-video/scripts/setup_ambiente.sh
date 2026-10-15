@@ -5,6 +5,8 @@ set -euo pipefail
 
 # Transcrição local pt-BR (Parakeet-TDT 0.6B v3 via sherpa-onnx): ~5 s por minuto de áudio em CPU
 pip install --quiet sherpa-onnx==1.13.8 soundfile numpy
+# Rosto -> legenda logo abaixo do pescoço (OpenCV 4: o 5 tirou o detector Haar)
+pip install --quiet "opencv-python-headless==4.10.0.84"
 if [ ! -f /opt/asr/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/encoder.int8.onnx ]; then
   mkdir -p /opt/asr
   curl -sSL -o /tmp/parakeet.tar.bz2 \

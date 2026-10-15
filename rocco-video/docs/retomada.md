@@ -1,36 +1,40 @@
-# Retomada da fábrica (feltro com a Runway)
+# Retomada da fábrica (feltro com a Runway + fotos no Gemini)
 
-## Onde paramos (15/10)
+## Onde paramos (15/10, tarde)
 
-- A Bárbara pediu três ajustes no vídeo da Pasta (roteiro 07). Feitos na madrugada, sem gasto:
-  - **pausas de leitura cortadas:** de 51,5 s para 28,8 s de fala, com 9 cortes secos e zoom alternado em cada um;
-  - **legenda nova:** altura do peito, 20% maior, uma ou duas palavras por vez, com entrada dinâmica;
-  - **fotos sem fundo:** recorte local em `public/produto/pasta-de-descobertas/tratadas/`, sobre o creme da marca. Falta ela aprovar ou pedir a melhoria no Gemini.
-- Nova versão C em `out/lotes/2026-10-15/barbara-pasta/` (enviada no chat; `out/` não vai para o git). Para refazer: rodar o lote com `--remover-palavras "ábaco e"`.
-- Imagem-mestra de feltro aprovada: `public/feltro/mestra.png`.
-- **Ábaco a confirmar:** a descrição do Shopify cita "ábaco de contas coloridas", mas nenhuma das 4 fotos mostra ábaco (o que parece contas é um calendário de 1 a 31). Até ela confirmar no produto, a palavra fica fora dos roteiros e sai da fala com `--remover-palavras "ábaco e"` (com o "e", porque na fala ele vem emendado). Se a Pasta não tiver ábaco, a descrição do Shopify também precisa mudar.
-- Chaves da Runway e do Gemini cadastradas pela Bárbara em "Segredos de rede" (15/10). Só valem em sessão nova.
+Pedidos da Bárbara para o vídeo da Pasta (roteiro 07), em ordem:
 
-## Checklist da Bárbara
+1. **Ela aparece como a boneca de feltro** da imagem-mestra (`public/feltro/mestra.png`). A versão A (feltro inteiro) é a principal; B (feltro no começo e no fim) e C (rosto real) vão como alternativas.
+2. **Legenda logo abaixo do pescoço**, sem tampar a interface do Reels (coluna de ícones da direita e faixa de baixo). **Feito e conferido na versão C** (sem gasto): a fábrica mede o rosto em cada versão e posiciona sozinha. No feltro, foi conferido com a mestra parada no lugar da Runway.
+3. **Fotos do produto tratadas no Gemini** antes de entrar no vídeo: foto profissional, mais bonita, sem perder nenhuma característica do produto real. Script pronto: `scripts/tratar_fotos_gemini.py`. **Falta rodar** (precisa da chave).
+4. **Sem cartão final** (nada de site ou nome do produto no fim): o vídeo termina nela, falando "O link está aqui embaixo.". **Feito.** O "Vale olhar de perto" agora mostra a foto fechada em tela cheia (antes era uma janela que tampava o rosto); roteiros 01 e 03 também saíram da janela.
 
-1. **Runway pela API** (dev.runwayml.com, não o plano mensal do app):
-   - crie a conta, compre créditos (mínimo US$ 10 = 1.000 créditos) e crie uma chave de API;
-   - os créditos do plano mensal do app não valem na API, então não precisa assinar o plano.
-2. **Chave do Gemini:** aistudio.google.com → Get API key → Create API key.
-3. **Configurações do ambiente do Claude** (menu do ambiente na barra de título da sessão → "Editar ambiente de nuvem"; se não aparecer no iPhone, faça pelo computador em claude.ai/code):
-   - **Segredos de rede → "+ Adicionar segredo":** um para cada chave, com a chave no valor:
-     - nome `RUNWAYML_API_SECRET` (domínio, se pedir: `api.dev.runwayml.com`);
-     - nome `GEMINI_API_KEY` (domínio, se pedir: `generativelanguage.googleapis.com`);
-   - **Acesso à rede:** o menu estava em "Confiável" e, nesse nível, a Runway fica bloqueada (testado em 15/10). Escolha a opção que mostra "Domínios permitidos" (Limitado ou Personalizado) e adicione `api.dev.runwayml.com`, deixando marcada a caixa dos gerenciadores de pacotes. O Gemini já passa;
-   - **Script de configuração:** deixe vazio. O Claude instala o transcritor dentro da sessão (passo 0 abaixo). Não toque em "Arquivar ambiente".
-4. **Abra uma sessão nova** nesse ambiente (as chaves só valem em sessão nova). Anexe de novo o vídeo original da Pasta (pelo app Fotos) e escreva, já com o teto de gasto: "Retomar a fábrica (docs/retomada.md). Pode gastar até US$ 3 na Runway neste vídeo."
+Verificado sem gastar (15/10): versão C nova; versões A e B com um "feltro de mentira" (a mestra parada no lugar da Runway, nenhuma chamada à API): legenda medida abaixo do pescoço e fora das zonas do Reels nas três, aviso de IA presente, fim na boneca, produto só em foto real. Corrigidos na mesma rodada: piscada do rosto entre duas fotos seguidas, zoom 1 quadro atrasado em alguns cortes, foto em tela cheia entrando na coluna de ícones, selo e assinatura altos demais (agora a partir de 270 px), e proteções na medida do pescoço. O script do Gemini foi testado com uma API falsa (19 cenários); o formato real do pedido só se confirma no primeiro pedido pago.
+
+Também ficou valendo: pausas cortadas (51,5 s → 29,1 s de fala), "ábaco e" fora da fala (`--remover-palavras "ábaco e"`, até ela confirmar o ábaco no produto), aviso de IA na assinatura do começo e no selo "animação com IA" o vídeo todo.
+
+**Por que não saiu o feltro nesta sessão:** a rede já libera a Runway (`api.dev.runwayml.com` e o CDN `dnznrvs05pmza.cloudfront.net`), mas as chaves foram passadas de "Variáveis de ambiente" para "Segredos de rede", e segredo de rede só vale em sessão nova (aqui a Runway respondeu 401 "No API key" e o Gemini 403 sem chave).
+
+## Checklist da Bárbara (antes da sessão nova)
+
+1. **Segredos de rede** (menu do ambiente → "Editar ambiente de nuvem" → "Segredos de rede"), um por chave:
+   - **Runway:** site `api.dev.runwayml.com`; cabeçalho `Authorization` com prefixo `Bearer` (o padrão do formulário); valor = a chave da Runway.
+   - **Gemini:** site `generativelanguage.googleapis.com`; cabeçalho **`x-goog-api-key`**, **sem prefixo** (apague o "Bearer"); valor = a chave do Gemini. Com "Bearer" o Gemini recusa a chave.
+   - Se o formulário for o curto (só "Host" e "Token"), avise o Claude: ele testa na sessão nova e diz se passou.
+2. **Acesso à rede:** "Personalizado", com `api.dev.runwayml.com` e `dnznrvs05pmza.cloudfront.net` em "Domínios permitidos" e a caixa dos gerenciadores de pacotes marcada (já está assim).
+3. **Abra uma sessão nova**, anexe de novo o vídeo da Pasta (de preferência o original pelo Google Drive, pasta "Rocco Vídeos/1-Entrada": o anexo pelo app chegou reduzido a 576x1024) e escreva, já com o teto:
+   "Retomar a fábrica (docs/retomada.md). Pode gastar até US$ 4 (Runway + Gemini)."
 
 Nunca cole chave no chat.
 
 ## O que o Claude faz na retomada
 
-0. Instala o transcritor e as dependências: `bash rocco-video/scripts/setup_ambiente.sh` (pip sherpa-onnx, modelo Parakeet em `/opt/asr`, `npm ci`). Leva alguns minutos.
-1. Testa as duas chaves sem gastar. A Runway entrega o vídeo por outro endereço (CDN): se o download for bloqueado, diz qual endereço liberar.
-2. Fotos: se ela aprovar os recortes locais, já estão em uso. Se quiser melhorar além do recorte (luz, nitidez), trata no Gemini com o produto igual ao original e mostra antes e depois. Custo: centavos de dólar por foto.
-3. Processa o vídeo com `--motor runway --teto-usd <teto que ela disse na mensagem>` (sem teto dito, pergunta uma vez antes de começar; nunca gasta sem o OK dela) (e `--remover-palavras "ábaco e"` se o ábaco não for confirmado): versões A, B e C com pausas cortadas e legenda nova. Custo: US$ 0,05 por segundo em feltro (vídeo de ~29 s, A e B juntas: ~US$ 1,50).
-4. Entrega os MP4 e o resumo. Nada é publicado.
+0. `bash rocco-video/scripts/setup_ambiente.sh` (Parakeet, OpenCV da legenda, `npm ci`; alguns minutos).
+1. **Testa as chaves sem gastar:** `GET https://api.dev.runwayml.com/v1/organization` (header `X-Runway-Version: 2024-11-06`; mostra o saldo de créditos) e `GET https://generativelanguage.googleapis.com/v1beta/models`. Sem chave no ambiente, o proxy injeta o segredo de rede: 200 = ok; 401/403 = segredo não chegou (ver checklist, item 1).
+2. **Fotos no Gemini** (só as que o roteiro usa: `aberta.jpg`, `aberta2.jpg`, `fechada.jpg`; `dinossauros.jpg` só quando um roteiro usar):
+   - `python3 -I scripts/tratar_fotos_gemini.py gerar public/produto/pasta-de-descobertas/{aberta,aberta2,fechada}.jpg --variantes 1 --teto-usd <parte do teto>` (modelo padrão `gemini-3-pro-image`: US$ 0,134 por foto mais o "thinking"; o teto conta US$ 0,25 por pedido, então 3 fotos = até US$ 0,75);
+   - olha `public/produto/pasta-de-descobertas/tratadas/gemini/comparar-<nome>.jpg` **peça por peça** contra a original (letras, números, zíperes, botões, fivelas, cadarços, relógio, alças, cores, posições, quantidade). Se mudou qualquer coisa do produto, gera outra variante; se nenhuma ficar fiel, fica o recorte local e isso vai no resumo;
+   - `python3 -I scripts/tratar_fotos_gemini.py promover public/produto/pasta-de-descobertas/tratadas/gemini/<nome>-<k>.png` na aprovada (recorta o fundo e grava `tratadas/<nome>.png`, que a fábrica usa) e manda o antes e depois para ela.
+3. **Lote com feltro:** `python3 -I scripts/processar_lote.py --entrada <pasta> --lote <AAAA-MM-DD> --motor runway --teto-usd <teto menos o gasto do Gemini> --remover-palavras "ábaco e"`. São 3 trechos de 8 a 11 s (A e B saem do mesmo gasto): US$ 0,05 por segundo, ~US$ 1,46 para 29 s.
+4. **Confere** 6 a 8 quadros por versão: boca fechando em p, b e m; mãos sem defeito; legenda logo abaixo do pescoço e fora das zonas do Reels; fim nela (real ou feltro), sem cartão; produto só em foto real; aviso de IA nas versões A e B.
+5. **Entrega** A (principal), B e C com o resumo: o que saiu, avisos, gasto em US$ (Gemini + Runway). Nada é publicado; no Metricool, só rascunho e só com o OK dela.

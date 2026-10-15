@@ -14,7 +14,30 @@ import os
 import subprocess
 
 
-def cortes(palavras, total, maximo):
+def cortes(palavras, total, maximo, minimo_trechos=3):
+    """Pontos de corte no fim de frases (ou de vírgulas): n trechos parecidos, n = max(minimo_trechos, total/maximo)
+    a partir de 9 s (a versão B precisa de 3: feltro no começo e no fim). Cada trecho tem de 3 s (mínimo do Act-Two)
+    a 30 s; sem ponto bom, cai na divisão antiga (gulosa, até `maximo`)."""
+    import math
+    fins = sorted({p["end"] for p in palavras if p["text"].rstrip().endswith((".", "!", "?"))})
+    virgulas = sorted({p["end"] for p in palavras if p["text"].rstrip().endswith((",", ";", ":"))})
+    n = max(math.ceil(total / maximo), minimo_trechos if total >= 9.0 else 1)
+    pontos = []
+    for k in range(1, n):
+        alvo = total * k / n
+        anterior = pontos[-1] if pontos else 0.0
+        ok = lambda x: x - anterior >= 3.0 and total - x >= 3.0 * (n - k)
+        cand = [x for x in fins if ok(x)] or [x for x in virgulas if ok(x)]
+        if not cand:
+            break
+        pontos.append(min(cand, key=lambda x: abs(x - alvo)))
+    marcos = [0.0] + pontos + [total]
+    if len(pontos) == n - 1 and all(3.0 <= b - a <= 30.0 for a, b in zip(marcos, marcos[1:])):
+        return marcos
+    return cortes_gulosos(palavras, total, maximo)
+
+
+def cortes_gulosos(palavras, total, maximo):
     """Escolhe pontos de corte no fim de frases (ou de vírgulas, se a frase for longa demais)."""
     fins_frase = [p["end"] for p in palavras if p["text"].rstrip().endswith((".", "!", "?"))]
     fins_virgula = [p["end"] for p in palavras if p["text"].rstrip().endswith((",", ";", ":"))]
@@ -26,6 +49,9 @@ def cortes(palavras, total, maximo):
         corte = max(janela) if janela else inicio + maximo
         pontos.append(corte)
         inicio = corte
+    # último trecho com menos de 3 s (mínimo do Act-Two) ficaria com o rosto real no fim: junta com o anterior
+    if pontos and total - pontos[-1] < 3.0 and total - (pontos[-2] if len(pontos) > 1 else 0.0) <= 30.0:
+        pontos.pop()
     return [0.0] + pontos + [total]
 
 

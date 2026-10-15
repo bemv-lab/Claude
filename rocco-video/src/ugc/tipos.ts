@@ -22,15 +22,35 @@ export type PlanoUGC = {
   insercoes: Insercao[];
   titulo?: {texto: string; ate: number};
   assinatura?: string; // ex.: "Bárbara · Rocco Kids"
-  aviso?: string; // ex.: "versão animada com IA da gravação da Bárbara"
-  cta?: {texto: string; site: string};
+  aviso?: string; // versões com IA: "versão em feltro feita com IA · voz real da Bárbara" (assinatura + selo o vídeo todo)
   prototipo?: boolean;
   cortes?: number[]; // instantes dos cortes de pausa (linha do tempo já sem pausas): o zoom alterna em cada um
-  legendaTopo?: number; // px do topo da legenda (padrão: altura do peito)
+  pescoco?: number; // px (em 1080x1920, sem zoom) da base do pescoço, medido no rosto detectado pela fábrica
+  legendaTopo?: number; // px do topo da legenda: força a posição (sem isso, vem do pescoço)
 };
 
-export const FIM_CARTAO = 2.6; // segundos do cartão final
-export const LEGENDA_TOPO = 1250; // altura do peito em gravação do meio do peito para cima (abaixo do queixo)
+// Área que a interface do Reels cobre (1080x1920): à direita, a coluna de curtir/comentar/enviar (da metade
+// para baixo); embaixo, nome, legenda do post e áudio. A legenda do vídeo fica fora das duas.
+export const REELS = {topo: 270, base: 1500, direita: 930}; // topo: faixa do título "Reels" e da câmera
+export const LEGENDA_ALTURA = 100; // pílula de 1 linha (fonte 65 + respiro)
+export const LEGENDA_TOPO = 1380; // sem rosto detectado: abaixo do pescoço em gravação do meio do peito para cima
+
+// Zoom do corte de UGC (Aroll): alterna 1,00 e 1,08 e cresce até 1,2% em cada trecho, a partir de 38% da altura
+export const ZOOM = {origem: 0.38 * 1920, max: 1.08 * 1.012};
+const comZoom = (y: number) => ZOOM.origem + (y - ZOOM.origem) * ZOOM.max;
+
+// Legenda logo abaixo do pescoço, mesmo no zoom maior. Se ela invadiria a faixa de baixo do Reels,
+// a gravação sobe (`subir` px na altura do pescoço, com no máximo +20% de escala) e a legenda sobe junto.
+// Se nem assim couber, a legenda fica no limite da faixa do Reels (a interface nunca a cobre).
+export const posicaoLegenda = (plano: PlanoUGC) => {
+  const padrao = {topo: LEGENDA_TOPO, subir: 0, pescocoZoom: 0};
+  if (plano.legendaTopo !== undefined) return {...padrao, topo: plano.legendaTopo};
+  if (plano.pescoco === undefined || plano.pescoco < 700 || plano.pescoco > 1600) return padrao; // medida implausível
+  const pescocoZoom = comZoom(plano.pescoco);
+  const topo = Math.round(pescocoZoom + 24);
+  const subir = Math.round(Math.min(Math.max(0, topo + LEGENDA_ALTURA - REELS.base), 0.2 * (1920 - pescocoZoom)));
+  return {topo: Math.min(topo - subir, REELS.base - LEGENDA_ALTURA), subir, pescocoZoom};
+};
 
 const letras = (p: Palavra) => p.text.replace(/[^\p{L}\p{N}]/gu, '').length;
 

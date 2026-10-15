@@ -6,10 +6,12 @@ Para cada gravação:
   3. corta as pausas de leitura (corte seco com respiro curto; --manter-pausas desliga), alinha a fala ao roteiro
      (grafia do roteiro nas legendas) e posiciona as marcações [B-ROLL]/[CARTÃO]/[JANELA]
      (foto de produto: usa a versão tratada sem fundo em public/produto/<handle>/tratadas/ quando existe)
-  4. corta em trechos no fim das frases
+  4. corta em trechos no fim das frases (até 12 s: 3 ou mais trechos, para existir a versão B)
   5. motor de feltro (opcional, Runway Act-Two) por trecho, com a voz original sempre por cima
-  6. monta as versões A (feltro), B (feltro no começo e no fim) e C (real) no molde Rocco-UGC
-  7. renderiza, normaliza o áudio (-14 LUFS), gera capa e relatório
+  6. monta as versões A (feltro), B (feltro no começo e no fim) e C (real) no molde Rocco-UGC, com a legenda
+     logo abaixo do pescoço (rosto detectado em cada versão) e fora da área da interface do Reels
+  7. renderiza, normaliza o áudio (-14 LUFS), gera capa e relatório. Sem cartão final: o vídeo termina na
+     apresentadora, e nenhuma foto ou cartão cobre o último segundo
 
 Uso:
   python3 -I scripts/processar_lote.py --entrada pasta_ou_arquivos... --lote 2026-10-15 \
@@ -132,8 +134,8 @@ def cortar_pausas(master, voz, palavras, saida, remover=(), com_pausas=True, res
     inicios = [p["start"] for p in palavras]
     lista = pausas(voz) if com_pausas else []
     fim = quadro(dur)
-    if lista and lista[-1][1] >= dur - 0.05:  # silêncio até o fim da gravação: fica 0,4 s depois da última fala
-        fim = min(fim, quadro(lista[-1][0] + 0.4))
+    if lista and lista[-1][1] >= dur - 0.05:  # silêncio até o fim da gravação: fica 0,7 s depois da última fala (fecho dela, sem cartão)
+        fim = min(fim, quadro(lista[-1][0] + 0.7))
         lista = lista[:-1]
     regioes = []
     for a, b in lista:
@@ -335,6 +337,54 @@ def insercoes(meta, falado, marcas, palavras, avisos):
     return lista
 
 
+def pescoco(arquivos, amostras=12):
+    """Base do pescoço (px em 1080x1920, sem zoom): mediana do rosto detectado (OpenCV Haar) em quadros espalhados.
+
+    Calibrado em 15/10 na gravação real da Bárbara e na mestra de feltro: nos dois, a base do pescoço fica em
+    topo do rosto + 1,3 x altura do rosto. Sem OpenCV ou com menos de 3 rostos achados, devolve None (o molde
+    usa a posição padrão; numa imagem parada, 1 rosto basta). Nunca derruba o lote: qualquer erro do OpenCV ou
+    medida fora de 900 a 1500 px (rosto errado, falso positivo) também devolve None.
+    """
+    try:
+        return _pescoco(arquivos, amostras)
+    except Exception:
+        return None
+
+
+def _pescoco(arquivos, amostras):
+    import cv2
+    import numpy as np
+    casc = cv2.CascadeClassifier(os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml"))
+    if casc.empty():
+        return None
+    medidas, minimo = [], 3
+    for arq in arquivos:
+        quadros = []
+        if arq.lower().endswith((".png", ".jpg", ".jpeg")):
+            img = cv2.imread(arq)
+            quadros = [img] if img is not None else []
+            minimo = 1  # imagem parada (ex.: a mestra): um rosto basta
+        else:
+            cap = cv2.VideoCapture(arq)
+            n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            for i in range(amostras):
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int((i + 0.5) * n / amostras))
+                ok, q = cap.read()
+                if ok:
+                    quadros.append(q)
+            cap.release()
+        for q in quadros:
+            q = cv2.resize(q, (1080, 1920))
+            rostos = casc.detectMultiScale(cv2.cvtColor(q, cv2.COLOR_BGR2GRAY), 1.1, 6, minSize=(180, 180))
+            if len(rostos):
+                x, y, w, h = max(rostos, key=lambda r: r[2] * r[3])
+                medidas.append(y + 1.3 * h)
+    if len(medidas) < minimo:
+        return None
+    y = int(round(float(np.median(medidas))))
+    return y if 900 <= y <= 1500 else None
+
+
 def pos_feltro(entrada, dur_original, saida, stop_motion=False):
     """Ajusta a deriva de tempo do trecho em feltro, leva para 1080x1920 30 qps e tira o áudio."""
     fator = dur_original / duracao(entrada)
@@ -425,9 +475,9 @@ def processar(args, video, lote_pub, lote_out, gasto):
     if conc is not None and conc < 88:
         rel["avisos"].append(f"concordância fala x roteiro {conc:.1f}% (<88%): conferir legenda (ruído ou improviso)")
 
-    # 4: trechos no fim das frases (até 20 s, limite confortável do Act-Two)
+    # 4: trechos no fim das frases (até 12 s: um vídeo de ~30 s dá 3 trechos, e a versão B existe; o custo é o mesmo)
     run([sys.executable, "-I", os.path.join(SCRIPTS, "fatiar_aroll.py"), "--video", master, "--palavras", os.path.join(pub, "palavras.json"),
-         "--saida", os.path.join(pub, "trechos"), "--max", "20"], capture_output=True)
+         "--saida", os.path.join(pub, "trechos"), "--max", "12"], capture_output=True)
     with open(os.path.join(pub, "trechos", "trechos.json"), encoding="utf-8") as fh:
         trechos = json.load(fh)
     rel_pub = os.path.relpath(pub, PUBLIC)
@@ -463,29 +513,51 @@ def processar(args, video, lote_pub, lote_out, gasto):
             feltros = None
 
     # 6-7: versões
+    lista_ins = insercoes(meta, falado, marcas, palavras, rel["avisos"]) if roteiro else []
+    # o vídeo termina na apresentadora: nenhuma foto ou cartão no último 1 s
+    livre = rel["duracao"] - 1.0
+    for ins in lista_ins:
+        if ins["de"] >= livre - 0.8:
+            rel["avisos"].append(f"inserção no fim do vídeo pulada para terminar na apresentadora: {ins.get('src') or ins.get('texto')}")
+    lista_ins = [dict(ins, ate=round(min(ins["ate"], livre), 2)) for ins in lista_ins if ins["de"] < livre - 0.8]
     base = {
         "audio": f"{rel_pub}/voz.wav",
         "duracao": rel["duracao"],
         "palavras": palavras,
-        "insercoes": insercoes(meta, falado, marcas, palavras, rel["avisos"]) if roteiro else [],
+        "insercoes": lista_ins,
         "assinatura": meta.get("assinatura", "Bárbara · Rocco Kids"),
         "prototipo": False,
         "cortes": cortes,
     }
     if meta.get("titulo"):
         base["titulo"] = {"texto": meta["titulo"], "ate": round(min(4.0, fim_da_frase(palavras, 0)), 2)}
-    if meta.get("cta"):
-        base["cta"] = {"texto": meta["cta"], "site": meta.get("site", "roccokids.com.br")}
     versoes = {"C": reais}
     if feltros:
         a = [dict(r, src=f) if f else r for r, f in zip(reais, feltros)]
         versoes["A"] = a
         if len(reais) >= 3 and (feltros[0] or feltros[-1]):
             versoes["B"] = [a[0]] + reais[1:-1] + [a[-1]]
+    # legenda logo abaixo do pescoço: mede o rosto real e o de feltro; a B (mistura) usa o mais baixo dos dois
+    pesc = {"C": pescoco([master])}
+    if feltros:
+        arqs = [os.path.join(PUBLIC, f) for f in feltros if f]
+        feltro_p = pescoco(arqs, amostras=6) or pescoco([args.mestra])
+        medidos = [p for p in (pesc["C"], feltro_p) if p]
+        # A com algum trecho que ficou real (curto, falhou, teto) mistura os dois, como a B: vale o pescoço mais baixo
+        pesc["A"] = (max(medidos) if medidos else None) if not all(feltros) else feltro_p
+        pesc["B"] = max(medidos) if medidos else None
+        if "B" not in versoes:
+            rel["avisos"].append(f"só {len(reais)} trecho(s): a versão B (feltro no começo e no fim) precisa de 3 e não saiu")
+    for v in versoes:
+        if not pesc.get(v):
+            rel["avisos"].append(f"rosto não medido na versão {v}: legenda na posição padrão (conferir se ficou abaixo do pescoço)")
+    rel["pescoco"] = pesc
     tmp = os.path.join(pub, "props")
     os.makedirs(tmp, exist_ok=True)
     for v in sorted(versoes):
         plano = dict(base, arolls=versoes[v])
+        if pesc.get(v):
+            plano["pescoco"] = pesc[v]
         if v != "C":
             plano["aviso"] = AVISO_FELTRO
         saida = os.path.join(out, f"{nome}-{v}.mp4")
