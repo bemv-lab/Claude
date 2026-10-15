@@ -6,3 +6,4 @@ public/lotes/
 __pycache__/
 *.pyc
 public/produto/*/tratadas/previa-*
+entrada/
