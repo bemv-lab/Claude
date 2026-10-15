@@ -2,7 +2,7 @@ import React from 'react';
 import {AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {COR, FONTE, carregarFonte} from '../marca';
 import {rampa} from '../turminha/kit/rig';
-import {FIM_CARTAO, Insercao, PlanoUGC, blocosDeLegenda, iniciosDeFrase} from './tipos';
+import {FIM_CARTAO, Insercao, LEGENDA_TOPO, PlanoUGC, blocosDeLegenda, iniciosDeFrase} from './tipos';
 
 carregarFonte();
 
@@ -10,11 +10,13 @@ const FPS = 30;
 const q = (s: number) => Math.round(s * FPS);
 const pilula = 'rgba(247,244,238,0.92)';
 
-// Gravação (rosto real ou feltro), em trechos, com o corte de zoom de UGC a cada frase
+// Gravação (rosto real ou feltro), em trechos, com o corte de zoom de UGC a cada frase e a cada corte de pausa
 const Aroll: React.FC<{plano: PlanoUGC}> = ({plano}) => {
   const f = useCurrentFrame();
   const t = f / FPS;
-  const inicios = iniciosDeFrase(plano.palavras);
+  const inicios = [...iniciosDeFrase(plano.palavras), ...(plano.cortes ?? [])]
+    .sort((a, b) => a - b)
+    .filter((s, i, todos) => i === 0 || s - todos[i - 1] > 0.3);
   const n = inicios.filter((s) => s <= t).length;
   const desde = n ? t - inicios[n - 1] : t;
   const escala = (n % 2 === 0 ? 1.0 : 1.08) * (1 + 0.012 * Math.min(1, desde / 4));
@@ -63,17 +65,27 @@ const InsercaoCamada: React.FC<{ins: Insercao}> = ({ins}) => {
       </AbsoluteFill>
     );
   }
-  // foto fora do 9:16: fundo com a mesma foto desfocada e a foto inteira por cima (nada cortado do produto)
+  // foto do produto inteira sobre o creme da marca (nada cortado do produto). PNG = recorte sem fundo, com sombra suave.
+  const recorte = ins.tipo === 'imagem' && ins.src!.toLowerCase().endsWith('.png');
   const midia =
     ins.tipo === 'video' ? (
       <OffthreadVideo src={staticFile(ins.src!)} muted style={{width: '100%', height: '100%', objectFit: 'cover'}} />
     ) : ins.modo === 'janela' ? (
-      <Img src={staticFile(ins.src!)} style={{width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${ken})`}} />
+      <Img src={staticFile(ins.src!)} style={{width: '100%', height: '100%', objectFit: 'contain', padding: recorte ? 36 : 0, transform: `scale(${ken})`}} />
     ) : (
-      <>
-        <Img src={staticFile(ins.src!)} style={{position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px)', opacity: 0.55, transform: 'scale(1.15)'}} />
-        <Img src={staticFile(ins.src!)} style={{position: 'absolute', left: 0, top: 370, width: '100%', height: 690, objectFit: 'contain', transform: `scale(${ken})`}} />
-      </>
+      <div style={{position: 'absolute', left: 60, top: 380, width: 960, height: 780, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+        <Img
+          src={staticFile(ins.src!)}
+          style={{
+            maxWidth: 960,
+            maxHeight: 780,
+            borderRadius: recorte ? 0 : 32,
+            boxShadow: recorte ? undefined : '0 18px 50px rgba(48,46,41,0.16)',
+            filter: recorte ? 'drop-shadow(0 26px 34px rgba(48,46,41,0.22))' : undefined,
+            transform: `translateY(${(1 - entrada) * 50}px) scale(${(0.94 + 0.06 * entrada) * ken})`,
+          }}
+        />
+      </div>
     );
   if (ins.modo === 'janela') {
     return (
@@ -110,26 +122,32 @@ const InsercaoCamada: React.FC<{ins: Insercao}> = ({ins}) => {
   );
 };
 
-// Legenda em frases curtas, palavra falada em terracota
+// Legenda dinâmica na altura do peito: 1 ou 2 palavras por vez, entrando com um "pop"; palavra falada em terracota
 const Legendas: React.FC<{plano: PlanoUGC}> = ({plano}) => {
   const f = useCurrentFrame();
+  const {fps} = useVideoConfig();
   const t = f / FPS;
   const blocos = blocosDeLegenda(plano.palavras);
   const b = blocos.find((x) => t >= x.inicio && t < x.fim);
   if (!b) return null;
+  const desde = f - Math.round(b.inicio * FPS);
+  const pop = spring({frame: desde, fps, config: {damping: 13, stiffness: 240, mass: 0.6}});
   return (
-    <div style={{position: 'absolute', top: 1088, width: '100%', display: 'flex', justifyContent: 'center'}}>
+    <div style={{position: 'absolute', top: plano.legendaTopo ?? LEGENDA_TOPO, width: '100%', display: 'flex', justifyContent: 'center'}}>
       <div
         style={{
-          maxWidth: 900,
-          padding: '12px 30px',
-          borderRadius: 30,
+          transform: `translateY(${(1 - pop) * 16}px) scale(${0.8 + 0.2 * pop})`,
+          opacity: Math.min(1, 0.35 + desde / 3),
+          maxWidth: 980,
+          padding: '12px 34px',
+          borderRadius: 34,
           background: pilula,
           border: `1.5px solid ${COR.borda}`,
+          boxShadow: '0 8px 24px rgba(48,46,41,0.10)',
           fontFamily: FONTE,
           fontWeight: 700,
-          fontSize: 54,
-          lineHeight: 1.15,
+          fontSize: 65,
+          lineHeight: 1.1,
           textAlign: 'center',
           textWrap: 'balance',
         }}

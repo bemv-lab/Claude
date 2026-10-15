@@ -29,6 +29,8 @@ A Bárbara grava no iPhone. A fábrica devolve o vídeo editado na marca nas ver
 | Roteiros com marcações `[B-ROLL: arquivo \| texto]`, `[JANELA: …]`, `[CARTÃO: …]` | `roteiros/NN-nome.txt` |
 | Texto limpo para ler na gravação | `python3 -I scripts/teleprompter.py roteiros/01-*.txt` |
 | Processar um lote | `python3 -I scripts/processar_lote.py --entrada <pasta> --lote <AAAA-MM-DD> --motor runway` |
+| Corte das pausas de leitura (automático, corte seco com zoom) | `--manter-pausas` desliga; `--remover-palavras ábaco` tira da fala uma palavra dita por engano |
+| Fotos de produto sem fundo (local e grátis) | `scripts/recortar_fundo.py` → `public/produto/<handle>/tratadas/` (a fábrica usa a tratada quando existe) |
 | Transcrição local pt-BR (Parakeet) | `scripts/transcrever_parakeet.py` |
 | Feltro por trecho (Runway Act-Two, idempotente, com teto de gasto) | `scripts/feltro_runway.py` |
 | Imagem-mestra da Bárbara de feltro | `docs/feltro-mestra.md` -> `public/feltro/mestra.png` |
@@ -39,7 +41,7 @@ A Bárbara grava no iPhone. A fábrica devolve o vídeo editado na marca nas ver
 
 Saídas em `out/lotes/<lote>/<vídeo>/`, junto com o relatório do lote em `out/lotes/<lote>/relatorio.json`:
 
-- MP4 por versão, com áudio em -14 LUFS;
+- MP4 por versão, com áudio em -14 LUFS e legenda dinâmica na altura do peito (1 ou 2 palavras por vez);
 - `capa.jpg`;
 - `legenda-C.txt` e `legenda-feltro.txt`.
 

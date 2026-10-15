@@ -33,7 +33,7 @@ Versão menor: Ajustes > Câmera > Gravar Vídeo > 720p HD a 30 qps, ou enviar o
 
 - **Pausas:** ela lê o roteiro sem teleprompter e faz pausas. Corte as pausas (corte seco entre frases) e deixe só um respiro curto.
 - **Legenda:** na altura do peito, nunca sobre a boca. Cerca de 20% maior que a de 15/10. Uma ou duas palavras por vez, com entrada dinâmica.
-- **Fotos de produto:** as de `public/produto/pasta-de-descobertas/` vieram da internet e estão feias. Trate antes de usar: fundo removido, luz e nitidez. O tratamento nunca muda o produto (formas, cores, peças); compare sempre com a original. Ela quer usar o Gemini pela API (`GEMINI_API_KEY`).
+- **Fotos de produto:** as de `public/produto/pasta-de-descobertas/` vieram da internet e estão feias. Trate antes de usar: fundo removido, luz e nitidez. O tratamento nunca muda o produto (formas, cores, peças); compare sempre com a original. Recortes sem fundo feitos localmente ficam em `tratadas/` (`scripts/recortar_fundo.py`), e a fábrica usa essa versão quando ela existe. Para melhorar além do recorte, ela quer usar o Gemini pela API (`GEMINI_API_KEY`).
 - **Vídeo do Gemini de 15/10:** foi só referência de como a boneca fica falando. Não usar para nada.
 - **Feltro:** com a Runway (Act-Two), a partir da gravação real dela já com as pausas cortadas.
 

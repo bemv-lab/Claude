@@ -40,7 +40,7 @@ for i in range(len(words) - 1):
 
 if a.roteiro:
     # legenda com a grafia do roteiro e os tempos da fala real: alinha palavra a palavra (difflib);
-    # trechos trocados que se parecem (>=50% dos caracteres) viram o texto do roteiro, com o tempo
+    # trechos trocados que se parecem (>=50% dos caracteres e tamanho parecido) viram o texto do roteiro, com o tempo
     # do trecho dividido proporcionalmente ao tamanho das palavras; improvisos ficam como foram ditos.
     def core(w): return re.sub(r'[^\w]', '', unicodedata.normalize('NFKC', w).lower())
     ref = open(a.roteiro, encoding='utf-8').read().split()
@@ -55,7 +55,9 @@ if a.roteiro:
             for w, rw in zip(seg_asr, seg_ref): out.append(dict(text=rw, start=w['start'], end=w['end']))
             continue
         parecido = difflib.SequenceMatcher(a=' '.join(core(w['text']) for w in seg_asr), b=' '.join(core(rw) for rw in seg_ref)).ratio()
-        if tag == 'replace' and parecido >= 0.5:
+        # tamanho parecido também: se o roteiro tem bem mais letras, ela pulou palavras ("telas" != "tela, com alças")
+        proporcao = sum(len(core(rw)) for rw in seg_ref) / max(1, sum(len(core(w['text'])) for w in seg_asr))
+        if tag == 'replace' and parecido >= 0.5 and 0.7 <= proporcao <= 1.4:
             ini, fim = seg_asr[0]['start'], seg_asr[-1]['end']
             pesos = [max(1, len(core(rw))) for rw in seg_ref]; tot = sum(pesos); acc = ini
             for rw, pw in zip(seg_ref, pesos):

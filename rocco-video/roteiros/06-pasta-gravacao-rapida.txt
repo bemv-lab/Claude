@@ -1,4 +1,5 @@
 # 06 · Pasta de Descobertas · gravação rápida (rosto real) · ~28 s
+# ábaco fora até confirmar no produto físico: nas fotos, o que parece contas é um calendário (dias 1 a 31)
 titulo: O primeiro botão demora. E tudo bem.
 produto: pasta-de-descobertas
 cta: Pasta de Descobertas
@@ -9,7 +10,7 @@ O primeiro botão fechado sozinho demora. E tudo bem.
 Eu sou a Bárbara, da Rocco.
 Essa é a Pasta de Descobertas.
 [B-ROLL: aberta.jpg | Pasta de Descobertas]
-Tem zíperes, botões, fivelas, cadarços, ábaco e relógio.
+Tem zíperes, botões, fivelas, cadarços e relógio.
 [B-ROLL: aberta2.jpg]
 A criança escolhe por onde começar e tenta de novo.
 E quando consegue, aquele pequeno sorriso diz tudo.

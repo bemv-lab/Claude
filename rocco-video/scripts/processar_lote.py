@@ -3,7 +3,9 @@
 Para cada gravação:
   1. padroniza (HEVC/HDR/60 qps do iPhone -> H.264 SDR 1080x1920 30 qps)
   2. transcreve com tempo por palavra (Parakeet local) e reconhece a claquete "Roteiro N, take M"
-  3. alinha a fala ao roteiro (grafia do roteiro nas legendas) e posiciona as marcações [B-ROLL]/[CARTÃO]/[JANELA]
+  3. corta as pausas de leitura (corte seco com respiro curto; --manter-pausas desliga), alinha a fala ao roteiro
+     (grafia do roteiro nas legendas) e posiciona as marcações [B-ROLL]/[CARTÃO]/[JANELA]
+     (foto de produto: usa a versão tratada sem fundo em public/produto/<handle>/tratadas/ quando existe)
   4. corta em trechos no fim das frases
   5. motor de feltro (opcional, Runway Act-Two) por trecho, com a voz original sempre por cima
   6. monta as versões A (feltro), B (feltro no começo e no fim) e C (real) no molde Rocco-UGC
@@ -82,6 +84,75 @@ def silencios(audio, minimo=0.8):
     ini = [float(x) for x in re.findall(r"silence_start: ([0-9.]+)", log)]
     fim = [float(x) for x in re.findall(r"silence_end: ([0-9.]+)", log)]
     return list(zip(ini, fim))
+
+
+def pausas(audio, minimo=0.3):
+    """Pausas de fala pelo nível do áudio (RMS em janelas de 20 ms). O limiar se ajusta à sala:
+    piso de ruído (percentil 10) + 40% da distância até a fala (percentil 95)."""
+    import wave
+
+    import numpy as np
+    with wave.open(audio) as w:
+        sr = w.getframerate()
+        x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float64) / 32768
+    j = int(0.02 * sr)
+    n = len(x) // j
+    db = 20 * np.log10(np.sqrt((x[: n * j].reshape(n, j) ** 2).mean(1)) + 1e-9)
+    piso, fala = np.percentile(db, 10), np.percentile(db, 95)
+    calado = list(db < piso + 0.4 * (fala - piso)) + [False]
+    lista, ini = [], None
+    for i, c in enumerate(calado):
+        if c and ini is None:
+            ini = i
+        elif not c and ini is not None:
+            if (i - ini) * 0.02 >= minimo:
+                lista.append((ini * 0.02, min(i * 0.02, n * 0.02)))
+            ini = None
+    return lista
+
+
+def cortar_pausas(master, voz, palavras, saida, remover=(), com_pausas=True, respiro=(0.12, 0.10)):
+    """Corte seco nas pausas de leitura: em cada pausa fica só um respiro curto depois e antes da fala.
+
+    Os cortes caem em múltiplos de 1/30 s e o áudio é cortado em blocos de 1 quadro (1600 amostras a 48 kHz),
+    então vídeo e áudio saem com a mesma duração e a boca não descola da voz. Nunca corta o começo de uma
+    palavra (o início de palavra do Parakeet é confiável; o fim, não). Palavras em `remover` (já normalizadas)
+    saem da fala, do começo delas até o começo da seguinte. Devolve os trechos mantidos [(de, ate)].
+    """
+    dur = duracao(master)
+    quadro = lambda s: round(s * 30) / 30
+    inicios = [p["start"] for p in palavras]
+    lista = pausas(voz) if com_pausas else []
+    fim = quadro(dur)
+    if lista and lista[-1][1] >= dur - 0.05:  # silêncio até o fim da gravação: fica 0,4 s depois da última fala
+        fim = min(fim, quadro(lista[-1][0] + 0.4))
+        lista = lista[:-1]
+    regioes = []
+    for a, b in lista:
+        c0 = 0.0 if a < 0.05 else quadro(a + respiro[0])
+        c1 = quadro(b - respiro[1])
+        dentro = [s for s in inicios if c0 - 0.02 <= s < c1 + respiro[1]]
+        if dentro:
+            c1 = min(c1, quadro(dentro[0] - respiro[1]))
+        if c1 - c0 >= 3 / 30:
+            regioes.append((c0, c1))
+    for i, p in enumerate(palavras):
+        if norm(p["text"]) in remover:
+            prox = palavras[i + 1]["start"] if i + 1 < len(palavras) else p["end"]
+            regioes.append((quadro(p["start"] - 0.03), quadro(prox - 0.06)))
+    manter, cursor = [], 0.0
+    for c0, c1 in sorted(regioes):
+        if c0 - cursor >= 2 / 30:  # trecho de 1 quadro entre dois cortes vira corte (seria um pisca)
+            manter.append((cursor, c0))
+        cursor = max(cursor, c1)
+    if fim > cursor:
+        manter.append((cursor, fim))
+    meio = 1 / 60  # fronteiras no meio do quadro: sem ambiguidade de arredondamento
+    expr = "+".join(f"gte(t,{a - meio:.7f})*lt(t,{b - meio:.7f})" for a, b in manter)
+    run(["ffmpeg", "-v", "error", "-y", "-i", master, "-i", voz, "-filter_complex",
+         f"[0:v]select='{expr}',setpts=N/FRAME_RATE/TB[v];[1:a]asetnsamples=n=1600:p=0,aselect='{expr}',asetpts=N/SR/TB[a]",
+         "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", saida])
+    return manter
 
 
 def claquete(palavras, audio):
@@ -216,6 +287,11 @@ def fim_da_frase(palavras, i):
 
 
 def resolver_midia(arquivo, produto):
+    """Acha a mídia em public/. Do produto, prefere a versão tratada (tratadas/<nome>.png, sem fundo)."""
+    if produto:
+        tratada = os.path.join("produto", produto, "tratadas", os.path.splitext(arquivo)[0] + ".png")
+        if os.path.exists(os.path.join(PUBLIC, tratada)):
+            return tratada
     for base in ([os.path.join("produto", produto)] if produto else []) + ["broll", ""]:
         rel = os.path.join(base, arquivo) if base else arquivo
         if os.path.exists(os.path.join(PUBLIC, rel)):
@@ -310,6 +386,25 @@ def processar(args, video, lote_pub, lote_out, gasto):
         with open(roteiro_falado, "w", encoding="utf-8") as fh:
             fh.write(" ".join(falado))
     palavras, conc = transcrever(args, voz, os.path.join(pub, "palavras.json"), roteiro_falado)
+
+    # 3b: tira as pausas de leitura (corte seco) e transcreve de novo na linha do tempo nova
+    cortes = []
+    remover = {norm(w) for w in (args.remover_palavras or "").split(",") if w.strip()}
+    if (not args.manter_pausas or remover) and palavras:
+        inteiro = os.path.join(pub, "master-com-pausas.mp4")
+        os.replace(master, inteiro)
+        antes = duracao(inteiro)
+        removidas = [p["text"] for p in palavras if norm(p["text"]) in remover]
+        if removidas:
+            rel["avisos"].append(f"tirei da fala: {', '.join(removidas)}")
+        manter = cortar_pausas(inteiro, voz, palavras, master, remover, com_pausas=not args.manter_pausas)
+        run(["ffmpeg", "-v", "error", "-y", "-i", master, "-vn", "-ac", "1", "-ar", "48000", voz])
+        palavras, conc = transcrever(args, voz, os.path.join(pub, "palavras.json"), roteiro_falado)
+        acum = 0.0
+        for a, b in manter[:-1]:
+            acum += b - a
+            cortes.append(round(acum, 3))
+        rel["pausas"] = {"cortes": len(cortes), "antes": round(antes, 1), "depois": round(duracao(master), 1)}
     rel.update({"roteiro": os.path.basename(roteiro) if roteiro else None, "concordancia": conc, "duracao": round(duracao(master), 2)})
     if conc is not None and conc < 88:
         rel["avisos"].append(f"concordância fala x roteiro {conc:.0f}% (<88%): conferir legenda (ruído ou improviso)")
@@ -359,6 +454,7 @@ def processar(args, video, lote_pub, lote_out, gasto):
         "insercoes": insercoes(meta, falado, marcas, palavras, rel["avisos"]) if roteiro else [],
         "assinatura": meta.get("assinatura", "Bárbara · Rocco Kids"),
         "prototipo": False,
+        "cortes": cortes,
     }
     if meta.get("titulo"):
         base["titulo"] = {"texto": meta["titulo"], "ate": round(min(4.0, fim_da_frase(palavras, 0)), 2)}
@@ -399,6 +495,8 @@ def main():
     ap.add_argument("--mestra", default=os.path.join(PUBLIC, "feltro", "mestra.png"))
     ap.add_argument("--teto-usd", type=float, default=10.0)
     ap.add_argument("--stop-motion", action="store_true")
+    ap.add_argument("--manter-pausas", action="store_true", help="não corta as pausas de leitura")
+    ap.add_argument("--remover-palavras", help="palavras ditas que saem da fala, separadas por vírgula (ex.: item que o produto não tem)")
     ap.add_argument("--roteiro", help="força este roteiro (ex.: gravação sem claquete, roteiro escrito depois a partir da fala)")
     ap.add_argument("--python-asr", default=sys.executable)
     ap.add_argument("--modelo-asr", default="/opt/asr/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")

@@ -7,7 +7,7 @@
   - legenda na altura do peito, 20% maior, uma ou duas palavras por vez;
   - fotos do produto tratadas, sem fundo.
 - Imagem-mestra de feltro aprovada: `public/feltro/mestra.png`.
-- Ábaco confirmado na descrição do Shopify (roteiros 06 e 07 corrigidos).
+- **Ábaco a confirmar:** a descrição do Shopify cita "ábaco de contas coloridas", mas nenhuma das 4 fotos mostra ábaco (o que parece contas é um calendário de 1 a 31). Até ela confirmar no produto, a palavra fica fora dos roteiros e sai da fala com `--remover-palavras ábaco`.
 - Runway e Gemini ainda sem chave neste ambiente.
 
 ## Checklist da Bárbara

@@ -1,4 +1,5 @@
 # 01 · O primeiro botão (Pasta de Descobertas) · anúncio de conversão · ~30 s
+# ábaco fora até confirmar no produto físico: nas fotos, o que parece contas é um calendário (dias 1 a 31)
 titulo: O primeiro botão demora. E tudo bem.
 produto: pasta-de-descobertas
 cta: Pasta de Descobertas
@@ -8,7 +9,7 @@ legenda: Tem coisa que a criança quer descobrir sozinha. Abrir, fechar, encaixa
 O primeiro botão fechado sozinho demora. E tudo bem.
 Eu sou a Bárbara, da Rocco.
 [B-ROLL: aberta.jpg | Pasta de Descobertas]
-Essa é a Pasta de Descobertas: zíperes, botões, fivelas, cadarços, ábaco e relógio.
+Essa é a Pasta de Descobertas: zíperes, botões, fivelas, cadarços e relógio.
 Abrir, fechar, encaixar, tentar de novo. No tempo da criança.
 E quando ela consegue, aquele pequeno sorriso diz tudo.
 [JANELA: fechada.jpg | Por que a Rocco escolheu]

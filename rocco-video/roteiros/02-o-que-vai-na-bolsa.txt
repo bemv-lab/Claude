@@ -1,16 +1,17 @@
 # 02 · O que vai na bolsa? (Pasta de Descobertas) · anúncio, gancho de ocasião · ~30 s
+# ábaco fora até confirmar no produto físico: nas fotos, o que parece contas é um calendário (dias 1 a 31)
 titulo: Sala de espera, viagem, almoço de domingo.
 produto: pasta-de-descobertas
 cta: Pasta de Descobertas
 site: roccokids.com.br
-legenda: Sala de espera, viagem, almoço de domingo. A Pasta de Descobertas fecha como uma pasta, tem alças e guarda zíperes, botões, fivelas, cadarços, ábaco e relógio. Sem tela. 3 a 6 anos.
+legenda: Sala de espera, viagem, almoço de domingo. A Pasta de Descobertas fecha como uma pasta, tem alças e guarda zíperes, botões, fivelas, cadarços e relógio. Sem tela. 3 a 6 anos.
 ---
 Sala de espera, viagem, almoço de domingo. O que vai na bolsa?
 Eu sou a Bárbara, da Rocco, e essa é a nossa resposta favorita.
 [B-ROLL: fechada.jpg | Pasta de Descobertas]
 A Pasta de Descobertas fecha como uma pasta e tem alças para levar junto.
 [B-ROLL: aberta.jpg]
-Por dentro: zíperes, botões, fivelas, cadarços, ábaco e relógio.
+Por dentro: zíperes, botões, fivelas, cadarços e relógio.
 É uma brincadeira sem tela que espera a criança. Ela escolhe por onde começar.
 [CARTÃO: 3 a 6 anos · sem tela\n21,5 × 27,5 cm]
 Três a seis anos. Vale olhar de perto: o link está aqui embaixo.
