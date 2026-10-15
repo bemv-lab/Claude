@@ -227,10 +227,10 @@ def processar(args, video, lote_pub, lote_out, gasto):
     run(["ffmpeg", "-v", "error", "-y", "-i", bruto, "-vn", "-ac", "1", "-ar", "48000", voz0])
     palavras0, _ = transcrever(args, voz0, os.path.join(pub, "palavras0.json"))
     n, corte = claquete(palavras0, voz0)
-    roteiro = achar_roteiro(n) if n else None
+    roteiro = args.roteiro or (achar_roteiro(n) if n else None)
     if n and not roteiro:
         rel["avisos"].append(f"claquete 'Roteiro {n}' sem arquivo em roteiros/")
-    if not n:
+    if not n and not roteiro:
         rel["avisos"].append("sem claquete: vídeo editado sem marcações do roteiro")
 
     # 3: corta a claquete, transcreve de novo alinhando ao roteiro
@@ -329,6 +329,7 @@ def main():
     ap.add_argument("--mestra", default=os.path.join(PUBLIC, "feltro", "mestra.png"))
     ap.add_argument("--teto-usd", type=float, default=10.0)
     ap.add_argument("--stop-motion", action="store_true")
+    ap.add_argument("--roteiro", help="força este roteiro (ex.: gravação sem claquete, roteiro escrito depois a partir da fala)")
     ap.add_argument("--python-asr", default=sys.executable)
     ap.add_argument("--modelo-asr", default="/opt/asr/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")
     ap.add_argument("--navegador", default=os.environ.get("REMOTION_BROWSER", "/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"))
