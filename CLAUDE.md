@@ -8,7 +8,7 @@ Projeto de vídeo em `rocco-video/` (Remotion + scripts Python). Leia `rocco-vid
 2. Rode, de `rocco-video/`:
    `python3 -I scripts/processar_lote.py --entrada <pasta> --lote <AAAA-MM-DD> --motor runway --teto-usd ${ROCCO_TETO_NOITE_USD:-10}`
    - Use `--motor nenhum` se não houver `public/feltro/mestra.png` ou acesso a `api.dev.runwayml.com`: sai só a versão C (real).
-   - Em sessão sem o setup script, aponte `--python-asr` e `--modelo-asr` para onde o Parakeet estiver instalado.
+   - O campo "Script de configuração" do ambiente fica vazio. No começo da sessão, rode `bash rocco-video/scripts/setup_ambiente.sh` (instala o Parakeet em `/opt/asr` e o `npm ci`). Se o Parakeet estiver em outro lugar, aponte `--python-asr` e `--modelo-asr`.
 3. Leia `out/lotes/<lote>/relatorio.json`. Para cada vídeo:
    - olhe 6 a 8 quadros;
    - nas versões de feltro, confira se a boca fecha em p, b e m e se as mãos estão sem defeito;
@@ -36,6 +36,7 @@ Versão menor: Ajustes > Câmera > Gravar Vídeo > 720p HD a 30 qps, ou enviar o
 - **Fotos de produto:** as de `public/produto/pasta-de-descobertas/` vieram da internet e estão feias. Trate antes de usar: fundo removido, luz e nitidez. O tratamento nunca muda o produto (formas, cores, peças); compare sempre com a original. Recortes sem fundo feitos localmente ficam em `tratadas/` (`scripts/recortar_fundo.py`), e a fábrica usa essa versão quando ela existe. Para melhorar além do recorte, ela quer usar o Gemini pela API (`GEMINI_API_KEY`).
 - **Vídeo do Gemini de 15/10:** foi só referência de como a boneca fica falando. Não usar para nada.
 - **Feltro:** com a Runway (Act-Two), a partir da gravação real dela já com as pausas cortadas.
+- **Gasto:** só com o OK dela. Ao retomar, o teto vem na mensagem (ex.: "pode gastar até US$ 3"). Se não vier, pergunte uma vez antes de começar, nunca no meio do lote.
 
 Estado do projeto e checklist de retomada: `rocco-video/docs/retomada.md`.
 
