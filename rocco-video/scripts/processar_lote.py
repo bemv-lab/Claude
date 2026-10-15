@@ -16,6 +16,7 @@ Uso:
 Saídas: out/lotes/<lote>/<video>/ (MP4 por versão, capa.jpg, legenda.txt) e out/lotes/<lote>/relatorio.json
 """
 import argparse
+import difflib
 import json
 import os
 import re
@@ -101,6 +102,59 @@ def claquete(palavras, audio):
         if n:
             return n, max(pausa[0] + 0.1, pausa[1] - 0.2)
     return None, 0.0
+
+
+def numero_do_arquivo(caminho):
+    m = re.match(r"^0*(\d+)", os.path.basename(caminho))
+    return int(m.group(1)) if m else None
+
+
+def similaridade(ditas, alvo):
+    """Fração das palavras do roteiro (alvo) que aparecem, em ordem, na fala (ditas)."""
+    sm = difflib.SequenceMatcher(a=ditas, b=alvo, autojunk=False)
+    return sum(b.size for b in sm.get_matching_blocks()) / max(1, len(alvo))
+
+
+def escolher_roteiro(palavras, apos):
+    """Descobre pelo que foi FALADO qual roteiro da pasta roteiros/ foi gravado (a claquete pode estar errada)."""
+    pasta = os.path.join(RAIZ, "roteiros")
+    ditas = [norm(p["text"]) for p in palavras if p["start"] >= apos - 0.01]
+    melhor = (0.0, None)
+    for nome in sorted(os.listdir(pasta)) if os.path.isdir(pasta) else []:
+        if not nome.endswith(".txt") or nome.startswith("9"):  # 9x = roteiros de teste
+            continue
+        caminho = os.path.join(pasta, nome)
+        _, falado, _ = ler_roteiro(caminho)
+        if not falado:
+            continue
+        nota = similaridade(ditas, [norm(w) for w in falado])
+        if nota > melhor[0]:
+            melhor = (nota, caminho)
+    return (melhor[1], melhor[0] * 100) if melhor[0] >= 0.5 else (None, melhor[0] * 100)
+
+
+def melhor_tomada(palavras, falado, audio, apos, avisos):
+    """Quando a fala recomeça (falsas partidas, 'vou repetir'), fica com a última tomada completa.
+
+    Testa cada palavra como possível começo e escolhe a que melhor casa com o roteiro (empate: a mais
+    tardia); o corte vai para o fim da pausa que vem antes dela.
+    """
+    alvo = [norm(w) for w in falado]
+    cand = [p for p in palavras if p["start"] >= apos - 0.01]
+    ditas = [norm(p["text"]) for p in cand]
+    melhor_i, melhor_nota = 0, -1.0
+    for i in range(len(cand)):
+        nota = similaridade(ditas[i: i + len(alvo) + 8], alvo)
+        if nota >= melhor_nota:
+            melhor_i, melhor_nota = i, nota
+    inicio = cand[melhor_i]["start"]
+    if melhor_i == 0:
+        return apos
+    pausas = [(a, b) for a, b in silencios(audio, 0.5) if inicio - 2.5 <= b <= inicio + 0.15]
+    corte = max(pausas[-1][0] + 0.1, pausas[-1][1] - 0.2) if pausas else max(apos, inicio - 0.3)
+    if corte - apos > 1.0:
+        avisos.append(f"fala recomeçou: ignorei os primeiros {corte - apos:.0f}s (falsas partidas) e usei a última tomada")
+    return corte
 
 
 def ler_roteiro(caminho):
@@ -227,21 +281,31 @@ def processar(args, video, lote_pub, lote_out, gasto):
     run(["ffmpeg", "-v", "error", "-y", "-i", bruto, "-vn", "-ac", "1", "-ar", "48000", voz0])
     palavras0, _ = transcrever(args, voz0, os.path.join(pub, "palavras0.json"))
     n, corte = claquete(palavras0, voz0)
-    roteiro = args.roteiro or (achar_roteiro(n) if n else None)
+    roteiro = args.roteiro
+    if not roteiro:
+        escolhido, nota = escolher_roteiro(palavras0, corte)
+        if escolhido:
+            roteiro = escolhido
+            num = numero_do_arquivo(escolhido)
+            if n and num != n:
+                rel["avisos"].append(f"a claquete dizia 'Roteiro {n}', mas a fala é do roteiro {num} ({nota:.0f}% de acerto): usei o {num}")
+        elif n:
+            roteiro = achar_roteiro(n)
     if n and not roteiro:
         rel["avisos"].append(f"claquete 'Roteiro {n}' sem arquivo em roteiros/")
     if not n and not roteiro:
-        rel["avisos"].append("sem claquete: vídeo editado sem marcações do roteiro")
+        rel["avisos"].append("sem roteiro reconhecido: vídeo editado sem marcações")
+    meta, falado, marcas = ler_roteiro(roteiro) if roteiro else ({}, [], [])
+    if falado:
+        corte = melhor_tomada(palavras0, falado, voz0, corte, rel["avisos"])
 
     # 3: corta a claquete, transcreve de novo alinhando ao roteiro
     master = os.path.join(pub, "master.mp4")
     padronizar(bruto, master, inicio=corte)
     voz = os.path.join(pub, "voz.wav")
     run(["ffmpeg", "-v", "error", "-y", "-i", master, "-vn", "-ac", "1", "-ar", "48000", voz])
-    meta, falado, marcas = ({}, [], [])
     roteiro_falado = None
     if roteiro:
-        meta, falado, marcas = ler_roteiro(roteiro)
         roteiro_falado = os.path.join(pub, "roteiro-falado.txt")
         with open(roteiro_falado, "w", encoding="utf-8") as fh:
             fh.write(" ".join(falado))
@@ -310,6 +374,8 @@ def processar(args, video, lote_pub, lote_out, gasto):
             plano["aviso"] = AVISO_FELTRO
         saida = os.path.join(out, f"{nome}-{v}.mp4")
         renderizar(args, plano, saida, tmp)
+        run(["ffmpeg", "-v", "error", "-y", "-i", saida, "-c:v", "libx264", "-crf", "27", "-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
+             "-movflags", "+faststart", saida.replace(".mp4", "-leve.mp4")])
         rel["saidas"].append(saida)
     run(["ffmpeg", "-v", "error", "-y", "-ss", "1.0", "-i", rel["saidas"][0], "-frames:v", "1", "-q:v", "3", os.path.join(out, "capa.jpg")])
     legenda = meta.get("legenda", "")

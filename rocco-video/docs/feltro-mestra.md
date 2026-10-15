@@ -1,38 +1,43 @@
 # Bárbara de feltro: imagem-mestra (fazer uma vez)
 
-A imagem-mestra é o ativo de marca: o mesmo personagem em todos os vídeos. O motor de feltro
-(Runway Act-Two) aplica nela a sua boca, expressões e gestos de cada gravação.
+A imagem-mestra é o ativo de marca: o mesmo personagem em todos os vídeos. O motor de feltro (Runway Act-Two) aplica nela a sua boca, as expressões e os gestos de cada gravação. A aparência da boneca vem da imagem. Do vídeo vêm só o movimento e a fala.
 
-## 1. Fotos (5 min)
+## Passo a passo
 
-Tire 4 fotos com a mesma roupa e penteado que vai usar nas gravações:
+1. **Foto de referência.** Use um dos quadros que o Claude extrai da sua gravação (frente, olhos abertos, boca quase fechada), ou tire uma foto nova: de frente, do meio do peito para cima, luz de janela, fundo liso.
+2. **Onde gerar (grátis):**
+   - app **Gemini**: peça para criar imagem (Nano Banana) e anexe a foto;
+   - ou **ChatGPT**: anexe a foto e peça uma imagem.
+3. **Cole o prompt** abaixo e gere de 3 a 4 versões. Escolha a que mais parece você.
+4. **Baixe em alta resolução** e mande para o Claude no chat. Ele salva em `public/feltro/mestra.png` e registra o prompt e a data em `public/feltro/biblia.json`.
 
-- de frente, rosto neutro;
-- de frente, falando;
-- 3/4;
-- sorriso leve.
+## Prompt (inglês funciona melhor para textura)
 
-Use luz de janela, fundo liso e enquadramento do meio do peito para cima. Roupa lisa na paleta da Rocco (musgo, terracota, creme ou grafite), sem estampa nem logo.
+> Transform the woman in the attached photo into a handmade needle-felted wool doll portrait. Adult proportions (not a child, not chibi, head not oversized). Keep her face shape, strong dark eyebrows, long dark-brown wavy hair with a center part, and her calm, warm expression.
+> Materials: soft felted wool skin in warm beige with visible fuzzy fibers; hair made of wool yarn strands; small dark glass-bead eyes with felt eyelids; felted eyebrows; a small felt mouth, slightly open, with a dark inner mouth and no teeth.
+> Clothes: a moss-green (#3f493d) wool knit top with a simple neckline.
+> Background: a plain miniature felt set in cream (#f7f4ee) with one soft terracotta (#b85f42) felt shape, soft natural window light from the left.
+> Framing: vertical 9:16, chest-up, facing the camera, head centered, same head size and position as in the photo, eyes open looking at the lens, no hands, no props, no text, no logo.
+> Style: stop-motion studio photography, shallow depth of field, calm and elegant mood.
 
-## 2. Gerar (grátis nos apps, ~20 min)
+## Ajustes (cole depois, na mesma conversa)
 
-No app Gemini (Nano Banana) ou no ChatGPT, anexe a foto de frente e use um dos prompts abaixo.
-Gere 3 a 4 de cada e escolha a que mais parece você.
+- **Parece assustadora ou realista demais:** "Make the face simpler and more handmade, with softer rounded shapes and less realistic skin."
+- **Olhos grandes ou fofos demais:** "Smaller bead eyes, more adult and serene."
+- **Não parece você:** anexe uma segunda foto e diga "Match her face more closely (nose, jaw, smile)."
+- **Cabelo cobrindo o rosto:** "Hair pulled behind the shoulders, face fully visible."
 
-### Prompt A: ateliê (recomendado)
-> Transform the person in this photo into a handmade needle-felted wool doll portrait, adult woman proportions (not a child, not chibi), same face shape, hairstyle and outfit. Visible fuzzy wool fibers, hair made of soft wool yarn, small black bead eyes with felt eyelids, embroidered eyebrows, a visible felt mouth slightly open with a dark inner mouth (no teeth), felt hands. Calm, warm, intelligent expression. Background: a miniature felt set in cream (#f7f4ee) with subtle terracotta (#b85f42) and moss green (#3f493d) accents, soft natural window light from the left. Vertical 9:16, chest-up framing, eyes on the upper third, facing the camera. Stop-motion studio photography, shallow depth of field. No text, no logo, no toys in the scene.
+## Checklist de aprovação
 
-### Prompt B: mais realista (textura forte, rosto mais fiel)
-> Same as A, but keep the facial features closer to the photo (nose, jaw, smile), wool texture still clearly visible, felted skin with tiny fibers, glass bead eyes with a gentle highlight.
+1. Parece com você, em versão feltro.
+2. Proporção adulta (olhos pequenos, cabeça não exagerada).
+3. **Boca visível, levemente aberta, com o interior escuro.** Boca fechada ou bordada não mostra a fala.
+4. Os dois olhos abertos e visíveis; cabelo fora do rosto.
+5. Vertical 9:16, do meio do peito para cima, centralizada.
+6. Nada na mão, nenhum produto, texto ou logo. Se aparecer uma marca no canto, avise o Claude, que recorta.
 
-### Prompt C: mais lúdico (mantendo o tom adulto)
-> Same as A, with slightly rounder felt shapes and visible hand stitching on the clothes; colors muted, elegant, never cartoonish or childish.
+## Por que assim (Runway Act-Two)
 
-## 3. Regras de aprovação
-
-- **Boca de feltro visível e entreaberta:** se a boca for bordada fechada, a fala não aparece no vídeo.
-- **Proporções adultas e olhos pequenos:** olhos grandes e cabeça grande puxam para "boneco infantil" (Res. CONANDA 163).
-- **Nada na mão e nenhum produto na cena:** o produto entra sempre como imagem real.
-- **Enquadramento igual ao das gravações:** do meio do peito para cima, de frente.
-
-Mande a escolhida no chat. O Claude salva em `public/feltro/mestra.png`, gera as variações e registra o prompt, o modelo e a data em `public/feltro/biblia.json`.
+- A imagem precisa ter um rosto reconhecível, de frente e bem visível, e uma pose parecida com a do vídeo (mesmo enquadramento e tamanho de cabeça).
+- O trecho de performance tem de 3 a 30 segundos.
+- O custo é de 5 créditos por segundo gerado (cerca de US$ 0,05 pela API). O plano grátis da Runway não inclui o Act-Two: é preciso o plano Standard ou superior, ou créditos pela API.
