@@ -86,18 +86,25 @@ def silencios(audio, minimo=0.8):
     return list(zip(ini, fim))
 
 
-def pausas(audio, minimo=0.3):
-    """Pausas de fala pelo nível do áudio (RMS em janelas de 20 ms). O limiar se ajusta à sala:
-    piso de ruído (percentil 10) + 40% da distância até a fala (percentil 95)."""
+def nivel_db(audio, janela):
+    """Nível do áudio (RMS em dB) em janelas seguidas de `janela` segundos (WAV 16 bits mono)."""
     import wave
 
     import numpy as np
     with wave.open(audio) as w:
         sr = w.getframerate()
         x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float64) / 32768
-    j = int(0.02 * sr)
+    j = int(janela * sr)
     n = len(x) // j
-    db = 20 * np.log10(np.sqrt((x[: n * j].reshape(n, j) ** 2).mean(1)) + 1e-9)
+    return 20 * np.log10(np.sqrt((x[: n * j].reshape(n, j) ** 2).mean(1)) + 1e-9)
+
+
+def pausas(audio, minimo=0.3):
+    """Pausas de fala pelo nível do áudio (RMS em janelas de 20 ms). O limiar se ajusta à sala:
+    piso de ruído (percentil 10) + 40% da distância até a fala (percentil 95)."""
+    import numpy as np
+    db = nivel_db(audio, 0.02)
+    n = len(db)
     piso, fala = np.percentile(db, 10), np.percentile(db, 95)
     calado = list(db < piso + 0.4 * (fala - piso)) + [False]
     lista, ini = [], None
@@ -116,8 +123,9 @@ def cortar_pausas(master, voz, palavras, saida, remover=(), com_pausas=True, res
 
     Os cortes caem em múltiplos de 1/30 s e o áudio é cortado em blocos de 1 quadro (1600 amostras a 48 kHz),
     então vídeo e áudio saem com a mesma duração e a boca não descola da voz. Nunca corta o começo de uma
-    palavra (o início de palavra do Parakeet é confiável; o fim, não). Palavras em `remover` (já normalizadas)
-    saem da fala, do começo delas até o começo da seguinte. Devolve os trechos mantidos [(de, ate)].
+    palavra (o início de palavra do Parakeet é confiável; o fim, não). Cada trecho em `remover` (índices
+    [(i, k)]: k palavras a partir da i) sai da fala, do começo dele até o começo da palavra seguinte.
+    Devolve os trechos mantidos [(de, ate)].
     """
     dur = duracao(master)
     quadro = lambda s: round(s * 30) / 30
@@ -136,10 +144,14 @@ def cortar_pausas(master, voz, palavras, saida, remover=(), com_pausas=True, res
             c1 = min(c1, quadro(dentro[0] - respiro[1]))
         if c1 - c0 >= 3 / 30:
             regioes.append((c0, c1))
-    for i, p in enumerate(palavras):
-        if norm(p["text"]) in remover:
-            prox = palavras[i + 1]["start"] if i + 1 < len(palavras) else p["end"]
-            regioes.append((quadro(p["start"] - 0.03), quadro(prox - 0.06)))
+    if remover:
+        # fala emendada ("ábaco e relógio"): o fim do corte vai para o vale de energia logo antes da palavra
+        # seguinte, porque o início dela no Parakeet pode atrasar até ~0,1 s e o corte comeria o "r" de "relógio"
+        db = nivel_db(voz, 0.01)
+        vale = lambda t0, t1: (int(t0 / 0.01) + int(db[int(t0 / 0.01): int(t1 / 0.01) + 1].argmin())) * 0.01 + 0.005
+    for i, k in remover:
+        prox = palavras[i + k]["start"] if i + k < len(palavras) else palavras[i + k - 1]["end"]
+        regioes.append((quadro(palavras[i]["start"] - 0.03), quadro(vale(prox - 0.15, prox + 0.03))))
     manter, cursor = [], 0.0
     for c0, c1 in sorted(regioes):
         if c0 - cursor >= 2 / 30:  # trecho de 1 quadro entre dois cortes vira corte (seria um pisca)
@@ -389,14 +401,18 @@ def processar(args, video, lote_pub, lote_out, gasto):
 
     # 3b: tira as pausas de leitura (corte seco) e transcreve de novo na linha do tempo nova
     cortes = []
-    remover = {norm(w) for w in (args.remover_palavras or "").split(",") if w.strip()}
+    # palavras ditas por engano saem da fala; "ábaco e" junto quando a fala emenda as duas
+    ditas = [norm(p["text"]) for p in palavras]
+    remover = []
+    for item in (args.remover_palavras or "").split(","):
+        frase = [norm(w) for w in item.split()]
+        remover += [(i, len(frase)) for i in range(len(ditas) - len(frase) + 1) if frase and ditas[i:i + len(frase)] == frase]
     if (not args.manter_pausas or remover) and palavras:
         inteiro = os.path.join(pub, "master-com-pausas.mp4")
         os.replace(master, inteiro)
         antes = duracao(inteiro)
-        removidas = [p["text"] for p in palavras if norm(p["text"]) in remover]
-        if removidas:
-            rel["avisos"].append(f"tirei da fala: {', '.join(removidas)}")
+        if remover:
+            rel["avisos"].append("tirei da fala: " + ", ".join(" ".join(p["text"] for p in palavras[i:i + k]) for i, k in remover))
         manter = cortar_pausas(inteiro, voz, palavras, master, remover, com_pausas=not args.manter_pausas)
         run(["ffmpeg", "-v", "error", "-y", "-i", master, "-vn", "-ac", "1", "-ar", "48000", voz])
         palavras, conc = transcrever(args, voz, os.path.join(pub, "palavras.json"), roteiro_falado)
@@ -407,7 +423,7 @@ def processar(args, video, lote_pub, lote_out, gasto):
         rel["pausas"] = {"cortes": len(cortes), "antes": round(antes, 1), "depois": round(duracao(master), 1)}
     rel.update({"roteiro": os.path.basename(roteiro) if roteiro else None, "concordancia": conc, "duracao": round(duracao(master), 2)})
     if conc is not None and conc < 88:
-        rel["avisos"].append(f"concordância fala x roteiro {conc:.0f}% (<88%): conferir legenda (ruído ou improviso)")
+        rel["avisos"].append(f"concordância fala x roteiro {conc:.1f}% (<88%): conferir legenda (ruído ou improviso)")
 
     # 4: trechos no fim das frases (até 20 s, limite confortável do Act-Two)
     run([sys.executable, "-I", os.path.join(SCRIPTS, "fatiar_aroll.py"), "--video", master, "--palavras", os.path.join(pub, "palavras.json"),
@@ -496,7 +512,7 @@ def main():
     ap.add_argument("--teto-usd", type=float, default=10.0)
     ap.add_argument("--stop-motion", action="store_true")
     ap.add_argument("--manter-pausas", action="store_true", help="não corta as pausas de leitura")
-    ap.add_argument("--remover-palavras", help="palavras ditas que saem da fala, separadas por vírgula (ex.: item que o produto não tem)")
+    ap.add_argument("--remover-palavras", help="palavras ou trechos ditos que saem da fala, separados por vírgula (ex.: \"ábaco e\", item que o produto não tem)")
     ap.add_argument("--roteiro", help="força este roteiro (ex.: gravação sem claquete, roteiro escrito depois a partir da fala)")
     ap.add_argument("--python-asr", default=sys.executable)
     ap.add_argument("--modelo-asr", default="/opt/asr/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8")
