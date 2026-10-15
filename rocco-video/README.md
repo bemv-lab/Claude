@@ -16,6 +16,33 @@ A Tília é a anfitriã da Rocco: uma lupa de leitura com cabo de madeira. Ela a
 | `scripts/build_lipsync.py` | Transforma voz + alinhamento em bocas por frame e tempos de palavra para a legenda. |
 | `scripts/tts_espeak_teste.py` | Voz robótica offline, só para teste de ritmo (nunca vai ao ar). |
 
+## Fábrica de vídeos (gravação da Bárbara -> vídeo pronto)
+
+A Bárbara grava no iPhone. A fábrica devolve o vídeo editado na marca nas versões:
+
+- **A:** feltro inteiro;
+- **B:** feltro no começo e no fim;
+- **C:** rosto real (controle).
+
+| Peça | Arquivo |
+|---|---|
+| Roteiros com marcações `[B-ROLL: arquivo \| texto]`, `[JANELA: …]`, `[CARTÃO: …]` | `roteiros/NN-nome.txt` |
+| Texto limpo para ler na gravação | `python3 -I scripts/teleprompter.py roteiros/01-*.txt` |
+| Processar um lote | `python3 -I scripts/processar_lote.py --entrada <pasta> --lote <AAAA-MM-DD> --motor runway` |
+| Transcrição local pt-BR (Parakeet) | `scripts/transcrever_parakeet.py` |
+| Feltro por trecho (Runway Act-Two, idempotente, com teto de gasto) | `scripts/feltro_runway.py` |
+| Imagem-mestra da Bárbara de feltro | `docs/feltro-mestra.md` -> `public/feltro/mestra.png` |
+| Fotos e vídeos reais do produto | `public/produto/<handle>/` (ex.: `aberta.jpg`, `fechada.jpg`) |
+| Setup do ambiente (colar em Edit > Setup script) | `scripts/setup_ambiente.sh` |
+| Entrada, saída e rotina de madrugada | `docs/rotina-madrugada.md` |
+| Termo de imagem e voz (rascunho) | `docs/termo-imagem-voz.md` |
+
+Saídas em `out/lotes/<lote>/<vídeo>/`, junto com o relatório do lote em `out/lotes/<lote>/relatorio.json`:
+
+- MP4 por versão, com áudio em -14 LUFS;
+- `capa.jpg`;
+- `legenda-C.txt` e `legenda-feltro.txt`.
+
 ## Trocar a voz de teste pela do ElevenLabs
 
 1. Configure o ambiente: cadastre `ELEVENLABS_API_KEY` como secret e libere `api.elevenlabs.io` na rede. Depois abra uma sessão nova.

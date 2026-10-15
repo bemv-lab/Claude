@@ -1,0 +1,18 @@
+# Roteiro de teste do pipeline (voz robótica, não vai ao ar)
+titulo: O primeiro botão demora. E tudo bem.
+produto: pasta-de-descobertas
+cta: Pasta de Descobertas
+site: roccokids.com.br
+legenda: Teste do pipeline.
+---
+O primeiro botão fechado sozinho demora. E tudo bem.
+Sou a Tília, personagem da Rocco.
+[B-ROLL: aberta-ilustracao.png | Pasta de Descobertas]
+A Pasta de Descobertas tem zíperes, botões, fivelas, cadarços, ábaco e relógio.
+Abrir, fechar, encaixar, tentar de novo. No tempo da criança.
+E quando consegue, aquele pequeno sorriso diz tudo.
+[JANELA: fechada-ilustracao.png | Por que a Rocco escolheu]
+Por isso a Rocco escolheu.
+[CARTÃO: 3 a 6 anos · sem tela\ncom alças]
+Três a seis anos, sem tela, com alças para levar junto.
+Vale olhar de perto. O link está aqui embaixo.
