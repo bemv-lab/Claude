@@ -38,18 +38,18 @@ const InsercaoCamada: React.FC<{ins: Insercao}> = ({ins}) => {
   const ken = 1 + 0.08 * (f / Math.max(1, dur));
   if (ins.tipo === 'cartao') {
     return (
-      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'flex-start', paddingTop: 430, opacity: op}}>
+      <AbsoluteFill style={{alignItems: 'center', justifyContent: 'flex-start', paddingTop: 290, opacity: op}}>
         <div
           style={{
             transform: `translateY(${(1 - entrada) * 40}px)`,
-            maxWidth: 860,
-            padding: '28px 44px',
+            maxWidth: 900,
+            padding: '20px 40px',
             background: COR.cremeClaro,
             border: `1.5px solid ${COR.borda}`,
             borderRadius: 32,
             fontFamily: FONTE,
             fontWeight: 500,
-            fontSize: 54,
+            fontSize: 50,
             lineHeight: 1.2,
             color: COR.tinta,
             textAlign: 'center',
@@ -72,7 +72,7 @@ const InsercaoCamada: React.FC<{ins: Insercao}> = ({ins}) => {
     ) : (
       <>
         <Img src={staticFile(ins.src!)} style={{position: 'absolute', width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px)', opacity: 0.55, transform: 'scale(1.15)'}} />
-        <Img src={staticFile(ins.src!)} style={{position: 'absolute', width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${ken})`}} />
+        <Img src={staticFile(ins.src!)} style={{position: 'absolute', left: 0, top: 370, width: '100%', height: 690, objectFit: 'contain', transform: `scale(${ken})`}} />
       </>
     );
   if (ins.modo === 'janela') {
@@ -102,7 +102,7 @@ const InsercaoCamada: React.FC<{ins: Insercao}> = ({ins}) => {
     <AbsoluteFill style={{background: COR.creme, opacity: op, overflow: 'hidden'}}>
       {midia}
       {ins.texto && (
-        <div style={{position: 'absolute', top: 300, width: '100%', display: 'flex', justifyContent: 'center'}}>
+        <div style={{position: 'absolute', top: 285, width: '100%', display: 'flex', justifyContent: 'center'}}>
           <div style={{padding: '10px 26px', borderRadius: 24, background: pilula, fontFamily: FONTE, fontWeight: 500, fontSize: 40, color: COR.tinta}}>{ins.texto}</div>
         </div>
       )}

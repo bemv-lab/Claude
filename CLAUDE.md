@@ -16,6 +16,19 @@ Projeto de vídeo em `rocco-video/` (Remotion + scripts Python). Leia `rocco-vid
 4. Entregue os MP4 com SendUserFile e um resumo curto: o que saiu, avisos, gasto em US$.
 5. Não pergunte nada no meio do lote. Problema em um vídeo vai para o relatório, e o lote segue.
 
+## Vídeo grande demais para o chat (limite de 30 MB do anexo)
+
+Peça para a Bárbara subir o vídeo no app do Google Drive (pasta "Rocco Vídeos/1-Entrada") e avise aqui. Depois:
+
+1. `search_files` no conector do Google Drive para achar o arquivo (título ou pasta).
+2. `download_file_content` com o `fileId`. O resultado grande é salvo pela sessão em um `.txt` e o caminho aparece na resposta.
+3. `python3 -I rocco-video/scripts/drive_para_arquivo.py <caminho.txt> rocco-video/entrada/<nome>.mp4`
+4. Siga o procedimento de lote acima.
+
+Testado em 15/10/2026 com um arquivo de 2,3 MB (idêntico byte a byte). Com vídeos grandes (dezenas de MB), o limite do conector ainda não foi testado: se falhar, peça uma versão menor (ver abaixo).
+
+Versão menor: Ajustes > Câmera > Gravar Vídeo > 720p HD a 30 qps, ou enviar o vídeo para si mesma no WhatsApp e anexar a cópia salva na galeria (qualidade menor: serve para teste, não para anúncio).
+
 ## Regras fixas
 
 - Nunca publicar nem agendar post sem aprovação explícita. No Metricool, só rascunho.
