@@ -63,7 +63,21 @@ if a.roteiro:
             for rw, pw in zip(seg_ref, pesos):
                 dur = (fim - ini) * pw / tot; out.append(dict(text=rw, start=acc, end=acc + dur)); acc += dur
             trocas += len(seg_ref)
-        elif tag in ('replace', 'delete'):
+        elif tag == 'replace':
+            # palavra a palavra, na ordem: a palavra dita pega a grafia da palavra do roteiro mais parecida
+            # ("cadastros" -> "cadarços"); palavra do roteiro sem par fica de fora (não foi dita)
+            j = 0
+            for w in seg_asr:
+                melhor, nota = None, 0.6
+                for jj in range(j, len(seg_ref)):
+                    r = difflib.SequenceMatcher(a=core(w['text']), b=core(seg_ref[jj])).ratio()
+                    if r > nota:
+                        melhor, nota = jj, r
+                if melhor is None:
+                    out.append(w)  # fala fora do roteiro: mantém o que foi dito
+                else:
+                    out.append(dict(text=seg_ref[melhor], start=w['start'], end=w['end'])); trocas += 1; j = melhor + 1
+        elif tag == 'delete':
             out.extend(seg_asr)  # fala fora do roteiro: mantém o que foi dito
         # 'insert' (palavra do roteiro que não foi dita): fica de fora da legenda
     words = out
