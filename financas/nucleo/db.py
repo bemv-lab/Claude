@@ -165,6 +165,7 @@ CATEGORIAS = [
     ("Renda extra", "receita", "#2BA597", 0, 3),
     ("Rendimentos", "receita", "#3BA99C", 0, 4),
     ("Benefícios", "receita", "#7AB8A8", 0, 5),
+    ("Reembolsos", "receita", "#8FC4B8", 0, 6),
     # fixas (taxonomia da planilha de vocês, aba Val.Dados)
     ("Aluguel", "despesa", "#5B6C8F", 1, 10),
     ("IPTU", "despesa", "#6B7A9C", 1, 11),
@@ -180,6 +181,7 @@ CATEGORIAS = [
     ("Assinaturas", "despesa", "#6E7FD1", 1, 21),
     # variáveis
     ("Supermercado", "despesa", "#C08A3E", 0, 30),
+    ("Padaria", "despesa", "#C9A66B", 0, 30),
     ("Restaurante", "despesa", "#D9774B", 0, 31),
     ("Marmita", "despesa", "#D99A6B", 0, 32),
     ("Açougue", "despesa", "#B5594B", 0, 33),
@@ -228,7 +230,7 @@ REGRAS_SEMENTE = [
         "ANGELONI", "BEMAIS", "MANAIRA SUPERMERCADO"]],
     *[(p, "Açougue", {}) for p in ["ACOUGUE", "CARNES", "NOBRE CARNES"]],
     *[(p, "Transporte", {}) for p in [
-        "UBER", "99 TAXI", "99APP", "99 POP", "99POP", "CABIFY", "POSTO", "SHELL", "IPIRANGA", "PETROBRAS",
+        "UBER", "UBERRIDES", "UBER TRIP", "99", "99 TAXI", "99APP", "99 POP", "99POP", "CABIFY", "POSTO", "SHELL", "IPIRANGA", "PETROBRAS",
         "BR MANIA", "ESTACIONAMENTO", "ESTAPAR", "SEM PARAR", "CONECTCAR", "VELOE", "METRO",
         "BILHETE UNICO", "RIOCARD", "LATAM", "GOL LINHAS", "AZUL LINHAS", "DETRAN", "IPVA"]],
     *[(p, "Farmácia", {}) for p in [
@@ -238,7 +240,7 @@ REGRAS_SEMENTE = [
         "UNIMED", "HAPVIDA", "AMIL", "SULAMERICA SAUDE", "BRADESCO SAUDE", "LABORATORIO",
         "CLINICA", "HOSPITAL", "ODONTO", "DENTAL", "FLEURY", "DASA", "DR INTER"]],
     *[(p, "Assinaturas", {}) for p in [
-        "NETFLIX", "SPOTIFY", "DISNEY", "PRIME VIDEO", "AMAZON PRIME", "AMAZONPRIME", "HBO", "MAX ",
+        "NETFLIX", "SPOTIFY", "DISNEY", "PRIME VIDEO", "AMAZON PRIME", "AMAZONPRIME", "AMAZONPRIMEBR", "HBO", "MAX ",
         "GLOBOPLAY", "DEEZER", "YOUTUBE PREMIUM", "YOUTUBEPREMIUM", "APPLE COM BILL", "APPLE COM",
         "GOOGLE ONE", "GOOGLE STORAGE", "ICLOUD", "CANVA", "CHATGPT", "OPENAI", "ANTHROPIC",
         "CLAUDE AI", "PARAMOUNT", "CRUNCHYROLL", "MICROSOFT", "ADOBE", "DROPBOX"]],
@@ -254,9 +256,9 @@ REGRAS_SEMENTE = [
     *[(p, "Condomínio", {}) for p in ["CONDOMINIO"]],
     *[(p, "IPTU", {}) for p in ["IPTU"]],
     *[(p, "Extras", {}) for p in [
-        "AMAZON", "MERCADOLIVRE", "MERCADO LIVRE", "SHOPEE", "SHEIN", "ALIEXPRESS",
+        "AMAZON", "AMAZON BR", "AMAZONMKTPLC", "AMAZONMKTCPI", "MERCADOLIVRE", "MERCADO LIVRE", "SHOPEE", "SHEIN", "ALIEXPRESS",
         "MAGAZINE LUIZA", "MAGALU", "CASAS BAHIA", "AMERICANAS", "KABUM", "FAST SHOP"]],
-    *[(p, "Vestuário", {}) for p in ["RENNER", "RIACHUELO", "ZARA", "CENTAURO", "NETSHOES", "HERING", "CA MODAS"]],
+    *[(p, "Vestuário", {}) for p in ["RENNER", "RIACHUELO", "ZARA", "CENTAURO", "NETSHOES", "HERING", "HERINGOUTLET", "CA MODAS"]],
     *[(p, "Casa e manutenção", {}) for p in ["LEROY MERLIN", "TOK STOK", "FERREIRA COSTA"]],
     *[(p, "Educação", {}) for p in ["ESCOLA", "COLEGIO", "FACULDADE", "UNIVERSIDADE", "CURSO",
                                     "UDEMY", "ALURA", "HOTMART", "LIVRARIA"]],
@@ -287,9 +289,12 @@ REGRAS_SEMENTE = [
         "PAGTO CARTAO CREDITO", "PGTO CARTAO CREDITO"]],
     # débito automático da fatura que o banco devolve no mesmo dia: anula o pagamento
     *[(p, "Transferência entre contas", {"tipo": "transferencia"}) for p in ["ESTORNO DE DEBITO"]],
-    # "Pix no crédito": o banco empresta e o Pix sai logo depois; o gasto é o Pix, as parcelas são dívida
-    *[(p, "Transferência entre contas", {"tipo": "transferencia", "sinal": "entrada"}) for p in ["PIX NO CREDITO"]],
-    *[(p, "Dívidas", {}) for p in ["CDC RENOVACAO", "NU PAGAMENTOS", "MERCADO PAGO", "MERCADO PAG"]],
+    # Crédito do cartão ("Pix no crédito", "parcelar compra" do Inter): a entrada do crédito abate Dívidas e as
+    # parcelas somam em Dívidas. Assim o gasto conta uma vez (o Pix ou a compra) e o que sobra são os juros.
+    *[(p, "Dívidas", {"sinal": "entrada"}) for p in ["PIX NO CREDITO", "COMPRA PARCELADA INTER"]],
+    *[(p, "Dívidas", {}) for p in ["CDC RENOVACAO", "NU PAGAMENTOS", "MERCADO PAGO", "MERCADO PAG",
+                                   "PARCELAMENTO DE COMPRA", "PIX CRED A VISTA", "PIX CRED PARCELADO", "PIX CRED PARC",
+                                   "PARC PARCELAMEN INTER"]],
 ]
 
 ALERTAS_PADRAO = [
@@ -366,8 +371,8 @@ def migrar(con: sqlite3.Connection) -> None:
             con.execute("""INSERT OR IGNORE INTO contas (apelido, nome, instituicao, tipo, titular_id, pasta,
                            dia_vencimento, dia_fechamento, observacao) VALUES (?,?,?,?,?,?,?,?,?)""",
                         (ap, nome, inst, tipo, tit, pasta, venc, fech, obs))
-        con.execute("UPDATE contas SET dia_vencimento = 20, dia_fechamento = 12 WHERE apelido = 'inter-cartao' "
-                    "AND dia_vencimento = 10 AND dia_fechamento = 3")
+        con.execute("UPDATE contas SET dia_vencimento = 20, dia_fechamento = 13 WHERE apelido = 'inter-cartao' "
+                    "AND ((dia_vencimento = 10 AND dia_fechamento = 3) OR (dia_vencimento = 20 AND dia_fechamento = 12))")
         for padrao, cat, extra in REGRAS_SEMENTE:      # regras de fábrica novas (não mexe nas que vocês criaram)
             if not con.execute("SELECT 1 FROM regras WHERE padrao = ? AND origem = 'semente'", (padrao.strip(),)).fetchone():
                 con.execute("INSERT INTO regras (padrao, categoria_id, escopo, tipo, sinal, origem, criado_em) "
@@ -428,8 +433,8 @@ def semear(con: sqlite3.Connection) -> None:
         ("inter-conta", "Inter · Conta PF", "Inter", "corrente", b, "inter-conta", None, None, None),
         ("bb", "Banco do Brasil", "Banco do Brasil", "corrente", l, "bb", None, None, None),
         ("itau", "Itaú", "Itaú", "corrente", l, "itau", None, None, "Conta onde cai o salário do Lucas"),
-        ("inter-cartao", "Inter · Cartão de crédito", "Inter", "cartao", b, "inter-cartao", 20, 12,
-         "Titular Bárbara, adicional Lucas. Concentra as compras do casal. Vence dia 20 (fechamento estimado: dia 12)."),
+        ("inter-cartao", "Inter · Cartão de crédito", "Inter", "cartao", b, "inter-cartao", 20, 13,
+         "Titular Bárbara, adicional Lucas. Concentra as compras do casal. Vence dia 20, corte dia 13."),
         ("flash", "Flash Benefícios", "Flash", "beneficio", c, "flash", None, None,
          "Saldo de benefício: não é renda livre."),
         ("nubank", "Nubank · Cartão", "Nubank", "cartao", c, "nubank", None, None,

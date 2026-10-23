@@ -9,6 +9,7 @@ O arquivo de ajustes (JSON) pode ter:
   "config":              {"nomes_casal": ["BARBARA", "LUCAS"], ...}      valores em centavos onde for dinheiro
   "dividas_atualizar":   [{"nome": "...", "campos": {"saldo_base": 100000, ...}}]
   "dividas_novas":       [{"nome": "...", "tipo": "...", ...}]
+  "classificar":         [{"conta": "bb", "data": "AAAA-MM-DD", "valor": 2942, "categoria": "..."}]
   "regras":              [{"padrao": "NOME NO EXTRATO", "categoria": "Salário", "sinal": "entrada", "escopo": "pessoal"}]
   "negociacoes":         [{"divida": "...", "data": "AAAA-MM-DD", "texto": "..."}]
   "lancamentos_estimados": [{"conta": "itau", "data": "AAAA-MM-DD", "descricao": "...", "valor": 112763,
@@ -71,6 +72,21 @@ def aplicar_dividas(con, aj: dict) -> list[str]:
     return log
 
 
+def aplicar_classificacoes(con, aj: dict) -> int:
+    """Lançamentos avulsos que vocês classificaram e que não viram regra (ex.: um Pix anulado)."""
+    n = 0
+    for c in aj.get("classificar", []):
+        cid = db.categoria_id(con, c["categoria"])
+        tipo = "transferencia" if c["categoria"] == "Transferência entre contas" else "normal"
+        cur = con.execute("""UPDATE transacoes SET categoria_id = ?, tipo = ?, classificacao = 'manual', motivo_duvida = NULL,
+                             observacao = ? WHERE conta_id = (SELECT id FROM contas WHERE apelido = ?) AND data = ?
+                             AND ABS(valor) = ? AND classificacao = 'duvida'""",
+                          (cid, tipo, c.get("observacao"), c["conta"], c["data"], c["valor"]))
+        n += cur.rowcount
+    con.commit()
+    return n
+
+
 def aplicar_regras(con, aj: dict) -> int:
     n = 0
     for r in aj.get("regras", []):
@@ -100,11 +116,11 @@ def aplicar_estimados(con, aj: dict) -> int:
                                 "chave": chave_estabelecimento(e["descricao"])}, conta["tipo"])
             cat, tipo = r["categoria_id"], r["tipo"]
         con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, pessoa_id, categoria_id, tipo,
-                       classificacao, estimado, observacao, hash, criado_em)
-                       VALUES (?,?,?,?,?,?,?,?, 'regra', 1, ?, ?, ?)""",
+                       escopo, classificacao, estimado, observacao, hash, criado_em)
+                       VALUES (?,?,?,?,?,?,?,?,?, 'regra', 1, ?, ?, ?)""",
                     (conta["id"], e["data"], e["descricao"], chave_estabelecimento(e["descricao"]), e["valor"],
-                     conta["titular_id"], cat, tipo, e.get("observacao", "Estimado: sem extrato nesse período."),
-                     h, agora_iso()))
+                     conta["titular_id"], cat, tipo, e.get("escopo", "pessoal"),
+                     e.get("observacao", "Estimado: sem extrato nesse período."), h, agora_iso()))
         novos += 1
     con.commit()
     return novos
@@ -130,6 +146,10 @@ def main() -> int:
     print("\n".join(aplicar_dividas(con, aj)))
     print(f"{aplicar_estimados(con, aj)} lançamento(s) estimado(s) criado(s)")
     r = lote.finalizar()
+    if aplicar_classificacoes(con, aj):
+        from nucleo import alertas
+        alertas.gerar(con)
+        r["duvidas"] = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao='duvida'").fetchone()[0]
     pl = r.get("planilha")
     if pl and pl.get("orcamento_total") and not db.config_int(con, "orcamento_mensal"):
         db.definir_config(con, "orcamento_mensal", pl["orcamento_total"])

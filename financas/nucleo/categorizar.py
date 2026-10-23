@@ -176,3 +176,22 @@ def reclassificar_duvidas(con) -> int:
     con.commit()
     return n
 
+
+
+def estornos_de_cartao(con, janela_dias: int = 90) -> int:
+    """Crédito no cartão sem regra (estorno/devolução): leva a categoria da compra da mesma loja."""
+    n = 0
+    for t in con.execute("""SELECT t.* FROM transacoes t JOIN contas c ON c.id = t.conta_id
+                            WHERE c.tipo = 'cartao' AND t.valor > 0 AND t.classificacao = 'duvida'
+                            AND COALESCE(t.chave, '') != ''""").fetchall():
+        compra = con.execute("""SELECT categoria_id, escopo FROM transacoes WHERE conta_id = ? AND chave = ? AND valor < 0
+                                AND categoria_id IS NOT NULL AND ABS(julianday(data) - julianday(?)) <= ?
+                                ORDER BY ABS(julianday(data) - julianday(?)) LIMIT 1""",
+                             (t["conta_id"], t["chave"], t["data"], janela_dias, t["data"])).fetchone()
+        if compra:
+            con.execute("UPDATE transacoes SET categoria_id = ?, escopo = ?, classificacao = 'heuristica', "
+                        "motivo_duvida = NULL, sugestao_id = NULL, observacao = 'Estorno da compra' WHERE id = ?",
+                        (compra["categoria_id"], compra["escopo"], t["id"]))
+            n += 1
+    con.commit()
+    return n

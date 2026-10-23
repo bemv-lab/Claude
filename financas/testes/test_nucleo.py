@@ -417,3 +417,29 @@ class TestPlanilha(BaseBanco):
         self.assertEqual(cat, "Aluguel")
         # rodar de novo não duplica
         self.assertEqual(atualizar(self.con, pasta)["novas"], 0)
+
+
+class TestFaturaVsPlanilha(BaseBanco):
+    def test_fatura_vale_no_periodo_dela_e_planilha_empresta_categoria(self):
+        from datetime import date as d
+        db.definir_config(self.con, "faturas_inter", '["2026-10"]')
+        pasta = self.dir / "entrada"
+        (pasta / "inter-cartao").mkdir(parents=True)
+        (pasta / "inter-cartao" / "fatura.csv").write_text(
+            "Data;Lançamento;Tipo;Valor\n21/09/2026;BLUEFIT LIVMALL;Compra;R$ 169,90\n"
+            "20/09/2026;LA PLAYA BAR E RESTAUR;Compra;R$ 72,00\n", encoding="utf-8")
+        (pasta / "planilha").mkdir()
+        cab = TestPlanilha.CAB
+        (pasta / "planilha" / "Controle_Financeiro_10._Outubro_26.xlsx").write_bytes(fazer_xlsx({
+            "Val.Dados": [["Custo", "Categoria"]], "Lançamentos": [cab,
+                [d(2026, 9, 20), "La playa", "Lazer", 72.0, "Inter Cartão", "Despesa", "Única", None],
+                [d(2026, 9, 22), "Ajuste antigo", "Extras", 10.0, "Inter Cartão", "Despesa", "Única", None],
+                [d(2026, 8, 20), "Compra de agosto", "Extras", 30.0, "Inter Cartão", "Despesa", "Única", None]],
+            "Orçamento": [["Tipo"]], "Pagamentos": [["x"]]}))
+        r = atualizar(self.con, pasta)
+        self.assertEqual(r["planilha"]["na_fatura"], 2)        # dentro da janela 14/09-13/10: não entram
+        linhas = dict(self.con.execute(
+            "SELECT t.descricao, c.nome FROM transacoes t LEFT JOIN categorias c ON c.id = t.categoria_id").fetchall())
+        self.assertEqual(linhas["LA PLAYA BAR E RESTAUR"], "Lazer")   # categoria veio da planilha
+        self.assertNotIn("Ajuste antigo", linhas)
+        self.assertIn("Compra de agosto", linhas)                    # fora da janela: a planilha completa

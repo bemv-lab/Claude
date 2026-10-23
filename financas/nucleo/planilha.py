@@ -19,7 +19,7 @@ import re
 from collections import Counter, defaultdict
 from datetime import date, datetime
 
-from .db import CATEGORIA_PLANILHA, categoria_id, pessoa_id
+from .db import CATEGORIA_PLANILHA, categoria_id, config, pessoa_id
 from .importadores import xlsx
 from .util import agora_iso, chave_estabelecimento, normalizar, somar_meses
 
@@ -96,7 +96,7 @@ def _com_dia(mes: str, dia: int) -> date:
     return date(y, m, min(dia, calendar.monthrange(y, m)[1]))
 
 
-def unir(versoes: list[dict], fechamento: int = 12) -> list[dict]:
+def unir(versoes: list[dict], fechamento: int = 13, meses_com_fatura: set | None = None):
     """Soma as versões mensais. Cada parcela (k>=2) fica na janela da fatura da versão em que aparece
     (a data da planilha é a da compra original, longe do mês em que a parcela de fato cai). A fatura que vence
     em M cobre do dia fechamento+1 de M-1 ao dia fechamento de M."""
@@ -151,14 +151,18 @@ def importar(con, arquivos: list[tuple[str, bytes]]) -> dict:
         if not v["mes"]:
             ultimo = max((l["data"] for l in v["linhas"]), default=date.today())
             v["mes"] = ultimo.strftime("%Y-%m")
+    import json
+    meses_fatura = set(json.loads(config(con, "faturas_inter", "[]") or "[]"))
     linhas, paradas = unir(versoes)
+    corte = (con.execute("SELECT dia_fechamento FROM contas WHERE apelido = 'inter-cartao'").fetchone() or [13])[0] or 13
+    janelas = [(f"{somar_meses(m, -1)}-{corte + 1:02d}", f"{m}-{corte:02d}") for m in meses_fatura]
     contas = {r["apelido"]: dict(r) for r in con.execute("SELECT * FROM contas")}
     casal = pessoa_id(con, "Casal")
     cat_transf = categoria_id(con, "Transferência entre contas")
     cat_divida = categoria_id(con, "Dívidas")
     cat_negocio = categoria_id(con, "Negócios")
     agora = agora_iso()
-    res = {"versoes": len(versoes), "linhas": len(linhas), "parcelas_paradas": paradas, "cartoes_novos": 0, "cartoes_duplicadas": 0,
+    res = {"versoes": len(versoes), "linhas": len(linhas), "parcelas_paradas": paradas, "na_fatura": 0, "cartoes_novos": 0, "cartoes_duplicadas": 0,
            "linhas_de_conta": 0, "regras_novas": 0}
     ocorrencia: Counter = Counter()
     por_chave: dict[str, Counter] = defaultdict(Counter)
@@ -188,12 +192,30 @@ def importar(con, arquivos: list[tuple[str, bytes]]) -> dict:
         if any(p in normalizar(l["descricao"]) for p in NEGOCIO):
             escopo = "negocio"
             cid = cat_negocio if cat_negocio and tipo == "normal" and cid != cat_divida else cid
+        if chave and cid and tipo == "normal" and chave not in GENERICOS and len(chave) >= 3:
+            por_chave[chave][cid] += 1
+            sentido[chave]["entrada" if valor > 0 else "saida"] += 1
+        data_iso = l["data"].isoformat()
+        if ap == "inter-cartao" and any(a <= data_iso <= b for a, b in janelas):
+            # a fatura de verdade desse período foi importada: ela vale; a planilha só empresta a categoria
+            res["na_fatura"] += 1
+            if cid:
+                con.execute("""UPDATE transacoes SET categoria_id = ?, tipo = ?, escopo = ?, classificacao = 'importada',
+                               motivo_duvida = NULL, sugestao_id = NULL
+                               WHERE id = (SELECT id FROM transacoes WHERE conta_id = ? AND data = ? AND valor = ?
+                                           AND classificacao = 'duvida' LIMIT 1)""",
+                            (cid, tipo, escopo, conta["id"], data_iso, valor))
+            continue
         k = (conta["id"], l["data"], valor, l["k"])
         n = ocorrencia[k]
         ocorrencia[k] += 1
-        h = _hash(conta["id"], l["data"].isoformat(), valor, l["k"], n)
+        h = _hash(conta["id"], data_iso, valor, l["k"], n)
         if con.execute("SELECT 1 FROM transacoes WHERE hash = ?", (h,)).fetchone():
             res["cartoes_duplicadas"] += 1
+            if cid:          # a mesma compra veio de outra fonte sem categoria: a planilha sabe qual é
+                con.execute("UPDATE transacoes SET categoria_id = ?, tipo = ?, escopo = ?, classificacao = 'importada', "
+                            "motivo_duvida = NULL, sugestao_id = NULL WHERE hash = ? AND classificacao = 'duvida'",
+                            (cid, tipo, escopo, h))
             continue
         pessoa = casal if ap in ("inter-cartao", "dinheiro") else (conta["titular_id"] or casal)
         con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, pessoa_id, categoria_id, escopo,
@@ -202,9 +224,6 @@ def importar(con, arquivos: list[tuple[str, bytes]]) -> dict:
                     (conta["id"], l["data"].isoformat(), l["descricao"], chave, valor, pessoa, cid, escopo, tipo,
                      l["k"], l["n"], h, agora))
         res["cartoes_novos"] += 1
-        if chave and cid and tipo == "normal" and chave not in GENERICOS and len(chave) >= 3:
-            por_chave[chave][cid] += 1
-            sentido[chave]["entrada" if valor > 0 else "saida"] += 1
     res["regras_novas"] = _regras_de_estabelecimentos(con, por_chave, sentido)
     # orçado por categoria: vale a versão mais recente da planilha
     recente = max(versoes, key=lambda v: v["mes"] or "")

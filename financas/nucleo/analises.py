@@ -102,8 +102,9 @@ def recorrentes(con, meses: int = 6) -> list[dict]:
 def parcelamentos(con) -> list[dict]:
     """Compras parceladas agrupadas, com o que ainda falta pagar (renda futura comprometida).
 
-    Parcelas da mesma compra às vezes diferem em centavos (arredondamento do banco): entram no mesmo grupo
-    quando são da mesma conta e loja, têm o mesmo total de parcelas e valor até 3% diferente."""
+    A mesma compra aparece com nomes diferentes conforme a fonte (fatura: "MERCADOLIVRE*MERCADOL"; planilha:
+    "Mercado Livre") e com centavos de diferença entre parcelas. Por isso o agrupamento é pela conta, pelo
+    total de parcelas, pelo valor (até 3% de diferença) e pela sequência: a parcela k+n cai n meses depois."""
     grupos: list[dict] = []
     por_chave: dict[tuple, list[dict]] = {}
     for r in con.execute("""
@@ -112,9 +113,15 @@ def parcelamentos(con) -> list[dict]:
         WHERE t.parcela_total IS NOT NULL AND t.valor < 0 AND t.tipo = 'normal'
         ORDER BY t.data, t.parcela_atual"""):
         valor = -r["valor"]
-        candidatos = por_chave.setdefault((r["conta_id"], r["chave"], r["parcela_total"]), [])
-        g = next((g for g in candidatos if abs(g["valor_parcela"] - valor) <= max(100, g["valor_parcela"] * 0.03)
-                  and g["parcela_atual"] <= r["parcela_atual"]), None)
+        candidatos = por_chave.setdefault((r["conta_id"], r["parcela_total"]), [])
+
+        def serve(g):
+            if abs(g["valor_parcela"] - valor) > max(100, g["valor_parcela"] * 0.03):
+                return False
+            passo = r["parcela_atual"] - g["parcela_atual"]
+            meses = _meses_entre(g["ultima_data"][:7], r["data"][:7])
+            return passo > 0 and abs(passo - meses) <= 1
+        g = next((g for g in candidatos if serve(g)), None)
         if g is None:
             g = {"id": r["id"], "descricao": r["descricao"], "chave": r["chave"], "conta": r["conta"],
                  "pessoa": r["pessoa"], "valor_parcela": valor, "parcela_atual": r["parcela_atual"],
@@ -124,7 +131,7 @@ def parcelamentos(con) -> list[dict]:
             grupos.append(g)
         else:
             g.update(id=r["id"], descricao=r["descricao"], valor_parcela=valor, parcela_atual=r["parcela_atual"],
-                     ultima_data=r["data"])
+                     ultima_data=r["data"], chave=r["chave"])
     out = []
     mes_atual = hoje().strftime("%Y-%m")
     for g in grupos:

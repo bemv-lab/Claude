@@ -139,3 +139,24 @@ Fontes: OFX da conta Inter (jul–out), Excel do BB (jul–out), CSV do Flash (9
 - **Alertas de parcelamento**: um por mês com as compras parceladas novas (parcela 1) e um resumo do que está
   em andamento. Parcela vista pela última vez meses atrás é considerada andando (o extrato do mês pode faltar).
   Parcelas da mesma compra com centavos de diferença (arredondamento do banco) contam como uma compra só.
+
+## Fatura do Inter (vencimento 20/10/2026) e correções
+
+- **Fatura de verdade vale sobre a planilha no período dela** (14/09 a 13/10; corte dia 13, confirmado na
+  fatura). As compras da planilha nesse período não entram; servem só para dar a categoria à linha igual da
+  fatura (mesma data e valor). Fora desse período a planilha continua completando. Conferência: débitos e
+  créditos importados batem no centavo com a fatura (R$ 4.808,63 e R$ 659,45).
+- A fatura veio em imagens: transcrevi as 166 linhas dos 4 cartões e conferi
+  o total de cada cartão com o impresso. O CSV gerado fica em `entrada/inter-cartao/` (fora do git).
+- **Crédito do cartão** ("Pix no crédito", "Compra parcelada Inter"): a entrada do crédito abate Dívidas e as
+  parcelas ("Parcelamento de compra", "Pix cred à vista/parcelado") somam em Dívidas. O gasto conta uma vez
+  (o Pix ou a compra original) e o que sobra em Dívidas são os juros e o IOF.
+- **Estorno no cartão** (ex.: Vivara, Shein) leva a categoria da compra da mesma loja.
+- **Parcelamentos** agrupados por conta, total de parcelas, valor (até 3%) e sequência (a parcela k+n cai n
+  meses depois), e não pelo nome, que muda entre a fatura e a planilha. Em 23/10: R$ 4.377 a pagar no Inter,
+  contra R$ 4.484 informados pela fatura no fechamento de 13/10.
+- **Facebook (MetaEds)**: R$ 2.000 continuam em aberto e não serão pagos agora. O pagamento de 20/10
+  ("Fatura Inter (Facebook)") foi dos anúncios do mês, que entram como gasto do negócio (estimado, até a
+  fatura de novembro chegar).
+- **Empréstimo BB**: quitado (confirmado pelo Lucas). **Flash**: a compra de 12/10 foi cancelada (estorno).
+- As respostas da fila de dúvidas viraram regras no `dados/ajustes.json`; refazer a carga não as perde.

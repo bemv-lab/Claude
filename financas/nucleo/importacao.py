@@ -257,6 +257,8 @@ class Lote:
         pares = transferencias.parear(con)
         aprendizado = planilha.aprender_contas(con) if con.execute(
             "SELECT 1 FROM planilha_linhas WHERE aprendida = 0 LIMIT 1").fetchone() else {}
+        from .categorizar import estornos_de_cartao
+        estornos_de_cartao(con)
         pagamentos = dividas.reconhecer_pagamentos(con)
         novos_alertas = alertas.gerar(con)
         duvidas = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao='duvida'").fetchone()[0]
