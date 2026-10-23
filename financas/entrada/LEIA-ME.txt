@@ -1,0 +1,14 @@
+Coloque aqui os extratos baixados do app de cada banco (OFX ou CSV),
+cada um na subpasta da conta. As subpastas são criadas na primeira execução:
+
+  inter-conta/    Inter conta PF (Bárbara)
+  inter-cartao/   Fatura do cartão Inter (Bárbara + adicional Lucas)
+  bb/             Banco do Brasil (Lucas)
+  itau/           Itaú (Lucas)
+  nubank/         Cartão Nubank
+  flash/          Flash Benefícios
+  planilha/       CSV da planilha antiga (mapeamento de colunas na interface)
+
+Depois rode:  python importar.py   (ou o botão "Atualizar" na interface)
+Os arquivos podem ficar aqui: o sistema reconhece o que já foi importado.
+Nada desta pasta vai para o git.

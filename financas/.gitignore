@@ -1,0 +1,13 @@
+# Dados financeiros nunca vão para o git
+dados/
+entrada/*
+!entrada/LEIA-ME.txt
+backups/
+*.db
+*.db-journal
+*.ofx
+*.OFX
+*.csv
+*.pdf
+!testes/amostras/*
+__pycache__/

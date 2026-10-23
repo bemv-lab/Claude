@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F5F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E1211" media="(prefers-color-scheme: dark)">
+<title>Prosperidade</title>
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="stylesheet" href="estilo.css">
+<script>
+  try { const t = localStorage.getItem("tema"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<div class="app">
+  <aside class="lateral">
+    <div class="marca"><span class="logo" aria-hidden="true"></span><div><b>Prosperidade</b><small>Bárbara &amp; Lucas</small></div></div>
+    <nav class="menu" id="menu"></nav>
+    <p class="aviso-edu">Orientação educativa, não é consultoria financeira.</p>
+  </aside>
+  <main>
+    <header class="topo">
+      <div class="mes-nav" id="mes-nav"></div>
+      <div class="acoes-topo">
+        <span class="selo-demo" id="selo-demo" hidden>Modo demo</span>
+        <button class="btn btn-primario" id="btn-atualizar" title="Importa o que estiver em entrada/">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5"/></svg>
+          <span>Atualizar</span></button>
+        <button class="btn-icone" id="btn-tema" aria-label="Alternar tema claro/escuro">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+      </div>
+    </header>
+    <section id="tela" class="tela" aria-live="polite"></section>
+  </main>
+</div>
+<nav class="abas" id="abas" aria-label="Navegação"></nav>
+<div class="toast" id="toast" role="status"></div>
+<dialog id="modal"><div id="modal-corpo"></div></dialog>
+<script src="app.js"></script>
+</body>
+</html>
