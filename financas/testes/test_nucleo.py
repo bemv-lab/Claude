@@ -104,7 +104,7 @@ class TestPipeline(BaseBanco):
               '05/10/2026;PAGAMENTO ON LINE;;;-R$ 900,00;\n')
 
     def test_cadastro_inicial(self):
-        self.assertEqual(self.con.execute("SELECT COUNT(*) FROM contas").fetchone()[0], 6)
+        self.assertEqual(self.con.execute("SELECT COUNT(*) FROM contas").fetchone()[0], 9)
         self.assertEqual(self.con.execute("SELECT COUNT(*) FROM dividas").fetchone()[0], 4)
 
     def test_fatura_sinal_portador_parcela_e_dedup(self):
@@ -142,14 +142,14 @@ class TestPipeline(BaseBanco):
         self.assertEqual(pags[0]["data"], "2026-10-15")
 
     def test_aprende_com_a_fila(self):
-        self.importar("i.csv", "Data;Descrição;Valor\n01/10/2026;Pix enviado - Academia Corpo;-250,00\n"
-                               "01/09/2026;Pix enviado - Academia Corpo;-250,00\n", "bb")
+        self.importar("i.csv", "Data;Descrição;Valor\n01/10/2026;Pix enviado - Dona Marta Silva;-250,00\n"
+                               "01/09/2026;Pix enviado - Dona Marta Silva;-250,00\n", "bb")
         duv = self.con.execute("SELECT id FROM transacoes WHERE classificacao='duvida' ORDER BY id").fetchall()
         self.assertEqual(len(duv), 2)
         saude = db.categoria_id(self.con, "Saúde")
         r = categorizar.aprender(self.con, duv[0]["id"], saude)
         self.assertEqual(r["parecidos"], 1)
-        self.importar("j.csv", "Data;Descrição;Valor\n01/11/2026;Pix enviado - Academia Corpo;-250,00\n", "bb")
+        self.importar("j.csv", "Data;Descrição;Valor\n01/11/2026;Pix enviado - Dona Marta Silva;-250,00\n", "bb")
         nova = self.con.execute("SELECT * FROM transacoes WHERE data = '2026-11-01'").fetchone()
         self.assertEqual((nova["categoria_id"], nova["classificacao"]), (saude, "regra"))
 
@@ -168,7 +168,7 @@ class TestPipeline(BaseBanco):
         self.assertEqual(r["novas"], 2)
         linhas = self.con.execute("SELECT c.apelido, cat.nome FROM transacoes t JOIN contas c ON c.id=t.conta_id "
                                   "JOIN categorias cat ON cat.id=t.categoria_id ORDER BY t.data").fetchall()
-        self.assertEqual([tuple(l) for l in linhas], [("nubank", "Mercado"), ("itau", "Salário")])
+        self.assertEqual([tuple(l) for l in linhas], [("nubank", "Supermercado"), ("itau", "Salário")])
 
 
 class TestDividasReais(BaseBanco):
@@ -211,7 +211,7 @@ class TestDividasReais(BaseBanco):
         e = self.divida("nome = 'MetaEds'")
         self.assertEqual(e["saldo_atual"], 0)
         a = self.con.execute("SELECT * FROM alertas WHERE tipo = 'pagamento_cartao' AND ativo = 1").fetchone()
-        self.assertIn("10/11/2026", a["titulo"])
+        self.assertIn("20/11/2026", a["titulo"])
 
     def test_migracao_de_banco_antigo(self):
         caminho = self.dir / "antigo.db"
@@ -268,3 +268,152 @@ class TestDemo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- formatos e planilha (dados fictícios)
+
+def fazer_xlsx(abas: dict) -> bytes:
+    """xlsx mínimo: textos inline, números, e datas (date) com estilo de data."""
+    import io
+    import zipfile
+    from datetime import date as _date
+    from xml.sax.saxutils import escape
+
+    def col(i):
+        s = ""
+        i += 1
+        while i:
+            i, r = divmod(i - 1, 26)
+            s = chr(65 + r) + s
+        return s
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        sheets, rels = [], []
+        for n, (nome, linhas) in enumerate(abas.items(), 1):
+            xml_linhas = []
+            for i, linha in enumerate(linhas, 1):
+                cels = []
+                for j, v in enumerate(linha):
+                    ref = f"{col(j)}{i}"
+                    if v is None:
+                        continue
+                    if isinstance(v, _date):
+                        serial = (v - _date(1899, 12, 30)).days
+                        cels.append(f'<c r="{ref}" s="1"><v>{serial}</v></c>')
+                    elif isinstance(v, (int, float)):
+                        cels.append(f'<c r="{ref}"><v>{v}</v></c>')
+                    else:
+                        cels.append(f'<c r="{ref}" t="inlineStr"><is><t>{escape(str(v))}</t></is></c>')
+                xml_linhas.append(f'<row r="{i}">{"".join(cels)}</row>')
+            z.writestr(f"xl/worksheets/sheet{n}.xml",
+                       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+                       + "".join(xml_linhas) + "</sheetData></worksheet>")
+            sheets.append(f'<sheet name="{escape(nome)}" sheetId="{n}" r:id="rId{n}"/>')
+            rels.append(f'<Relationship Id="rId{n}" Type="worksheet" Target="worksheets/sheet{n}.xml"/>')
+        z.writestr("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+                   'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>'
+                   + "".join(sheets) + "</sheets></workbook>")
+        z.writestr("xl/_rels/workbook.xml.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/'
+                   '2006/relationships">' + "".join(rels) + "</Relationships>")
+        z.writestr("xl/styles.xml", '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+                   '<cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14"/></cellXfs></styleSheet>')
+    return buf.getvalue()
+
+
+class TestFormatos(BaseBanco):
+    def test_xlsx_do_bb_como_extrato(self):
+        from nucleo.importadores import xlsx
+        conteudo = fazer_xlsx({"Extrato Conta": [
+            ["Data", "Lançamento", "Detalhes", "N° documento", "Valor", "Tipo Lançamento"],
+            ["30/06/2026", "Saldo Anterior", "", "", "0,00", ""],
+            ["02/07/2026", "Pix - Enviado", "02/07 10:56 ENERGISA", "70202", "-231,19", "Saída"],
+            ["02/07/2026", "BB Rende Fácil", "Rende Facil", "9903", "231,19", "Entrada"],
+            ["26/08/2026", "Pagto cartão crédito", "ELO MAIS", "1", "-862,00", "Saída"],
+            ["26/08/2026", "Estorno de Débito", "ELO MAIS", "1", "862,00", "Entrada"],
+            ["31/07/2026", "S A L D O", "", "", "0,00", ""]]})
+        self.assertTrue(xlsx.eh_xlsx(conteudo))
+        lote = Lote(self.con)
+        r = lote.arquivo(conteudo, "bb.xlsx", self.conta("bb"))
+        lote.finalizar()
+        self.assertEqual(r["novas"], 4)
+        tipos = dict(self.con.execute("SELECT descricao, tipo FROM transacoes").fetchall())
+        self.assertEqual(tipos["BB Rende Fácil - Rende Facil"], "investimento")
+        self.assertEqual(tipos["Estorno de Débito - ELO MAIS"], "transferencia")
+        self.assertEqual(tipos["Pagto cartão crédito - ELO MAIS"], "fatura")
+        cat = self.con.execute("SELECT c.nome FROM transacoes t JOIN categorias c ON c.id = t.categoria_id "
+                               "WHERE t.descricao LIKE '%ENERGISA%'").fetchone()[0]
+        self.assertEqual(cat, "Energia")
+        tot = analises.totais_mes(self.con, "2026-08")       # o débito devolvido não vira gasto nem renda
+        self.assertEqual((tot["receitas"], tot["despesas"]), (0, 0))
+
+    def test_pdf_itau_texto(self):
+        from nucleo.importadores import pdf_itau
+        texto = ("FULANO DE TAL 000.000.000-00 agência: 1234 conta: 012345-6\nextrato conta / lançamentos\n"
+                 "período de visualização: 25/07/2026 até 23/10/2026 emitido em: 23/10/2026\n"
+                 "data lançamentos valor (R$) saldo (R$)\n17/10/2026 SALDO DO DIA 0,00\n"
+                 "16/10/2026 PIX TRANSF FULANO16/10 -596,29\n15/10/2026 REMUNERACAO/SALARIO HP06 1.127,63\n")
+        r = pdf_itau.ler_texto(texto)
+        self.assertEqual(r["identificador"], "012345-6")
+        self.assertEqual(r["periodo"], ("2026-07-25", "2026-10-23"))
+        self.assertEqual([(t["data"], t["valor"], t["descricao"]) for t in r["transacoes"]],
+                         [("2026-10-16", -59629, "PIX TRANSF FULANO"), ("2026-10-15", 112763, "REMUNERACAO/SALARIO HP06")])
+        self.assertEqual(pdf_itau.ler_texto("outro pdf qualquer"), {})
+
+    def test_pix_para_o_proprio_titular_e_transferencia(self):
+        self.importar("i.csv", "Data;Descrição;Valor\n14/08/2026;PIX TRANSF LUCAS V;-1.127,63\n"
+                               "14/08/2026;PIX TRANSF MARIA X;-50,00\n", "itau")
+        tipos = dict(self.con.execute("SELECT descricao, tipo FROM transacoes").fetchall())
+        self.assertEqual(tipos["PIX TRANSF LUCAS V"], "transferencia")      # conta do Lucas para o Lucas
+        self.assertEqual(tipos["PIX TRANSF MARIA X"], "normal")
+
+    def test_parcelas_com_centavos_diferentes_sao_a_mesma_compra(self):
+        self.importar("f.csv", "Data;Lançamento;Tipo;Valor\n08/10/2026;LOJA CASA NOVA;Parcela 1/10;R$ 73,22\n"
+                               "08/11/2026;LOJA CASA NOVA;Parcela 2/10;R$ 73,15\n", "inter-cartao")
+        gs = analises.parcelamentos(self.con)
+        self.assertEqual(len(gs), 1)
+        self.assertEqual((gs[0]["parcela_atual"], gs[0]["faltam"]), (2, 8))
+
+
+class TestPlanilha(BaseBanco):
+    CAB = ["Data", "Descrição", "Categoria", "Valor", "Forma de Pagamento", "Tipo", "Parcela", "Total de Parcelas"]
+
+    def versao(self, linhas):
+        from datetime import date as d
+        return fazer_xlsx({
+            "Val.Dados": [["Custo", "Categoria", "Forma de Pgto"], ["Fixo", "Aluguel", "Inter Cartão"]],
+            "Lançamentos": [self.CAB] + linhas,
+            "Orçamento": [["Tipo de Custo", "Categoria", "Orçado (Mensal)"], ["Variável", "Supermercado", 1200.0],
+                          [None, "Total", 1200.0]],
+            "Pagamentos": [[None, "Prioridade", "Credor", "Valor Devido"], [None, 1.0, "Fulano", 100.0]]})
+
+    def test_versoes_mensais_somadas(self):
+        from datetime import date as d
+        jul = self.versao([
+            [d(2026, 6, 20), "Bemais", "Supermercado", 50.0, "Inter Cartão", "Despesa", "Única", None],
+            [d(2026, 5, 10), "Loja X", "Vestuário", 100.0, "Inter Cartão", "Despesa", 3.0, 6.0],
+            [d(2025, 7, 25), "Compra velha", "Extras", 40.0, "C6 Cartão", "Despesa", 8.0, 9.0],
+            [d(2026, 7, 20), "Aluguel", "Transf. Contas", 2900.0, "Inter Conta", "Despesa", "Única", None]])
+        ago = self.versao([
+            [d(2026, 6, 20), "Bemais", "Supermercado", 50.0, "Inter Cartão", "Despesa", "Única", None],
+            [d(2026, 5, 10), "Loja X", "Vestuário", 100.0, "Inter Cartão", "Despesa", 3.0, 6.0]])
+        pasta = self.dir / "entrada"
+        (pasta / "planilha").mkdir(parents=True)
+        (pasta / "planilha" / "Controle_Financeiro_7._Julho_26.xlsx").write_bytes(jul)
+        (pasta / "planilha" / "Controle_Financeiro_8._Agosto_26.xlsx").write_bytes(ago)
+        (pasta / "inter-conta").mkdir()
+        (pasta / "inter-conta" / "x.csv").write_text("Data;Descrição;Valor\n20/07/2026;Pix enviado - Fulano Locador;-2.900,00\n")
+        r = atualizar(self.con, pasta)
+        self.assertEqual(r["planilha"]["parcelas_paradas"], 1)                  # "Compra velha" de 2025
+        linhas = self.con.execute("SELECT t.data, t.descricao FROM transacoes t JOIN contas c ON c.id = t.conta_id "
+                                  "WHERE c.apelido = 'inter-cartao' ORDER BY t.data").fetchall()
+        # à vista entra uma vez; a parcela que aparece nas duas versões é de dois meses (jul e ago)
+        self.assertEqual([tuple(l) for l in linhas],
+                         [("2026-06-20", "Bemais"), ("2026-07-10", "Loja X"), ("2026-08-10", "Loja X")])
+        self.assertEqual(self.con.execute("SELECT orcamento FROM categorias WHERE nome = 'Supermercado'").fetchone()[0], 120000)
+        self.assertTrue(self.con.execute("SELECT 1 FROM regras WHERE padrao = 'BEMAIS' AND origem = 'aprendida'").fetchone())
+        # "Aluguel" lançado como Transf. Contas ensina a categoria Aluguel para o Pix do extrato
+        cat = self.con.execute("SELECT c.nome FROM transacoes t JOIN categorias c ON c.id = t.categoria_id "
+                               "WHERE t.descricao LIKE '%Locador%'").fetchone()[0]
+        self.assertEqual(cat, "Aluguel")
+        # rodar de novo não duplica
+        self.assertEqual(atualizar(self.con, pasta)["novas"], 0)

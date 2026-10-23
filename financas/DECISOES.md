@@ -94,3 +94,48 @@ Decisões que não bloqueavam o trabalho. Tudo aqui é editável na interface ou
 ## Metas
 - Na Fase 1 só cadastro e progresso (para a Início). "Quanto guardar por mês", "cabe no orçamento" e a
   ordem dívidas → reserva → metas entram na Fase 2.
+
+## Carga dos dados reais (23/10/2026)
+
+Fontes: OFX da conta Inter (jul–out), Excel do BB (jul–out), CSV do Flash (90 dias), PDF do Itaú (jan–jun e
+25/07–23/10) e as 5 versões mensais da planilha "Controle Financeiro" (jul–nov). Os valores pessoais combinados
+(dívidas, estimativas) ficam em `dados/ajustes.json`, fora do git; o `carga_inicial.py` aplica esse arquivo.
+
+- **Categorias de vocês**: adotei a lista da planilha (aba Val.Dados) no lugar das minhas equivalentes
+  (Supermercado, Restaurante, Aluguel, Energia, Internet Móvel, Extras, Taxas, Toddy...). Mantive Dívidas,
+  Investimentos, Transferência, Pagamento de fatura, Assinaturas e Negócios, que a planilha não separa.
+- **Orçado por categoria**: veio da aba Orçamento (versão de novembro). O total (R$ 7.177,63) virou o
+  "orçamento definido por vocês" da tela Início. Os alertas comparam com o orçado; sem orçado, com a média.
+- **Cartões sem extrato** (Inter, BB, C6) e dinheiro vivo entram pela planilha. As contas (Inter, BB, Itaú)
+  entram pelos extratos; a planilha só ensina as categorias delas.
+- **Versões mensais somadas**: compra à vista conta uma vez, mesmo que apareça em duas versões. Parcela
+  (2/6, 3/6...) conta uma vez por versão, porque cada versão é a fatura de um mês e a planilha nem sempre
+  atualiza o número da parcela. A data da parcela vai para a janela da fatura (fechamento estimado no dia 12;
+  vencimento dia 20, confirmado pela planilha). Parcelas incoerentes com o mês da versão (ex.: 8/9 de uma
+  compra de 2025 numa versão de 2026) são linhas esquecidas e ficam de fora (16 linhas).
+- **Conferência**: o total importado do cartão Inter é exatamente a soma das versões menos as compras à
+  vista repetidas. Cada versão bate no centavo com a fatura paga, exceto **setembro**: a versão 9 tem
+  R$ 1.935,52 e a fatura paga foi R$ 4.071,08. Faltam ~R$ 2.135 em compras de agosto/setembro que não estão
+  em nenhum arquivo.
+- **"Parcelamento ..." e "PIX parcelado"** na planilha são pagamento de dívida (o gasto original já foi
+  contado quando aconteceu): entram em Dívidas, não em Extras.
+- **"Transf. Contas" da planilha não vira regra**: lá ela também guarda ajustes e adiantamento de salário
+  (que é renda). Exceção: quando a descrição é o nome de uma categoria ("Aluguel"), vale a categoria.
+- **Pix para o próprio titular** (ex.: "PIX TRANSF LUCAS" saindo da conta do Lucas) é transferência entre
+  contas dele, mesmo sem a outra ponta (o BB só tem extrato a partir de julho).
+- **BB**: "BB Rende Fácil" (aplicação automática diária), "Pagto cartão crédito" e "Estorno de Débito"
+  (débito automático da fatura devolvido) não contam como gasto nem renda.
+- **"Pix no crédito"** do Inter: a entrada do crédito é neutra; o Pix que sai é o gasto; as parcelas são dívida.
+- **Itaú em PDF**: leitor próprio do extrato de conta corrente. Precisa de `pip install pdfplumber`, só para
+  PDF. O app cola a data no nome ("BARBARA16/10"); o leitor separa.
+- **Estimados** (marcados como "estimado" na lista): salário do Itaú de 15/07 (igual à parcela do dia 15 dos outros
+  meses, a pedido do Lucas) e o repasse ao BB no mesmo dia; saldo do Flash antes do período do CSV (R$ 3,70).
+- **Salário da Bárbara**: o Pix do empregador dela é Salário (regra manual no `dados/ajustes.json`, como
+  está na aba de controle da planilha).
+- **Dívidas novas** (da planilha e do detalhe de pagamento do Mercado Pago): Mercado Pago (empréstimos +
+  Pix parcelado; saldo = parcelas que faltam) e Empréstimo BB (CDC renovação; saldo a confirmar). O saldo do
+  Nubank veio da aba Pagamentos. Valores no `dados/ajustes.json`. Juros de banco sem taxa informada: 8% a.m.
+  só para a ordem de prioridade, sempre escrito como "estimado".
+- **Alertas de parcelamento**: um por mês com as compras parceladas novas (parcela 1) e um resumo do que está
+  em andamento. Parcela vista pela última vez meses atrás é considerada andando (o extrato do mês pode faltar).
+  Parcelas da mesma compra com centavos de diferença (arredondamento do banco) contam como uma compra só.

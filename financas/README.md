@@ -5,7 +5,8 @@ sem custo, sem agregador e sem senha de banco. Estamos na **Fase 1 (MVP)**.
 
 ## Como rodar
 
-Precisa só do **Python 3.10 ou mais novo** (nada de `pip install`).
+Precisa só do **Python 3.10 ou mais novo**. A única instalação opcional é para ler o extrato do Itaú,
+que o app só entrega em PDF: `pip install pdfplumber` (uma vez).
 
 ```bash
 cd financas
@@ -27,7 +28,8 @@ python -m unittest discover testes        # testes automáticos
 
 ## Fluxo do dia a dia
 
-1. Baixem o extrato no app de cada banco (OFX de preferência; CSV também serve).
+1. Baixem o extrato no app de cada banco: OFX de preferência; CSV e Excel (.xlsx) também servem;
+   o Itaú só oferece PDF, que também é lido.
 2. Salvem em `entrada/<conta>/` ou arrastem para a tela **Importar**.
 3. Toquem em **Atualizar** (ou `python importar.py`): importa, ignora duplicados, categoriza,
    reconhece transferências entre vocês, pagamento de fatura e o consignado, e gera alertas.
@@ -42,7 +44,7 @@ python -m unittest discover testes        # testes automáticos
 | `itau/` | Itaú (Lucas, salário) |
 | `nubank/` | Cartão Nubank |
 | `flash/` | Flash Benefícios |
-| `planilha/` | CSV da planilha antiga (mapeia as colunas na 1ª vez) |
+| `planilha/` | Versões mensais da planilha "Controle Financeiro" (.xlsx) ou outro CSV antigo |
 
 ## O que testar na Fase 1
 
@@ -60,6 +62,11 @@ Comece pelo modo demo (**Ajustes > Dados > Modo demo**, ou `python app.py --demo
 
 Depois, desligue o modo demo e importem os extratos de verdade.
 
+## Primeira carga (já feita em 23/10/2026)
+
+`carga_inicial.py` copia os arquivos para `entrada/<conta>/`, importa tudo e aplica `dados/ajustes.json`
+(dívidas e valores estimados combinados com vocês; fica fora do git). Pode rodar de novo: nada duplica.
+
 ## Onde ficam os dados
 
 - `dados/financas.db`: banco real (SQLite). `dados/demo.db`: demonstração.
@@ -71,10 +78,12 @@ Depois, desligue o modo demo e importem os extratos de verdade.
 ```
 app.py          servidor local (biblioteca padrão do Python) + API JSON
 importar.py     importação pela linha de comando
+carga_inicial.py  primeira carga dos dados reais (arquivos + ajustes locais)
 backup.py       cópia do banco para uma pasta (ex.: Google Drive)
 nucleo/
   db.py             esquema SQLite e cadastro inicial (contas, categorias, regras, dívidas)
-  importadores/     leitores de OFX e CSV (detecção automática de colunas)
+  importadores/     leitores de OFX, CSV, Excel (.xlsx) e PDF do Itaú
+  planilha.py       planilha antiga: cartões, categorias de vocês, orçado por categoria
   importacao.py     pipeline: ler, deduplicar, categorizar, transferências, dívidas, alertas
   categorizar.py    regras, heurísticas, fila de dúvidas e aprendizado
   transferencias.py pares de transferência entre as contas do casal

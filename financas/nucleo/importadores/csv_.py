@@ -17,7 +17,7 @@ SINONIMOS = {
     "data": ["DATA", "DATA LANCAMENTO", "DATA DO LANCAMENTO", "DATA DA COMPRA", "DATA COMPRA", "DATE", "DT",
              "DATA MOVIMENTO", "DATA DA TRANSACAO", "DATA TRANSACAO", "QUANDO", "DIA"],
     "descricao": ["DESCRICAO", "HISTORICO", "LANCAMENTO", "TITLE", "ESTABELECIMENTO", "DETALHES", "MEMO",
-                  "DESCRIPTION", "DESCRICAO DO LANCAMENTO", "NOME", "COMPLEMENTO", "TRANSACAO", "O QUE", "ITEM"],
+                  "DESCRIPTION", "DESCRICAO DO LANCAMENTO", "NOME", "COMPLEMENTO", "TRANSACAO", "O QUE", "ITEM", "MOVIMENTACAO"],
     "valor": ["VALOR", "AMOUNT", "VALOR R", "VALOR RS", "VALOR EM R", "VALUE", "VALOR R$", "QUANTIA", "QUANTO", "PRECO", "TOTAL"],
     "debito": ["DEBITO", "SAIDA", "SAIDAS", "VALOR DEBITO"],
     "credito": ["CREDITO", "ENTRADA", "ENTRADAS", "VALOR CREDITO"],
@@ -143,16 +143,20 @@ def mapa_automatico(cabecalho: list[str], papeis: dict) -> dict:
 
 
 def ler(conteudo: bytes, mapa_salvo: dict | None = None) -> dict:
-    linhas = linhas_csv(conteudo)
+    return ler_linhas(linhas_csv(conteudo), mapa_salvo)
+
+
+def ler_linhas(linhas: list[list[str]], mapa_salvo: dict | None = None, formato: str = "csv") -> dict:
+    """Mesmo leitor para CSV e para planilhas Excel já convertidas em linhas de texto."""
     if mapa_salvo:
         inicio = mapa_salvo.get("linha_cabecalho", 0) + 1
-        return {"formato": "csv", "transacoes": extrair(linhas, inicio, mapa_salvo),
+        return {"formato": formato, "transacoes": extrair(linhas, inicio, mapa_salvo),
                 "cabecalho": linhas[inicio - 1] if linhas else [], "mapa": mapa_salvo}
     achado = achar_cabecalho(linhas)
     if not achado:
         idx = next((i for i, l in enumerate(linhas[:25]) if sum(1 for c in l if c) >= 2), 0)
         cab = linhas[idx] if linhas else []
-        return {"formato": "csv", "precisa_mapear": True, "linha_cabecalho": idx, "cabecalho": cab,
+        return {"formato": formato, "precisa_mapear": True, "linha_cabecalho": idx, "cabecalho": cab,
                 "amostra": linhas[idx + 1: idx + 6], "assinatura": assinatura(cab)}
     i, papeis = achado
     mapa = mapa_automatico(linhas[i], papeis)
@@ -163,7 +167,7 @@ def ler(conteudo: bytes, mapa_salvo: dict | None = None) -> dict:
                                                re.search(r"\d+/\d+", t["extra"] or "") for t in trans):
         for t in trans:
             t["extra"] = ""
-    return {"formato": "csv", "transacoes": trans, "cabecalho": linhas[i], "mapa": mapa,
+    return {"formato": formato, "transacoes": trans, "cabecalho": linhas[i], "mapa": mapa,
             "assinatura": assinatura(linhas[i])}
 
 

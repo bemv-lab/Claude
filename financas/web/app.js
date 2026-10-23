@@ -120,7 +120,8 @@ TELAS.inicio = async (el) => {
   const pct = o.limite ? Math.min(1, o.gasto / o.limite) : 0;
   const classeMed = o.percentual > 1 ? "estouro" : o.percentual > 0.85 ? "perto" : "";
   const varSaldo = h.saldo - h.saldo_mes_anterior;
-  const maxCat = Math.max(1, ...h.categorias.map((c) => Math.max(c.total, c.media)));
+  h.categorias.forEach((c) => { c.ref = c.orcamento || c.media; c.refNome = c.orcamento ? "orçado" : "média"; });
+  const maxCat = Math.max(1, ...h.categorias.map((c) => Math.max(c.total, c.ref || 0)));
   el.innerHTML = `
   <div class="pilha">
     <div class="cartao heroi">
@@ -162,11 +163,11 @@ TELAS.inicio = async (el) => {
       <div class="cartao">
         <div class="cartao-cab"><h2>Para onde foi o dinheiro</h2><a class="btn-texto" href="#/lancamentos">Ver lançamentos</a></div>
         ${h.categorias.length ? `<div class="barras">${h.categorias.map((c) => `
-          <div class="barra-linha" title="${esc(c.nome)}: ${brl(c.total)} (${c.qtd} lançamentos)${c.media ? ` · média ${brl(c.media)}` : ""}">
-            <span>${esc(c.nome)}</span><span class="num">${brl(c.total)}</span>
-            <div class="trilho"><i style="width:${(c.total / maxCat) * 100}%"></i>${c.media ? `<span class="media" style="left:${(c.media / maxCat) * 100}%"></span>` : ""}</div>
+          <div class="barra-linha" title="${esc(c.nome)}: ${brl(c.total)} (${c.qtd} lançamentos)${c.ref ? ` · ${c.refNome} ${brl(c.ref)}` : ""}">
+            <span>${esc(c.nome)}${c.orcamento && c.total > c.orcamento ? ` <span class="tag duv">passou do orçado</span>` : ""}</span><span class="num">${brl(c.total)}</span>
+            <div class="trilho"><i style="width:${(c.total / maxCat) * 100}%"></i>${c.ref ? `<span class="media" style="left:${(c.ref / maxCat) * 100}%"></span>` : ""}</div>
           </div>`).join("")}</div>
-          <div class="legenda-media"><i></i> média dos 3 meses anteriores</div>` : `<p class="mudo">Sem gastos neste mês.</p>`}
+          <div class="legenda-media"><i></i> orçado de vocês (sem orçado: média dos 3 meses anteriores)</div>` : `<p class="mudo">Sem gastos neste mês.</p>`}
       </div>
       <div class="cartao">
         <div class="cartao-cab"><h2>Metas</h2><a class="btn-texto" href="#/ajustes?metas">Editar</a></div>
@@ -296,6 +297,7 @@ TELAS.lancamentos = async (el) => {
         const tags = [
           t.classificacao === "duvida" ? `<span class="tag duv">a classificar</span>` : "",
           t.parcela_total ? `<span class="tag parc">${t.parcela_atual}/${t.parcela_total}</span>` : "",
+          t.estimado ? `<span class="tag" title="${esc(t.observacao || "")}">estimado</span>` : "",
           t.escopo === "negocio" ? `<span class="tag neg">negócio</span>` : "",
           t.tipo === "transferencia" ? `<span class="tag">transferência</span>` : t.tipo === "fatura" ? `<span class="tag">fatura</span>` : "",
           t.divida ? `<span class="tag">${esc(t.divida)}</span>` : ""].join("");
@@ -635,7 +637,8 @@ TELAS.ajustes = async (el) => {
         <button class="btn" id="novo-portador">+ Portador</button></div></div>
 
     <div class="cartao"><div class="cartao-cab"><h2>Categorias</h2><button class="btn" id="nova-cat">+ Categoria</button></div>
-      <div class="chips">${S.cad.categorias.map((c) => `<button class="chip" data-cat-ed="${c.id}">${esc(c.nome)}</button>`).join("")}</div></div>
+      <div class="chips">${S.cad.categorias.map((c) => `<button class="chip" data-cat-ed="${c.id}">${esc(c.nome)}${c.orcamento ? ` · <span class="num mudo">${brl(c.orcamento)}</span>` : ""}</button>`).join("")}</div>
+      <p class="mudo" style="font-size:12.5px">O valor ao lado é o orçado do mês (veio da aba Orçamento da planilha). Toque para editar.</p></div>
 
     <div class="cartao"><div class="cartao-cab"><h2>Regras aprendidas (${aprendidas.length})</h2><button class="btn" id="nova-regra">+ Regra</button></div>
       ${aprendidas.length ? aprendidas.map((r) => `<div class="regra"><span><b>${esc(r.padrao)}</b> → ${esc(r.categoria || r.tipo || "?")}${r.escopo === "negocio" ? ' <span class="tag neg">negócio</span>' : ""} <small class="mudo">${r.sinal === "entrada" ? "entradas" : r.sinal === "saida" ? "saídas" : ""} · ${r.usos} uso(s)</small></span>
@@ -721,7 +724,8 @@ function novoPortador() {
 function editarCategoria(c) {
   abrirModal(`<h3>${c.id ? "Categoria" : "Nova categoria"}</h3><form id="f-cat" class="grade-form">
     <label class="campo">Nome<input name="nome" value="${esc(c.nome || "")}"></label>
-    <label class="campo">Tipo<select name="tipo">${[["despesa", "Despesa"], ["receita", "Receita"], ["divida", "Dívida"], ["investimento", "Investimento"], ["transferencia", "Transferência"]].map(([k, v]) => `<option value="${k}" ${c.tipo === k ? "selected" : ""}>${v}</option>`).join("")}</select></label></form>
+    <label class="campo">Tipo<select name="tipo">${[["despesa", "Despesa"], ["receita", "Receita"], ["divida", "Dívida"], ["investimento", "Investimento"], ["transferencia", "Transferência"]].map(([k, v]) => `<option value="${k}" ${c.tipo === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+    <label class="campo">Orçado no mês (R$) <small>vazio = sem orçado</small><input name="orcamento" inputmode="decimal" value="${paraInput(c.orcamento)}"></label></form>
     <div class="modal-acoes">${c.id ? `<button class="btn" id="desativar-cat" style="margin-right:auto">Desativar</button>` : ""}<button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-cat">Salvar</button></div>`, (el) => {
     $("#ok-cat", el).addEventListener("click", async () => { await api(c.id ? `/api/categorias/${c.id}` : "/api/categorias", { metodo: c.id ? "PATCH" : "POST", corpo: form($("#f-cat", el)) }); $("#modal").close(); await carregarCadastros(); render(); });
     $("#desativar-cat", el)?.addEventListener("click", async () => { await api(`/api/categorias/${c.id}`, { metodo: "PATCH", corpo: { ativa: 0 } }); $("#modal").close(); await carregarCadastros(); render(); });

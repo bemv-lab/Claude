@@ -30,7 +30,7 @@ def gasto_por_categoria(con, mes: str) -> list[dict]:
     ini, fim = limites_mes(mes)
     return [dict(r) for r in con.execute(f"""
         SELECT COALESCE(cat.id, 0) AS id, COALESCE(cat.nome, 'A classificar') AS nome,
-               COALESCE(cat.cor, '#B9BEC7') AS cor, -SUM(t.valor) AS total, COUNT(*) AS qtd
+               COALESCE(cat.cor, '#B9BEC7') AS cor, cat.orcamento AS orcamento, -SUM(t.valor) AS total, COUNT(*) AS qtd
         FROM transacoes t JOIN contas c ON c.id = t.conta_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
         WHERE t.tipo = 'normal' AND t.data BETWEEN ? AND ?
@@ -100,22 +100,39 @@ def recorrentes(con, meses: int = 6) -> list[dict]:
 
 
 def parcelamentos(con) -> list[dict]:
-    """Compras parceladas agrupadas, com o que ainda falta pagar (renda futura comprometida)."""
-    grupos: dict[tuple, dict] = {}
+    """Compras parceladas agrupadas, com o que ainda falta pagar (renda futura comprometida).
+
+    Parcelas da mesma compra às vezes diferem em centavos (arredondamento do banco): entram no mesmo grupo
+    quando são da mesma conta e loja, têm o mesmo total de parcelas e valor até 3% diferente."""
+    grupos: list[dict] = []
+    por_chave: dict[tuple, list[dict]] = {}
     for r in con.execute("""
         SELECT t.*, co.nome AS conta, p.nome AS pessoa FROM transacoes t
         JOIN contas co ON co.id = t.conta_id LEFT JOIN pessoas p ON p.id = t.pessoa_id
-        WHERE t.parcela_total IS NOT NULL AND t.valor < 0 AND t.tipo = 'normal' ORDER BY t.data"""):
-        k = (r["conta_id"], r["chave"], r["parcela_total"], r["valor"])
-        g = grupos.get(k)
-        if not g or r["parcela_atual"] >= g["parcela_atual"]:
-            primeira = g["primeira_vista"] if g else r["data"]
-            grupos[k] = {"id": r["id"], "descricao": r["descricao"], "chave": r["chave"], "conta": r["conta"],
-                         "pessoa": r["pessoa"], "valor_parcela": -r["valor"], "parcela_atual": r["parcela_atual"],
-                         "parcela_total": r["parcela_total"], "ultima_data": r["data"], "primeira_vista": primeira}
+        WHERE t.parcela_total IS NOT NULL AND t.valor < 0 AND t.tipo = 'normal'
+        ORDER BY t.data, t.parcela_atual"""):
+        valor = -r["valor"]
+        candidatos = por_chave.setdefault((r["conta_id"], r["chave"], r["parcela_total"]), [])
+        g = next((g for g in candidatos if abs(g["valor_parcela"] - valor) <= max(100, g["valor_parcela"] * 0.03)
+                  and g["parcela_atual"] <= r["parcela_atual"]), None)
+        if g is None:
+            g = {"id": r["id"], "descricao": r["descricao"], "chave": r["chave"], "conta": r["conta"],
+                 "pessoa": r["pessoa"], "valor_parcela": valor, "parcela_atual": r["parcela_atual"],
+                 "parcela_total": r["parcela_total"], "ultima_data": r["data"], "primeira_vista": r["data"],
+                 "parcela_inicial": r["parcela_atual"]}
+            candidatos.append(g)
+            grupos.append(g)
+        else:
+            g.update(id=r["id"], descricao=r["descricao"], valor_parcela=valor, parcela_atual=r["parcela_atual"],
+                     ultima_data=r["data"])
     out = []
-    for g in grupos.values():
-        faltam = g["parcela_total"] - g["parcela_atual"]
+    mes_atual = hoje().strftime("%Y-%m")
+    for g in grupos:
+        # parcela vista pela última vez meses atrás já andou (o extrato daquele mês pode não ter vindo)
+        passados = max(0, _meses_entre(g["ultima_data"][:7], mes_atual))
+        faltam = max(0, g["parcela_total"] - g["parcela_atual"] - passados)
+        g["parcela_atual"] = g["parcela_total"] - faltam if passados else g["parcela_atual"]
+        g["ultima_data"] = max(g["ultima_data"], f"{mes_atual}-01") if passados else g["ultima_data"]
         g["faltam"] = faltam
         g["restante"] = faltam * g["valor_parcela"]
         g["total_compra"] = g["parcela_total"] * g["valor_parcela"]
@@ -124,6 +141,12 @@ def parcelamentos(con) -> list[dict]:
             out.append(g)
     out.sort(key=lambda x: -x["restante"])
     return out
+
+
+def _meses_entre(a: str, b: str) -> int:
+    ya, ma = map(int, a.split("-"))
+    yb, mb = map(int, b.split("-"))
+    return (yb - ya) * 12 + (mb - ma)
 
 
 def compromisso_futuro_parcelas(con, meses: int = 6) -> list[dict]:

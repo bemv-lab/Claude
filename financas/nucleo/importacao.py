@@ -5,13 +5,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import alertas, dividas, transferencias
+from . import alertas, dividas, planilha, transferencias
 from .categorizar import Classificador
 from .db import pessoa_id
-from .importadores import csv_, ofx
+from .importadores import csv_, ofx, pdf_itau, xlsx
 from .util import agora_iso, chave_estabelecimento, detectar_parcela, normalizar
 
-EXTENSOES = {".ofx", ".csv", ".txt", ".pdf", ".qfx"}
+EXTENSOES = {".ofx", ".csv", ".txt", ".pdf", ".qfx", ".xlsx"}
 
 
 def _sha(b: bytes) -> str:
@@ -82,37 +82,58 @@ class Lote:
             self.arquivos.append(res)
             return res
         ext = Path(nome).suffix.lower()
-        if ext == ".pdf":
-            res.update(status="pdf", formato="pdf",
-                       mensagem="PDF entra na Fase 3. Por enquanto, baixe o OFX ou CSV no app do banco.")
-            self.arquivos.append(res)
-            return res
-        if ofx.eh_ofx(conteudo):
+        if ext == ".pdf" or pdf_itau.eh_pdf(conteudo):
+            try:
+                dados = pdf_itau.ler(conteudo)
+            except pdf_itau.PdfIndisponivel as e:
+                res.update(status="pdf", formato="pdf", mensagem=str(e))
+                self.arquivos.append(res)
+                return res
+            if not dados:
+                res.update(status="pdf", formato="pdf", mensagem="PDF não reconhecido: por enquanto só o extrato "
+                                                                 "de conta corrente do Itaú. Use OFX ou CSV.")
+                self.arquivos.append(res)
+                return res
+            if conta_id is None and dados.get("identificador"):
+                conta_id = next((c["id"] for c in self.contas.values()
+                                 if c["identificador"] and c["identificador"] in dados["identificador"]), None)
+        elif ofx.eh_ofx(conteudo):
             dados = ofx.ler(conteudo)
             if conta_id is None and dados.get("identificador"):
                 conta_id = next((c["id"] for c in self.contas.values()
                                  if c["identificador"] and c["identificador"] in dados["identificador"]), None)
         else:
+            formato = "csv"
+            if xlsx.eh_xlsx(conteudo):
+                abas = xlsx.nomes_das_abas(conteudo)
+                if "Lançamentos" in abas and "Val.Dados" in abas:
+                    res.update(status="planilha", formato="xlsx",
+                               mensagem="Planilha de controle: entra pelo importador da planilha (pasta planilha/).")
+                    self.arquivos.append(res)
+                    return res
+                linhas = xlsx.linhas_texto(next(iter(xlsx.ler(conteudo, abas[:1]).values())))
+                formato = "xlsx"
+            else:
+                linhas = csv_.linhas_csv(conteudo)
             perfil = None
             if not mapa:
-                bruto = csv_.linhas_csv(conteudo)
-                for i in range(min(25, len(bruto))):
+                for i in range(min(25, len(linhas))):
                     r = con.execute("SELECT mapeamento FROM perfis_csv WHERE assinatura = ?",
-                                    (csv_.assinatura(bruto[i]),)).fetchone()
+                                    (csv_.assinatura(linhas[i]),)).fetchone()
                     if r:
                         perfil = json.loads(r["mapeamento"])
                         break
             mapa = mapa or perfil
             if mapa:
-                dados = csv_.ler(conteudo, mapa)
+                dados = csv_.ler_linhas(linhas, mapa, formato)
                 conta_id = conta_id or mapa.get("conta_fixa")
             else:
-                dados = csv_.ler(conteudo)
+                dados = csv_.ler_linhas(linhas, None, formato)
                 if planilha and not dados.get("precisa_mapear"):
                     dados = {**dados, "precisa_mapear": True, "linha_cabecalho": dados["mapa"]["linha_cabecalho"],
-                             "amostra": csv_.linhas_csv(conteudo)[dados["mapa"]["linha_cabecalho"] + 1:][:5]}
+                             "amostra": linhas[dados["mapa"]["linha_cabecalho"] + 1:][:5]}
             if dados.get("precisa_mapear"):
-                res.update(status="precisa_mapear", formato="csv",
+                res.update(status="precisa_mapear", formato=formato,
                            mensagem="Não reconheci as colunas. Mapeie uma vez na tela Importar e eu lembro.",
                            cabecalho=dados["cabecalho"], amostra=dados.get("amostra", []),
                            linha_cabecalho=dados.get("linha_cabecalho", 0),
@@ -189,20 +210,53 @@ class Lote:
     def pasta(self, raiz: Path) -> None:
         preparar_pastas(self.con, raiz)
         pastas = {c["pasta"]: c["id"] for c in self.contas.values() if c["pasta"]}
+        planilhas = []
         for arq in sorted(raiz.rglob("*")):
-            if not arq.is_file() or arq.suffix.lower() not in EXTENSOES or arq.name.startswith("."):
+            if not arq.is_file() or arq.suffix.lower() not in EXTENSOES or arq.name.startswith(".") \
+                    or arq.name.upper().startswith("LEIA-ME"):
                 continue
             rel = arq.relative_to(raiz).parts
             sub = rel[0] if len(rel) > 1 else None
             if sub and sub.startswith("_"):
                 continue
-            r = self.arquivo(arq.read_bytes(), "/".join(rel), pastas.get(sub), planilha=(sub == "planilha"))
+            bruto = arq.read_bytes()
+            if sub == "planilha" and xlsx.eh_xlsx(bruto) and "Val.Dados" in xlsx.nomes_das_abas(bruto):
+                planilhas.append(("/".join(rel), bruto))
+                continue
+            r = self.arquivo(bruto, "/".join(rel), pastas.get(sub), planilha=(sub == "planilha"))
             r["caminho"] = "/".join(rel)
+        if planilhas:
+            self.planilha(planilhas)
+
+    def planilha(self, arquivos: list[tuple[str, bytes]]) -> dict:
+        """Planilha de controle antiga: compras de cartão/dinheiro entram; categorias de vocês viram regras."""
+        novos = [(n, c) for n, c in arquivos
+                 if not self.con.execute("SELECT 1 FROM importacoes WHERE hash_arquivo = ? AND status = 'ok'",
+                                         (_sha(c),)).fetchone()]
+        for n, c in arquivos:
+            if (n, c) not in novos:
+                self.arquivos.append({"arquivo": n, "conta": "planilha", "formato": "xlsx", "novas": 0,
+                                      "duplicadas": 0, "status": "ja_importado", "mensagem": ""})
+        if not novos:
+            return {}
+        r = planilha.importar(self.con, novos)
+        self.planilha_resumo = r
+        for n, c in novos:
+            self.con.execute("INSERT INTO importacoes (arquivo, hash_arquivo, formato, novas, duplicadas, status, "
+                             "mensagem, criado_em) VALUES (?,?, 'xlsx', ?, ?, 'ok', 'planilha', ?)",
+                             (n, _sha(c), r["cartoes_novos"], r["cartoes_duplicadas"], agora_iso()))
+        self.arquivos.append({"arquivo": f"planilha/ ({len(novos)} versões)", "conta": "cartões e dinheiro",
+                              "formato": "xlsx", "novas": r["cartoes_novos"], "duplicadas": r["cartoes_duplicadas"],
+                              "status": "ok", "mensagem": ""})
+        self.con.commit()
+        return r
 
     # ------------------------------------------------------------ depois de importar
     def finalizar(self) -> dict:
         con = self.con
         pares = transferencias.parear(con)
+        aprendizado = planilha.aprender_contas(con) if con.execute(
+            "SELECT 1 FROM planilha_linhas WHERE aprendida = 0 LIMIT 1").fetchone() else {}
         pagamentos = dividas.reconhecer_pagamentos(con)
         novos_alertas = alertas.gerar(con)
         duvidas = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao='duvida'").fetchone()[0]
@@ -212,6 +266,7 @@ class Lote:
             "novas": novas,
             "duplicadas": sum(a["duplicadas"] for a in self.arquivos),
             "transferencias": pares,
+            "planilha": getattr(self, "planilha_resumo", None), "aprendizado_planilha": aprendizado,
             "pagamentos_divida": pagamentos,
             "duvidas": duvidas,
             "duvidas_novas": max(0, duvidas - self.duvidas_antes),
@@ -251,6 +306,16 @@ def resumo_texto(r: dict) -> str:
         f"Lançamentos novos: {r['novas']}  ·  duplicados ignorados: {r['duplicadas']}",
         f"Transferências entre contas reconhecidas: {r['transferencias']}",
         f"Pagamentos de dívida reconhecidos: {r['pagamentos_divida']}",
+    ]
+    pl, ap = r.get("planilha"), r.get("aprendizado_planilha")
+    if pl:
+        linhas.append(f"Planilha: {pl['versoes']} versões somadas · {pl['cartoes_novos']} compras de cartão/dinheiro · "
+                      f"{pl['regras_novas']} regras de estabelecimento · {pl['orcado']} categorias com orçado · "
+                      f"{pl['parcelas_paradas']} parcelas antigas esquecidas na planilha ignoradas")
+    if ap:
+        linhas.append(f"Categorias de vocês aprendidas dos extratos: {ap['casadas']} lançamentos casados com a planilha "
+                      f"({ap['sem_par_no_extrato']} linhas da planilha sem par no extrato)")
+    linhas += [
         f"Fila de dúvidas: {r['duvidas']} ({r['duvidas_novas']} novas)",
         f"Alertas novos: {r['alertas_novos']}",
     ]

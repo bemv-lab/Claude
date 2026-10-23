@@ -175,7 +175,9 @@ def r_categoria_nova(con, q, corpo):
 
 @rota("PATCH", r"/api/categorias/(\d+)")
 def r_categoria(con, q, corpo, cid):
-    campos = {k: v for k, v in corpo.items() if k in {"nome", "cor", "tipo", "ativa", "fixa"}}
+    campos = {k: v for k, v in corpo.items() if k in {"nome", "cor", "tipo", "ativa", "fixa", "orcamento"}}
+    if "orcamento" in campos:
+        campos["orcamento"] = _centavos(campos["orcamento"]) or None
     if campos:
         con.execute(f"UPDATE categorias SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?",
                     (*campos.values(), int(cid)))

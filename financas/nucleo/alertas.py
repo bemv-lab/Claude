@@ -22,22 +22,45 @@ def renda_referencia(con, mes: str) -> int:
 
 
 def _parcelamento(con, p, mes):
+    """Regra do casal: evitar parcelamento. Um alerta por mês com as compras parceladas novas e um resumo do
+    que ainda está em andamento (um alerta por compra vira barulho quando a planilha traz dezenas)."""
     out = []
     renda = renda_referencia(con, mes) or None
-    for g in analises.parcelamentos(con):
-        recente = g["parcela_atual"] == 1 or g["primeira_vista"] >= limites_mes(somar_meses(mes, -1))[0]
-        pct = f" ({g['valor_parcela'] / renda:.0%} da renda mensal)" if renda else ""
+    grupos = analises.parcelamentos(con)
+    if not grupos:
+        return out
+    desde = limites_mes(somar_meses(mes, -1))[0]
+    novos: dict[str, list] = {}
+    for g in grupos:
+        if g["primeira_vista"] >= desde and g["parcela_inicial"] == 1 and g["primeira_vista"][:7] <= mes:
+            novos.setdefault(g["primeira_vista"][:7], []).append(g)
+    for m, gs in sorted(novos.items()):
+        gs.sort(key=lambda g: -g["total_compra"])
+        por_mes = sum(g["valor_parcela"] for g in gs)
+        restante = sum(g["restante"] for g in gs)
+        pct = f" ({por_mes / renda:.0%} da renda mensal)" if renda else ""
+        exemplos = "; ".join(f"{g['descricao'][:28]} {g['parcela_atual']}/{g['parcela_total']} de {brl(g['valor_parcela'])}"
+                             for g in gs[:3])
         out.append(dict(
-            chave=f"parcelamento:{g['chave']}:{g['parcela_total']}:{g['valor_parcela']}",
-            severidade=3 if recente else 2,
-            titulo=f"Compra parcelada: {g['descricao'][:40]}",
-            mensagem=(f"{g['parcela_atual']}/{g['parcela_total']} de {brl(g['valor_parcela'])}{pct} no "
-                      f"{g['conta']}{' · ' + g['pessoa'] if g['pessoa'] else ''}. Ainda faltam {g['faltam']} parcelas: "
-                      f"{brl(g['restante'])} da renda futura já estão comprometidos até {nome_mes(g['termina'])}."),
-            acao=("Conversem sobre essa compra. Se ainda dá para cancelar ou pagar à vista com desconto, "
-                  "geralmente sai mais barato." if recente else
-                  "Já está em andamento: só não somem outra parcela até essa terminar."),
-            transacao_id=g["id"]))
+            chave=f"parcelamento:{m}", severidade=3 if m == mes else 2,
+            titulo=f"{len(gs)} compra(s) parcelada(s) em {nome_mes(m)}",
+            mensagem=(f"Somam {brl(por_mes)} por mês{pct} e ainda faltam {brl(restante)} para os próximos meses. "
+                      f"Maiores: {exemplos}."),
+            acao="Regra de vocês: evitar parcelar. Vejam se alguma dá para quitar à vista com desconto, "
+                 "e combinem não abrir parcelas novas até essas terminarem.",
+            transacao_id=gs[0]["id"]))
+    andamento = [g for g in grupos if g["faltam"] > 0]
+    if andamento:
+        por_mes = sum(g["valor_parcela"] for g in andamento)
+        restante = sum(g["restante"] for g in andamento)
+        fim = max(g["termina"] for g in andamento)
+        pct = f" ({por_mes / renda:.0%} da renda mensal)" if renda else ""
+        out.append(dict(
+            chave="parcelamento:resumo", severidade=2,
+            titulo=f"{len(andamento)} parcelamentos em andamento",
+            mensagem=(f"{brl(por_mes)} por mês já comprometidos{pct}; {brl(restante)} ainda a pagar, "
+                      f"o último termina em {nome_mes(fim)}."),
+            acao="A lista completa está em Lançamentos > Parcelados."))
     return out
 
 
@@ -46,8 +69,19 @@ def _categoria_acima(con, p, mes):
     medias = analises.media_categorias(con, mes)
     fator, minimo = p.get("fator", 1.3), p.get("minimo", 10000)
     for c in analises.gasto_por_categoria(con, mes):
+        if c["id"] == 0:
+            continue
+        if c.get("orcamento"):
+            if c["total"] <= c["orcamento"]:
+                continue
+            out.append(dict(chave=f"categoria:{mes}:{c['id']}", severidade=2,
+                            titulo=f"{c['nome']} passou do orçado",
+                            mensagem=f"Em {nome_mes(mes)} já foram {brl(c['total'])} em {c['nome']}, para um orçado de "
+                                     f"{brl(c['orcamento'])} ({c['total'] / c['orcamento'] - 1:+.0%}).",
+                            acao="Segurem essa categoria até a virada do mês, ou revejam o orçado se ele ficou irreal."))
+            continue
         m = medias.get(c["id"])
-        if not m or c["id"] == 0 or c["total"] < minimo or c["total"] <= m * fator:
+        if not m or c["total"] < minimo or c["total"] <= m * fator:
             continue
         out.append(dict(chave=f"categoria:{mes}:{c['id']}", severidade=2,
                         titulo=f"{c['nome']} acima da média",

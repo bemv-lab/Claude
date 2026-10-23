@@ -6,11 +6,9 @@ from datetime import date
 from .db import categoria_id
 from .util import normalizar
 
-PALAVRAS = ("PIX", "TRANSF", "TED", "DOC", "TEF", "ENVIO", "RECEBIMENTO")
-
-
 def _parece_transferencia(desc: str) -> bool:
-    return any(w.startswith(p) for w in normalizar(desc).split() for p in PALAVRAS)
+    return any(w.startswith(("PIX", "TRANSF", "ENVIO", "RECEBIMENTO")) or w in ("TED", "DOC", "TEF")
+               for w in normalizar(desc).split())
 
 
 def parear(con, janela_dias: int = 3) -> int:

@@ -18,7 +18,6 @@ CATEGORIA_EXTERNA = {
     "SERVICOS": None, "OUTROS": None, "DIVERSOS": None,
 }
 
-PALAVRAS_TRANSFERENCIA = ("PIX", "TRANSF", "TED", "DOC", "TEF")
 
 
 class Classificador:
@@ -31,6 +30,9 @@ class Classificador:
         self.nomes_casal = [normalizar(n) for n in json.loads(config(con, "nomes_casal", "[]") or "[]")]
         self.cat = {r["nome"]: r["id"] for r in con.execute("SELECT id, nome FROM categorias")}
         self.cat_tipo = {r["id"]: r["tipo"] for r in con.execute("SELECT id, tipo FROM categorias")}
+        # primeiro nome do titular de cada conta (Pix "para si mesmo" é transferência entre contas dele)
+        self.titular = {r["id"]: normalizar(r["nome"] or "").split(" ")[0]
+                        for r in con.execute("SELECT c.id, p.nome FROM contas c LEFT JOIN pessoas p ON p.id = c.titular_id")}
 
     def _casa(self, regra, alvo_desc, alvo_chave, valor, conta_id):
         if regra["sinal"] == "saida" and valor > 0 or regra["sinal"] == "entrada" and valor < 0:
@@ -82,7 +84,12 @@ class Classificador:
         if "ESTORNO" in desc_n or "REEMBOLSO" in desc_n or "CANCELAMENTO" in desc_n:
             res["motivo_duvida"] = "Estorno ou reembolso: de qual categoria era a compra?"
             return res
-        tem_transf = any(w.startswith(p) for w in desc_n.split() for p in PALAVRAS_TRANSFERENCIA)
+        tem_transf = any(w.startswith(("PIX", "TRANSF")) or w in ("TED", "DOC", "TEF") for w in desc_n.split())
+        dono = self.titular.get(tx.get("conta_id"))
+        if tem_transf and dono and dono != "CASAL" and f" {dono} " in alvo_desc:
+            res.update(categoria_id=self.cat.get("Transferência entre contas"), tipo="transferencia",
+                       classificacao="heuristica")
+            return res
         if tem_transf and any(n and n in alvo_chave for n in self.nomes_casal):
             res.update(sugestao_id=self.cat.get("Transferência entre contas"),
                        motivo_duvida="Parece transferência entre vocês. Confirma?")

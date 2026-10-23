@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from ..util import parse_data, parse_valor
+from ..util import normalizar, parse_data, parse_valor
 
 
 def decodificar(conteudo: bytes) -> str:
@@ -43,8 +43,10 @@ def ler(conteudo: bytes) -> dict:
             continue
         nome, memo = _tag(bloco, "NAME"), _tag(bloco, "MEMO")
         partes = [p for p in (nome, memo) if p]
-        if len(partes) == 2 and (partes[0] in partes[1] or partes[1] in partes[0]):
-            partes = [max(partes, key=len)]
+        if len(partes) == 2:
+            a, b = (normalizar(x) for x in partes)
+            if a in b or b in a:
+                partes = [max(partes, key=len)]
         transacoes.append({
             "data": data, "valor": valor, "descricao": " - ".join(partes) or (_tag(bloco, "TRNTYPE") or "?"),
             "fitid": _tag(bloco, "FITID"), "extra": _tag(bloco, "TRNTYPE") or "",
