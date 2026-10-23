@@ -161,9 +161,9 @@ def criar(caminho_db=None, pasta=None) -> dict:
     con = db.conectar(caminho_db)
     # dívidas com valores de exemplo
     hoje_iso = hoje().isoformat()
-    con.execute("UPDATE dividas SET parcelas_restantes = 18, juros_mensal = 1.8, data_base = ?, "
-                "reconhecer_texto = 'JOSE VIEIRA' WHERE tipo = 'consignado'", (hoje_iso,))
-    con.execute("UPDATE dividas SET saldo_base = 120000, data_base = ? WHERE nome = 'MetaEds'", (hoje_iso,))
+    # consignado e MetaEds usam os valores reais do cadastro; só o valor emprestado é de exemplo
+    con.execute("UPDATE dividas SET valor_emprestado = 2200000, reconhecer_texto = 'JOSE VIEIRA' "
+                "WHERE tipo = 'consignado'")
     con.execute("UPDATE dividas SET saldo_base = 345000, juros_mensal = 9.5, urgencia = 2, data_base = ? "
                 "WHERE nome LIKE 'Nubank%'", (hoje_iso,))
     con.execute("INSERT INTO negociacoes (divida_id, data, texto) SELECT id, ?, ? FROM dividas WHERE nome LIKE 'Nubank%'",

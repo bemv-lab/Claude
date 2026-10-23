@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS dividas (
   data_base TEXT,
   parcela_valor INTEGER, dia_vencimento INTEGER,
   parcelas_restantes INTEGER,            -- na data_base
+  parcelas_total INTEGER, data_inicio TEXT,
+  valor_emprestado INTEGER,              -- opcional: dá a taxa implícita do contrato
   mes_final TEXT,                        -- AAAA-MM
   juros_mensal REAL,                     -- % ao mês (NULL = desconhecido; 0 = sem juros)
   status TEXT DEFAULT 'ativa',           -- ativa | negociando | acordo | quitada
@@ -264,6 +266,9 @@ ALERTAS_PADRAO = [
      "Consignado (dia 15), faturas e parcelas de acordos nos próximos dias.", 1, {"dias": 3}),
     ("saldo_projetado_negativo", "Mês pode fechar no vermelho",
      "No ritmo atual, os gastos do mês passam da renda esperada.", 1, {}),
+    ("pagamento_cartao", "Dívida paga no cartão",
+     "Antes de passar uma dívida no cartão (ex.: MetaEds), mostra a fatura em que cai e o custo se algo "
+     "ficar no rotativo. Depois, lembra de pagar a fatura inteira.", 1, {}),
     ("fila_duvidas", "Lançamentos esperando vocês",
      "Lembra quando a fila de dúvidas cresce.", 1, {"minimo": 8}),
 ]
@@ -281,6 +286,40 @@ CONFIG_PADRAO = {
 }
 
 
+# Dados informados em 23/10/2026 (consignado: 17 de 48 parcelas pagas até 15/10/2026).
+CONSIGNADO = dict(parcelas_total=48, data_inicio="2025-06-15", mes_final="2029-05", parcelas_restantes=31,
+                  data_base="2026-10-15", juros_mensal=None,
+                  observacao="Consignado feito pelo pai: 48 parcelas de R$ 680,00, todo dia 15, pagas direto a ele "
+                             "(15/06/2025 a 15/05/2029).")
+METAEDS = dict(saldo_base=200000, data_base="2026-10-23", reconhecer_texto="METAEDS",
+               observacao="Pagamento previsto no cartão de crédito em 1x. Simulem antes de passar o cartão.")
+VERSAO_DADOS = 2
+
+
+def migrar(con: sqlite3.Connection) -> None:
+    """Atualiza bancos criados por versões anteriores, sem desfazer o que vocês editaram."""
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(dividas)")}
+    for c, tipo in (("parcelas_total", "INTEGER"), ("data_inicio", "TEXT"), ("valor_emprestado", "INTEGER")):
+        if c not in cols:
+            con.execute(f"ALTER TABLE dividas ADD COLUMN {c} {tipo}")
+    versao = int(config(con, "versao_dados", "1") or 1)
+    if versao < 2:
+        # só preenche o que ainda está no estado de fábrica (campos vazios)
+        con.execute("UPDATE dividas SET parcelas_total = ?, data_inicio = ?, mes_final = ?, parcelas_restantes = ?, "
+                    "data_base = ?, observacao = ? WHERE tipo = 'consignado' AND parcelas_restantes IS NULL",
+                    tuple(CONSIGNADO[k] for k in ("parcelas_total", "data_inicio", "mes_final", "parcelas_restantes",
+                                                  "data_base", "observacao")))
+        con.execute("UPDATE dividas SET saldo_base = ?, data_base = ?, reconhecer_texto = ?, observacao = ? "
+                    "WHERE nome = 'MetaEds' AND saldo_base IS NULL",
+                    tuple(METAEDS[k] for k in ("saldo_base", "data_base", "reconhecer_texto", "observacao")))
+    for tipo, nome, desc, ativo, par in ALERTAS_PADRAO:
+        con.execute("INSERT OR IGNORE INTO config_alertas (tipo, nome, descricao, ativo, parametros) "
+                    "VALUES (?,?,?,?,?)", (tipo, nome, desc, ativo, json.dumps(par)))
+    con.execute("INSERT INTO config (chave, valor) VALUES ('versao_dados', ?) "
+                "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor", (str(VERSAO_DADOS),))
+    con.commit()
+
+
 def conectar(caminho: Path | str) -> sqlite3.Connection:
     caminho = Path(caminho)
     caminho.parent.mkdir(parents=True, exist_ok=True)
@@ -290,6 +329,7 @@ def conectar(caminho: Path | str) -> sqlite3.Connection:
     con.executescript(ESQUEMA)
     if not con.execute("SELECT 1 FROM pessoas LIMIT 1").fetchone():
         semear(con)
+    migrar(con)
     return con
 
 
@@ -343,12 +383,10 @@ def semear(con: sqlite3.Connection) -> None:
     dividas = [
         dict(nome="Empréstimo consignado (pai)", credor="Pai", tipo="consignado", parcela_valor=68000,
              dia_vencimento=15, forma_pagamento="pix", reconhecer_valor=68000, reconhecer_janela=4, ordem=1,
-             observacao="Consignado feito pelo pai. Pago R$ 680,00 todo dia 15 direto a ele. "
-                        "Informe parcelas restantes, mês final e a taxa do consignado para o simulador."),
+             **CONSIGNADO),
         dict(nome="Dívida com a mãe (Edilene)", credor="Edilene", tipo="familia", saldo_base=500000,
              juros_mensal=0.0, ordem=2, observacao="Sem data definida. Monte um plano (valor por mês ou data-alvo)."),
-        dict(nome="MetaEds", credor="MetaEds", tipo="outro", forma_pagamento="cartao_1x", ordem=3,
-             observacao="Valor a confirmar. Provavelmente no cartão em 1x: simule antes de pagar."),
+        dict(nome="MetaEds", credor="MetaEds", tipo="outro", forma_pagamento="cartao_1x", ordem=3, **METAEDS),
         dict(nome="Nubank (débito pendente)", credor="Nubank", tipo="cartao", status="negociando",
              urgencia=1, ordem=4, observacao="Registre valor, propostas e o acordo fechado."),
     ]

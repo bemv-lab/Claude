@@ -340,8 +340,8 @@ def r_config_alerta(con, q, corpo, tipo):
 CAMPOS_DIVIDA = {"nome", "credor", "tipo", "saldo_base", "data_base", "parcela_valor", "dia_vencimento",
                  "parcelas_restantes", "mes_final", "juros_mensal", "status", "forma_pagamento",
                  "reconhecer_valor", "reconhecer_texto", "reconhecer_janela", "plano_mensal", "plano_data_alvo",
-                 "urgencia", "observacao", "ordem"}
-DINHEIRO_DIVIDA = {"saldo_base", "parcela_valor", "reconhecer_valor", "plano_mensal"}
+                 "urgencia", "observacao", "ordem", "parcelas_total", "data_inicio", "valor_emprestado"}
+DINHEIRO_DIVIDA = {"saldo_base", "parcela_valor", "reconhecer_valor", "plano_mensal", "valor_emprestado"}
 
 
 @rota("GET", "/api/dividas")
@@ -358,7 +358,7 @@ def _campos_divida(corpo):
             continue
         if k in DINHEIRO_DIVIDA:
             v = _centavos(v)
-        elif k in ("dia_vencimento", "parcelas_restantes", "reconhecer_janela", "urgencia", "ordem"):
+        elif k in ("dia_vencimento", "parcelas_restantes", "reconhecer_janela", "urgencia", "ordem", "parcelas_total"):
             v = _int(v, k)
         elif k == "juros_mensal":
             v = None if v in (None, "") else float(str(v).replace(",", "."))
@@ -429,6 +429,11 @@ def r_sim_cartao(con, q, corpo):
     juros = float(str(corpo.get("juros") or dividas.juros_rotativo(con)).replace(",", "."))
     r = dividas.simular_cartao(valor, fatura, vou_pagar, juros)
     r["fatura_sem_compra"] = fatura
+    cartao = dividas.cartao_principal(con)
+    venc = cartao and dividas.vencimento_fatura(hoje(), cartao["dia_fechamento"], cartao["dia_vencimento"])
+    r["vence_em"] = venc.isoformat() if venc else None
+    r["cartao"] = cartao["nome"] if cartao else None
+    r["folga_estimada"] = alertas.folga_do_mes(con, hoje().strftime("%Y-%m"))
     return r
 
 

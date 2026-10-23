@@ -218,6 +218,9 @@ select.chip { width: auto; padding: 8px 32px 8px 14px; }
 .numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; margin: 18px 0 4px; }
 .numeros .rotulo { font-size: 12.5px; }
 .numeros .num { font-size: 19px; font-weight: 600; margin-top: 2px; }
+.cartao.destaque { border-color: var(--critico); box-shadow: 0 0 0 1px var(--critico), var(--sombra); }
+.faixa-destaque { display: flex; gap: 10px; margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--critico-suave);
+                  font-size: 13.5px; color: var(--texto); }
 .prioridade { counter-reset: p; display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .prioridade li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; }
 .prioridade li::before { counter-increment: p; content: counter(p); width: 28px; height: 28px; border-radius: 50%; display: grid;

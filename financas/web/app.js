@@ -391,37 +391,45 @@ TELAS.dividas = async (el) => {
   $$("form[data-sim-antecipar]", el).forEach((f) => f.addEventListener("submit", simularAntecipacao));
 };
 
+const pctBR = (v, casas = 2) => (v === null || v === undefined ? "—" : `${Number(v).toLocaleString("pt-BR", { maximumFractionDigits: casas })}%`);
+
 function dividaHTML(d) {
   const [st, cls] = STATUS_DIVIDA[d.status] || STATUS_DIVIDA.ativa;
   const termino = d.termino === "quitada" ? "Quitada" : d.termino ? nomeMesCurto(d.termino) : "—";
-  const juros = d.juros_mensal === null ? "não informado" : `${String(d.juros_mensal).replace(".", ",")}% a.m.`;
-  return `<div class="cartao"><div class="divida-cab"><div><h3>${esc(d.nome)}</h3>
-      <span class="mudo" style="font-size:13px">${esc(TIPOS_DIVIDA[d.tipo] || "")}${d.credor ? " · " + esc(d.credor) : ""}${d.dia_vencimento ? ` · vence dia ${d.dia_vencimento}` : ""}</span></div>
+  const juros = d.juros_mensal !== null ? `${pctBR(d.juros_mensal)} a.m.` : d.taxa_implicita !== undefined && d.taxa_implicita !== null ? `${pctBR(d.taxa_implicita)} a.m. <small class="mudo">(implícita)</small>` : "não informado";
+  const cartao1x = d.forma_pagamento === "cartao_1x" && d.termino !== "quitada";
+  const pagas = d.parcelas_pagas;
+  return `<div class="cartao ${cartao1x ? "destaque" : ""}"><div class="divida-cab"><div><h3>${esc(d.nome)}</h3>
+      <span class="mudo" style="font-size:13px">${esc(TIPOS_DIVIDA[d.tipo] || "")}${d.credor ? " · " + esc(d.credor) : ""}${d.dia_vencimento ? ` · vence dia ${d.dia_vencimento}` : ""}${d.data_inicio ? ` · desde ${dataBR(d.data_inicio)}` : ""}</span></div>
       <span class="selo ${cls}">${st}</span></div>
+    ${cartao1x ? `<div class="faixa-destaque">⚠️ <span><b>Antes de passar no cartão:</b> pagando a fatura inteira no vencimento, não há juros. Se qualquer parte cair no rotativo, os juros são os mais caros do mercado. Simulem abaixo.</span></div>` : ""}
     <div class="numeros">
       <div><div class="rotulo">Saldo devedor</div><div class="num">${d.saldo_atual === null ? "a confirmar" : brl(d.saldo_atual)}</div></div>
       <div><div class="rotulo">Por mês</div><div class="num">${d.mensal ? brl(d.mensal) : "—"}</div></div>
       <div><div class="rotulo">Termina</div><div class="num">${termino}</div></div>
       <div><div class="rotulo">Juros</div><div class="num" style="font-size:15px">${juros}</div></div>
     </div>
-    ${d.parcelas_restantes_atual !== null ? `<p class="mudo" style="font-size:13px;margin:6px 0 0">${d.parcelas_restantes_atual} parcela(s) restante(s).</p>` : ""}
+    ${pagas !== undefined && pagas !== null ? `<div class="medidor" role="meter" aria-valuemin="0" aria-valuemax="${d.parcelas_total}" aria-valuenow="${pagas}" aria-label="Parcelas pagas"><i style="width:${(pagas / d.parcelas_total) * 100}%"></i></div>
+      <p class="mudo" style="font-size:13px;margin:0">${pagas} de ${d.parcelas_total} parcelas pagas · faltam ${d.parcelas_restantes_atual} · contrato total ${brl(d.total_contrato)}</p>` : ""}
+    ${d.taxa_implicita !== undefined && d.taxa_implicita !== null ? `<p class="mudo" style="font-size:13px;margin:6px 0 0">Emprestado ${brl(d.valor_emprestado)} → juros do contrato ${brl(d.juros_contrato)} · taxa implícita ${pctBR(d.taxa_implicita)} a.m. (${pctBR(d.taxa_anual, 1)} a.a.)</p>` : ""}
     ${d.mensal_necessario ? `<p class="mudo" style="font-size:13px;margin:6px 0 0">Para quitar até ${nomeMesCurto(d.plano_data_alvo)}: ${brl(d.mensal_necessario)} por mês.</p>` : ""}
     ${d.aviso ? `<p style="font-size:13.5px;margin:10px 0 0;color:var(--atencao)">${esc(d.aviso)}</p>` : ""}
     ${d.observacao ? `<p class="mudo" style="font-size:13.5px;margin:10px 0 0">${esc(d.observacao)}</p>` : ""}
-    ${d.pagamentos.length ? `<details style="margin-top:12px"><summary class="btn-texto" style="display:inline">Pagamentos (${d.pagamentos.length})</summary>
+    ${d.pagamentos.length ? `<details style="margin-top:12px"><summary class="btn-texto" style="display:inline">Pagamentos encontrados (${d.pagamentos.length})</summary>
       <ul class="historico">${d.pagamentos.map((x) => `<li>${dataBR(x.data)} · <span class="num">${brl(x.valor)}</span>${x.transacao_id ? " · encontrado no extrato" : " · registrado à mão"}</li>`).join("")}</ul></details>` : ""}
     ${d.negociacoes.length || d.status === "negociando" ? `<div style="margin-top:12px"><b style="font-size:14px">Histórico de negociação</b>
       ${d.negociacoes.length ? `<ul class="historico">${d.negociacoes.map((n) => `<li>${dataBR(n.data)}: ${esc(n.texto)}</li>`).join("")}</ul>` : `<p class="mudo" style="font-size:13px;margin:4px 0">Nada registrado ainda.</p>`}</div>` : ""}
-    ${d.forma_pagamento === "cartao_1x" ? `<form class="sim" data-sim-cartao><h4>Antes de pagar no cartão: quanto isso custaria?</h4>
+    ${cartao1x ? `<form class="sim" data-sim-cartao><h4>Simular o pagamento no cartão</h4>
       <div class="grade-form"><label class="campo">Valor da dívida<input name="valor" value="${paraInput(d.saldo_atual)}" placeholder="0,00" inputmode="decimal"></label>
-      <label class="campo">Resto da fatura <small>vazio = compras do mês</small><input name="fatura_sem_compra" placeholder="automático" inputmode="decimal"></label>
+      <label class="campo">Resto da fatura <small>vazio = compras do mês no cartão</small><input name="fatura_sem_compra" placeholder="automático" inputmode="decimal"></label>
       <label class="campo">Quanto conseguem pagar da fatura <small>vazio = tudo</small><input name="vou_pagar" placeholder="a fatura inteira" inputmode="decimal"></label></div>
       <button class="btn" style="margin-top:12px">Simular</button><div data-res></div></form>` : ""}
-    ${d.tipo === "consignado" ? `<form class="sim" data-sim-antecipar data-parcela="${d.parcela_valor || 0}" data-restantes="${d.parcelas_restantes_atual || 0}" data-juros="${d.juros_mensal ?? ""}">
+    ${d.tipo === "consignado" && d.termino !== "quitada" ? `<form class="sim" data-sim-antecipar data-parcela="${d.parcela_valor || 0}" data-restantes="${d.parcelas_restantes_atual || 0}" data-juros="${d.taxa_simulacao ?? ""}">
       <h4>E se antecipar parcelas?</h4>
-      ${d.parcelas_restantes_atual && d.juros_mensal !== null ? `<div class="grade-form"><label class="campo">Quantas parcelas antecipar (das últimas)<input type="number" name="antecipar" min="1" max="${d.parcelas_restantes_atual}" value="${Math.min(3, d.parcelas_restantes_atual)}"></label></div>
+      ${d.taxa_simulacao ? `<p class="mudo" style="font-size:13px;margin:0 0 12px">Quitar tudo hoje custaria ~<b class="num">${brl(d.quitar_hoje.pagar_hoje)}</b> em vez de ${brl(d.quitar_hoje.nominal)} (economia de ${brl(d.quitar_hoje.economia)}), usando ${pctBR(d.taxa_simulacao)} a.m.${d.juros_mensal === null ? " (taxa implícita)" : ""}.</p>
+      <div class="grade-form"><label class="campo">Quantas parcelas antecipar (das últimas)<input type="number" name="antecipar" min="1" max="${d.parcelas_restantes_atual}" value="${Math.min(6, d.parcelas_restantes_atual)}"></label></div>
       <button class="btn" style="margin-top:12px">Simular</button><div data-res></div>`
-      : `<p class="mudo" style="font-size:13.5px;margin:0">Informem em “Editar” as parcelas restantes e a taxa de juros do contrato (está no contrato ou no app do banco do seu pai). Com isso eu calculo quanto economizam antecipando.</p>`}</form>` : ""}
+      : `<p class="mudo" style="font-size:13.5px;margin:0">Informem em “Editar” o <b>valor originalmente emprestado</b> (opcional) ou a taxa do contrato. Com isso eu calculo a taxa implícita e quanto economizam antecipando.</p>`}</form>` : ""}
     <div class="modal-acoes" style="justify-content:flex-start;margin-top:16px">
       <button class="btn" data-editar="${d.id}">Editar</button>
       <button class="btn" data-pagar="${d.id}">Registrar pagamento</button>
@@ -434,14 +442,14 @@ async function simularCartao(e) {
   const r = await api("/api/simular/cartao", { metodo: "POST", corpo: form(e.target) });
   $("[data-res]", e.target).innerHTML = `<div class="resultado ${r.alerta ? "ruim" : "ok"}">
     ${r.alerta ? `<b>⚠️ Isso vai custar juros.</b><br>` : `<b>✓ Sem juros se pagarem a fatura inteira.</b><br>`}${esc(r.mensagem)}
-    <div class="mudo" style="font-size:12.5px;margin-top:6px">Fatura estimada: ${brl(r.fatura)} (resto da fatura considerado: ${brl(r.fatura_sem_compra)})</div></div>`;
+    <div class="mudo" style="font-size:12.5px;margin-top:6px">Fatura estimada: ${brl(r.fatura)} (resto da fatura considerado: ${brl(r.fatura_sem_compra)})${r.vence_em ? ` · se passar hoje no ${esc(r.cartao)}, vence em ${dataBR(r.vence_em)}` : ""}${r.folga_estimada !== undefined ? ` · sobra estimada no mês para pagar a fatura: ${brl(Math.max(0, r.folga_estimada))}` : ""}</div></div>`;
 }
 async function simularAntecipacao(e) {
   e.preventDefault();
   const f = e.target;
   const r = await api("/api/simular/antecipacao", { metodo: "POST", corpo: { parcela: +f.dataset.parcela, restantes: +f.dataset.restantes, juros: f.dataset.juros, antecipar: form(f).antecipar } });
   $("[data-res]", f).innerHTML = `<div class="resultado ok">Antecipando as ${r.antecipar} últimas parcelas, pagam hoje <b>${brl(r.pagar_hoje)}</b> em vez de ${brl(r.nominal)}: economia de <b>${brl(r.economia)}</b>. Ficam ${r.restantes_depois} parcela(s).
-    <div class="mudo" style="font-size:12.5px;margin-top:6px">Na antecipação os juros das parcelas futuras são descontados (CDC, art. 52). Confirmem o valor exato com o banco antes de pagar.</div></div>`;
+    <div class="mudo" style="font-size:12.5px;margin-top:6px">Na antecipação os juros das parcelas futuras são descontados (CDC, art. 52 §2º). Como o consignado está no nome do seu pai, a economia só existe se ele amortizar no banco: confirmem o valor exato com o banco antes.</div></div>`;
 }
 
 function editarDivida(d) {
@@ -453,8 +461,11 @@ function editarDivida(d) {
       <label class="campo">Situação<select name="status">${Object.entries(STATUS_DIVIDA).map(([k, [v]]) => `<option value="${k}" ${d.status === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
       ${campo("saldo_base", "Saldo devedor hoje (R$)", paraInput(d.saldo_atual ?? d.saldo_base), 'inputmode="decimal" placeholder="a confirmar"', d.tipo === "consignado" ? "ou use parcelas" : "")}
       ${campo("parcela_valor", "Parcela (R$)", paraInput(d.parcela_valor), 'inputmode="decimal"')}
-      ${campo("parcelas_restantes", "Parcelas restantes", d.parcelas_restantes_atual ?? d.parcelas_restantes, 'type="number" min="0"')}
+      ${campo("parcelas_restantes", "Parcelas restantes hoje", d.parcelas_restantes_atual ?? d.parcelas_restantes, 'type="number" min="0"')}
+      ${campo("parcelas_total", "Total de parcelas do contrato", d.parcelas_total, 'type="number" min="0"')}
+      ${campo("data_inicio", "1ª parcela em", d.data_inicio, 'type="date"')}
       ${campo("mes_final", "Mês da última parcela", d.mes_final, 'type="month"')}
+      ${campo("valor_emprestado", "Valor originalmente emprestado (R$)", paraInput(d.valor_emprestado), 'inputmode="decimal" placeholder="opcional"', "dá a taxa implícita")}
       ${campo("dia_vencimento", "Dia do vencimento", d.dia_vencimento, 'type="number" min="1" max="31"')}
       ${campo("juros_mensal", "Juros (% ao mês)", d.juros_mensal === null || d.juros_mensal === undefined ? "" : String(d.juros_mensal).replace(".", ","), 'inputmode="decimal" placeholder="não sei"')}
       ${campo("plano_mensal", "Plano: quanto por mês (R$)", paraInput(d.plano_mensal), 'inputmode="decimal"')}

@@ -171,6 +171,66 @@ class TestPipeline(BaseBanco):
         self.assertEqual([tuple(l) for l in linhas], [("nubank", "Mercado"), ("itau", "Salário")])
 
 
+class TestDividasReais(BaseBanco):
+    def divida(self, filtro):
+        d = self.con.execute(f"SELECT * FROM dividas WHERE {filtro}").fetchone()
+        return dividas.estado(self.con, d)
+
+    def test_consignado_cadastrado(self):
+        e = self.divida("tipo = 'consignado'")
+        self.assertEqual((e["parcelas_restantes_atual"], e["saldo_atual"]), (31, 2108000))
+        self.assertEqual((e["parcelas_pagas"], e["termino"]), (17, "2029-05"))
+
+    def test_consignado_abate_por_mes(self):
+        # outubro pago com 1 dia de atraso já está nas 17 pagas; novembro abate
+        self.importar("i.csv", "Data;Descrição;Valor\n16/10/2026;Pix enviado - Pai;-680,00\n"
+                               "14/11/2026;Pix enviado - Pai;-680,00\n", "inter-conta")
+        e = self.divida("tipo = 'consignado'")
+        self.assertEqual(len(e["pagamentos"]), 2)
+        self.assertEqual((e["parcelas_restantes_atual"], e["saldo_atual"], e["termino"]), (30, 2040000, "2029-05"))
+
+    def test_taxa_implicita_e_quitacao(self):
+        self.con.execute("UPDATE dividas SET valor_emprestado = 2200000 WHERE tipo = 'consignado'")
+        e = self.divida("tipo = 'consignado'")
+        self.assertAlmostEqual(e["taxa_implicita"], 1.741, places=2)
+        self.assertEqual(e["juros_contrato"], 48 * 68000 - 2200000)
+        self.assertLess(e["quitar_hoje"]["pagar_hoje"], 2108000)
+        self.assertIsNone(dividas.taxa_implicita(0, 68000, 48))
+        self.assertEqual(dividas.taxa_implicita(3264000, 68000, 48), 0.0)
+
+    def test_metaeds_no_cartao(self):
+        e = self.divida("nome = 'MetaEds'")
+        self.assertEqual(e["saldo_atual"], 200000)
+        from nucleo import alertas
+        alertas.gerar(self.con)
+        a = self.con.execute("SELECT * FROM alertas WHERE tipo = 'pagamento_cartao'").fetchone()
+        self.assertIsNotNone(a)
+        self.assertIn("simulem", (a["titulo"] + a["acao"]).lower())
+        # passou no cartão: vira pagamento, sai do saldo e o alerta lembra da fatura inteira
+        self.importar("f.csv", "Data;Lançamento;Valor\n24/10/2026;METAEDS CURSOS;R$ 2.000,00\n", "inter-cartao")
+        e = self.divida("nome = 'MetaEds'")
+        self.assertEqual(e["saldo_atual"], 0)
+        a = self.con.execute("SELECT * FROM alertas WHERE tipo = 'pagamento_cartao' AND ativo = 1").fetchone()
+        self.assertIn("10/11/2026", a["titulo"])
+
+    def test_migracao_de_banco_antigo(self):
+        caminho = self.dir / "antigo.db"
+        con = db.conectar(caminho)
+        con.execute("UPDATE dividas SET parcelas_restantes = NULL, parcelas_total = NULL WHERE tipo = 'consignado'")
+        con.execute("UPDATE dividas SET saldo_base = NULL WHERE nome = 'MetaEds'")
+        con.execute("UPDATE dividas SET observacao = 'editado' WHERE tipo = 'familia'")
+        con.execute("UPDATE config SET valor = '1' WHERE chave = 'versao_dados'")
+        con.execute("DELETE FROM config_alertas WHERE tipo = 'pagamento_cartao'")
+        con.commit(); con.close()
+        con = db.conectar(caminho)
+        r = con.execute("SELECT parcelas_restantes, parcelas_total FROM dividas WHERE tipo='consignado'").fetchone()
+        self.assertEqual(tuple(r), (31, 48))
+        self.assertEqual(con.execute("SELECT saldo_base FROM dividas WHERE nome='MetaEds'").fetchone()[0], 200000)
+        self.assertEqual(con.execute("SELECT observacao FROM dividas WHERE tipo='familia'").fetchone()[0], "editado")
+        self.assertTrue(con.execute("SELECT 1 FROM config_alertas WHERE tipo='pagamento_cartao'").fetchone())
+        con.close()
+
+
 class TestDividas(unittest.TestCase):
     def test_cartao_sem_rotativo(self):
         r = dividas.simular_cartao(120000, 200000, None, 14.5)

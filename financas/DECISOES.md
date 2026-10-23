@@ -61,15 +61,25 @@ Decisões que não bloqueavam o trabalho. Tudo aqui é editável na interface ou
   em Ajustes.
 
 ## Dívidas
-- **Consignado (pai)**: reconhece no extrato uma saída de exatamente R$ 680,00 até 4 dias antes ou depois
-  do dia 15. Se souberem o nome que aparece no Pix (ex.: nome do seu pai), coloquem em "trecho da
-  descrição": fica mais preciso. Faltam: parcelas restantes, mês final e taxa do contrato (para o
-  simulador de antecipação).
+- **Consignado (pai)** (dados de 23/10/2026): 48 parcelas de R$ 680,00, dia 15, de 15/06/2025 a 15/05/2029;
+  17 pagas até 15/10/2026, 31 restantes (R$ 21.080,00). O sistema reconhece no extrato uma saída de exatamente
+  R$ 680,00 até 4 dias antes ou depois do dia 15 e abate uma parcela. A contagem é **por mês**: a de outubro
+  paga no dia 16 continua sendo a de outubro (já está nas 17); a partir de novembro, cada mês pago abate uma.
+  Pagar mais de uma no mesmo mês (antecipação) abate todas e encurta o término.
+  Se souberem o nome que aparece no Pix para o seu pai, coloquem em "trecho da descrição": fica mais preciso.
+- **Valor originalmente emprestado** (opcional): com ele o sistema calcula a taxa implícita (tabela Price,
+  48 parcelas), os juros totais do contrato e quanto custaria quitar ou antecipar hoje. A taxa implícita também
+  entra na ordem de prioridade. Se souberem a taxa do contrato, ela vale mais que a implícita. Como o consignado
+  está no nome do seu pai, a economia só existe se ele amortizar no banco.
 - **Saldo informado vale a partir do dia em que foi informado**: pagamentos anteriores não descontam de
   novo.
-- **MetaEds**: valor em branco (não bloqueia nada). Forma de pagamento "cartão 1x" mostra o simulador.
-  Juros do rotativo padrão: 14,5% a.m. (média aproximada de grandes bancos; ajustem pelo app do cartão).
-  O simulador considera IOF e o teto legal de 100% de encargos (Lei 14.690/2023).
+- **MetaEds**: R$ 2.000,00, pagamento previsto no cartão em 1x. Alerta em destaque antes de passar o cartão:
+  em qual fatura cai (Inter: fechamento dia 3 e vencimento dia 10, **confirmem** em Ajustes > Contas), a fatura
+  estimada e se o que sobra no mês cobre a fatura inteira. Se não cobre, mostra o custo do rotativo. Quando a
+  compra "METAEDS" aparece na fatura, a dívida é dada como paga no cartão e o alerta passa a ser "paguem a
+  fatura inteira até o vencimento". "Sobra do mês" = renda de referência − parcelas de dívida − gastos fora do
+  cartão (estimativa). Juros do rotativo padrão: 14,5% a.m. (ajustem pelo app do cartão); o simulador considera
+  IOF e o teto legal de 100% de encargos (Lei 14.690/2023).
 - **Nubank**: em negociação, urgência "atenção". Para priorizar, dívida de banco/cartão sem taxa informada
   é tratada como 8% a.m. (estimativa conservadora) e isso aparece escrito como "estimado".
 - **Ordem sugerida**: urgência (cobrança/negativação) > juros mais caros > saldo menor. Dívidas de família

@@ -177,6 +177,64 @@ def _saldo_negativo(con, p, mes):
                  acao="Escolham uma ou duas categorias para segurar até o fim do mês.")]
 
 
+def folga_do_mes(con, mes: str) -> int:
+    """Estimativa do que sobra para pagar a fatura: renda − parcelas de dívida − gastos fora do cartão."""
+    tot = analises.totais_mes(con, mes)
+    fora_cartao = tot["despesas"] - tot["cartao"] - tot["dividas"]
+    return renda_referencia(con, mes) - dividas.mensal_comprometido(con) - max(0, fora_cartao)
+
+
+def _pagamento_cartao(con, p, mes):
+    out = []
+    h = hoje()
+    cartao = dividas.cartao_principal(con)
+    if not cartao:
+        return out
+    painel = dividas.painel(con)["dividas"]
+    for d in painel:
+        if d["forma_pagamento"] != "cartao_1x" or d["status"] == "quitada":
+            continue
+        no_cartao = [pg for pg in d["pagamentos"] if pg["transacao_id"] and con.execute(
+            "SELECT 1 FROM transacoes t JOIN contas c ON c.id = t.conta_id WHERE t.id = ? AND c.tipo = 'cartao'",
+            (pg["transacao_id"],)).fetchone()]
+        if no_cartao:
+            pg = no_cartao[0]
+            from datetime import date as _d
+            venc = dividas.vencimento_fatura(_d.fromisoformat(pg["data"]), cartao["dia_fechamento"],
+                                             cartao["dia_vencimento"])
+            if venc and venc >= h:
+                out.append(dict(chave=f"cartao_fatura:{d['id']}:{venc}", severidade=3,
+                                titulo=f"{d['nome']} está na fatura que vence em {data_br(venc.isoformat())}",
+                                mensagem=f"{brl(pg['valor'])} passados no cartão em {data_br(pg['data'])}. Pagando a "
+                                         "fatura inteira no vencimento, não há juros nenhum.",
+                                acao="Agendem o pagamento do valor TOTAL da fatura. Pagamento mínimo = rotativo."))
+            continue
+        if not d["saldo_atual"]:
+            continue
+        venc = dividas.vencimento_fatura(h, cartao["dia_fechamento"], cartao["dia_vencimento"])
+        compras = analises.totais_mes(con, mes)["cartao"]
+        fatura = compras + d["saldo_atual"]
+        folga = folga_do_mes(con, mes)
+        juros = dividas.juros_rotativo(con)
+        quando = f"Se passar hoje, entra na fatura que vence em {data_br(venc.isoformat())}. " if venc else ""
+        if fatura > folga:
+            sim = dividas.simular_cartao(d["saldo_atual"], compras, max(0, folga), juros)
+            out.append(dict(chave=f"cartao_antes:{d['id']}:{mes}", severidade=3,
+                            titulo=f"Atenção: {d['nome']} no cartão pode cair no rotativo",
+                            mensagem=f"{quando}Fatura estimada: {brl(fatura)}. Pelo que sobra no mês (~{brl(max(0, folga))}), "
+                                     f"faltariam {brl(sim['rotativo'])}: no rotativo isso custa ~{brl(sim['custo_1_mes'])} "
+                                     "só no primeiro mês.",
+                            acao="Não passem no cartão antes de ter a fatura inteira garantida. Simulem em Dívidas "
+                                 "ou negociem parcelas direto com a MetaEds."))
+        else:
+            out.append(dict(chave=f"cartao_antes:{d['id']}:{mes}", severidade=2,
+                            titulo=f"{d['nome']}: simulem antes de passar no cartão",
+                            mensagem=f"{quando}Fatura estimada: {brl(fatura)}, dentro do que sobra no mês "
+                                     f"(~{brl(folga)}). Pagando a fatura inteira, custo zero.",
+                            acao="Confirmem o valor e paguem a fatura inteira no vencimento."))
+    return out
+
+
 def _fila(con, p, mes):
     n = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao = 'duvida'").fetchone()[0]
     if n < p.get("minimo", 8):
@@ -190,7 +248,7 @@ GERADORES = {
     "parcelamento": _parcelamento, "categoria_acima_media": _categoria_acima,
     "fatura_orcamento": _fatura_orcamento, "assinatura_nova": _assinatura_nova,
     "gasto_fora_padrao": _fora_padrao, "vencimento_proximo": _vencimentos,
-    "saldo_projetado_negativo": _saldo_negativo, "fila_duvidas": _fila,
+    "saldo_projetado_negativo": _saldo_negativo, "pagamento_cartao": _pagamento_cartao, "fila_duvidas": _fila,
 }
 
 

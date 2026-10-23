@@ -1,6 +1,7 @@
 """Dívidas: reconhecimento de pagamentos nos extratos, saldo, término previsto, prioridade e simulações."""
 from __future__ import annotations
 
+import calendar
 import math
 from datetime import date
 
@@ -23,16 +24,19 @@ def reconhecer_pagamentos(con) -> int:
     novos = 0
     for d in con.execute("SELECT * FROM dividas WHERE status != 'quitada' "
                          "AND (reconhecer_valor IS NOT NULL OR COALESCE(reconhecer_texto,'') != '')").fetchall():
-        texto = normalizar(d["reconhecer_texto"] or "")
+        texto = normalizar(d["reconhecer_texto"] or "").replace(" ", "")
         janela = d["reconhecer_janela"] if d["reconhecer_janela"] is not None else 4
+        # no cartão só entra a dívida que vai ser paga no cartão (ex.: MetaEds em 1x)
+        tipos_conta = ("corrente", "cartao") if d["forma_pagamento"] == "cartao_1x" else ("corrente",)
         candidatas = con.execute(
             "SELECT t.* FROM transacoes t JOIN contas c ON c.id = t.conta_id "
-            "WHERE t.valor < 0 AND t.divida_id IS NULL AND t.tipo = 'normal' AND c.tipo = 'corrente' "
-            "AND t.classificacao != 'manual'").fetchall()
+            f"WHERE t.valor < 0 AND t.divida_id IS NULL AND t.tipo = 'normal' "
+            f"AND c.tipo IN ({','.join('?' * len(tipos_conta))}) "
+            "AND t.classificacao != 'manual' AND t.data >= ?", (*tipos_conta, d["data_inicio"] or "0000")).fetchall()
         for t in candidatas:
             valor = -t["valor"]
             ok = False
-            if texto and texto in normalizar(t["descricao"]):
+            if texto and texto in normalizar(t["descricao"]).replace(" ", ""):
                 ok = d["reconhecer_valor"] is None or abs(valor - d["reconhecer_valor"]) <= d["reconhecer_valor"] * 0.02
             elif not texto and d["reconhecer_valor"] and valor == d["reconhecer_valor"]:
                 ok = d["dia_vencimento"] is None or _dist_dia(int(t["data"][8:10]), d["dia_vencimento"]) <= janela
@@ -68,7 +72,12 @@ def estado(con, d) -> dict:
     d = dict(d)
     ref = hoje()
     pags = linhas(con.execute("SELECT * FROM pagamentos_divida WHERE divida_id = ? ORDER BY data DESC", (d["id"],)))
-    depois = [p for p in pags if p["data"] > (d["data_base"] or "0000")]
+    base = d["data_base"] or "0000-00-00"
+    if d["parcelas_restantes"] is not None:
+        # parcela mensal: o que vale é o mês (a de outubro paga dia 16 ainda é a de outubro)
+        depois = [p for p in pags if p["data"][:7] > base[:7]]
+    else:
+        depois = [p for p in pags if p["data"] > base]
     pago_depois = sum(p["valor"] for p in depois)
     restantes = None
     if d["parcelas_restantes"] is not None:
@@ -82,11 +91,13 @@ def estado(con, d) -> dict:
     termino, aviso, mensal_necessario = None, None, None
     if d["status"] == "quitada" or saldo == 0:
         termino = "quitada"
+    elif restantes:
+        # última parcela = último mês pago + restantes (antecipar encurta o prazo)
+        ultimo_mes = max([base[:7]] + [p["data"][:7] for p in depois])
+        termino = somar_meses(ultimo_mes, restantes) if d["data_base"] else \
+            somar_meses(proxima_data_dia(d["dia_vencimento"] or 15, ref).strftime("%Y-%m"), restantes - 1)
     elif d["mes_final"]:
         termino = d["mes_final"]
-    elif restantes:
-        prox = proxima_data_dia(d["dia_vencimento"] or 15, ref)
-        termino = somar_meses(prox.strftime("%Y-%m"), restantes - 1)
     elif d["plano_data_alvo"] and saldo:
         meses = max(1, _meses_ate(d["plano_data_alvo"][:7], ref))
         mensal_necessario = math.ceil(saldo / meses)
@@ -101,10 +112,22 @@ def estado(con, d) -> dict:
             termino = somar_meses(ref.strftime("%Y-%m"), n)
     if saldo is None:
         aviso = aviso or "Valor a confirmar."
-    elif termino is None and not aviso:
+    elif termino is None and not aviso and d["forma_pagamento"] != "cartao_1x":
         aviso = "Sem plano de pagamento ainda."
     ultimo = pags[0] if pags else None
-    return {**d, "saldo_atual": saldo, "parcelas_restantes_atual": restantes, "mensal": mensal if saldo != 0 else 0,
+    contrato = {}
+    if d["parcelas_total"] and d["parcela_valor"]:
+        contrato["parcelas_pagas"] = d["parcelas_total"] - restantes if restantes is not None else None
+        contrato["total_contrato"] = d["parcelas_total"] * d["parcela_valor"]
+        if d["valor_emprestado"]:
+            taxa = taxa_implicita(d["valor_emprestado"], d["parcela_valor"], d["parcelas_total"])
+            contrato.update(taxa_implicita=taxa, juros_contrato=contrato["total_contrato"] - d["valor_emprestado"],
+                            taxa_anual=None if taxa is None else round(((1 + taxa / 100) ** 12 - 1) * 100, 2))
+    taxa_uso = d["juros_mensal"] if d["juros_mensal"] is not None else contrato.get("taxa_implicita")
+    if restantes and d["parcela_valor"] and taxa_uso:
+        contrato["taxa_simulacao"] = taxa_uso
+        contrato["quitar_hoje"] = simular_antecipacao(d["parcela_valor"], restantes, taxa_uso, restantes)
+    return {**d, **contrato, "saldo_atual": saldo, "parcelas_restantes_atual": restantes, "mensal": mensal if saldo != 0 else 0,
             "mensal_necessario": mensal_necessario, "termino": termino, "aviso": aviso,
             "pagamentos": pags[:12], "ultimo_pagamento": ultimo,
             "negociacoes": linhas(con.execute("SELECT * FROM negociacoes WHERE divida_id = ? ORDER BY data DESC, id DESC",
@@ -114,6 +137,8 @@ def estado(con, d) -> dict:
 def _juros_efetivo(d) -> tuple[float, bool]:
     if d["juros_mensal"] is not None:
         return float(d["juros_mensal"]), False
+    if d.get("taxa_implicita") is not None:
+        return float(d["taxa_implicita"]), False
     if d["tipo"] in ("cartao", "banco"):
         return JUROS_DESCONHECIDO_BANCO, True
     if d["tipo"] == "familia":
@@ -129,6 +154,8 @@ def prioridade(estados: list[dict]) -> list[dict]:
             continue
         j, estimado = _juros_efetivo(e)
         jt = f"{j:.1f}".replace(".", ",")
+        if e["forma_pagamento"] == "cartao_1x" and e["juros_mensal"] is None:
+            j, estimado = 0.0, False
         if e["urgencia"] >= 2:
             motivo = "Urgente: cobrança ou negativação em andamento. Resolver primeiro evita custo e estresse."
         elif j >= 3:
@@ -136,6 +163,9 @@ def prioridade(estados: list[dict]) -> list[dict]:
                       "Cada real antecipado aqui rende mais que qualquer investimento conservador.")
         elif j > 0:
             motivo = f"Juros de {jt}% ao mês: vale antecipar depois das mais caras."
+        elif e["forma_pagamento"] == "cartao_1x":
+            motivo = ("Custo zero se a fatura for paga inteira no vencimento. Se qualquer parte cair no "
+                      "rotativo, vira a dívida mais cara de todas: só passem no cartão com a fatura garantida.")
         elif estimado:
             motivo = "Juros não informados: preencham a taxa para a ordem ficar certa."
         elif e["tipo"] == "familia":
@@ -199,6 +229,43 @@ def simular_cartao(valor: int, fatura_sem_compra: int, vou_pagar: int | None, ju
                      f"chega perto de {brl(custo12)}. Alternativas: negociar parcelas direto com o credor, "
                      "pagar parte à vista com reserva, ou adiar a compra até caber na fatura."),
     }
+
+
+def taxa_implicita(emprestado: int, parcela: int, n: int) -> float | None:
+    """Taxa mensal (%) que iguala o valor emprestado às n parcelas (tabela Price), por bisseção."""
+    if not emprestado or not parcela or not n or emprestado <= 0:
+        return None
+    if parcela * n <= emprestado:
+        return 0.0
+    vp = lambda i: parcela * (1 - (1 + i) ** -n) / i
+    lo, hi = 1e-9, 1.0
+    if vp(hi) > emprestado:
+        return None
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if vp(mid) > emprestado:
+            lo = mid
+        else:
+            hi = mid
+    return round(mid * 100, 3)
+
+
+def vencimento_fatura(data_compra: date, dia_fechamento: int | None, dia_vencimento: int | None) -> date | None:
+    """Em qual fatura cai uma compra: depois do fechamento, vai para o vencimento seguinte."""
+    if not dia_vencimento:
+        return None
+    y, m = data_compra.year, data_compra.month
+    if dia_fechamento and data_compra.day > dia_fechamento:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    if dia_fechamento and dia_vencimento < dia_fechamento:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)   # vence no mês seguinte ao fechamento
+    return date(y, m, min(dia_vencimento, calendar.monthrange(y, m)[1]))
+
+
+def cartao_principal(con):
+    """Cartão onde as compras do casal se concentram (Inter); senão, o primeiro cartão ativo."""
+    return (con.execute("SELECT * FROM contas WHERE apelido = 'inter-cartao' AND ativa = 1").fetchone()
+            or con.execute("SELECT * FROM contas WHERE tipo = 'cartao' AND ativa = 1 ORDER BY id").fetchone())
 
 
 def simular_antecipacao(parcela: int, restantes: int, juros_mensal: float, antecipar: int) -> dict:
