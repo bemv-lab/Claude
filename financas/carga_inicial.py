@@ -10,6 +10,7 @@ O arquivo de ajustes (JSON) pode ter:
   "dividas_atualizar":   [{"nome": "...", "campos": {"saldo_base": 100000, ...}}]
   "dividas_novas":       [{"nome": "...", "tipo": "...", ...}]
   "classificar":         [{"conta": "bb", "data": "AAAA-MM-DD", "valor": 2942, "categoria": "..."}]
+  "portadores":          [{"conta": "inter-cartao", "padrao": "final do cartão", "pessoa": "Lucas"}]
   "regras":              [{"padrao": "NOME NO EXTRATO", "categoria": "Salário", "sinal": "entrada", "escopo": "pessoal"}]
   "negociacoes":         [{"divida": "...", "data": "AAAA-MM-DD", "texto": "..."}]
   "lancamentos_estimados": [{"conta": "itau", "data": "AAAA-MM-DD", "descricao": "...", "valor": 112763,
@@ -87,6 +88,21 @@ def aplicar_classificacoes(con, aj: dict) -> int:
     return n
 
 
+def aplicar_portadores(con, aj: dict) -> int:
+    """Quem usa cada cartão (final do cartão no extrato -> pessoa)."""
+    n = 0
+    for p in aj.get("portadores", []):
+        conta = con.execute("SELECT id FROM contas WHERE apelido = ?", (p["conta"],)).fetchone()
+        pessoa = db.pessoa_id(con, p["pessoa"])
+        if conta and pessoa and not con.execute("SELECT 1 FROM portadores WHERE conta_id = ? AND padrao = ?",
+                                                (conta["id"], p["padrao"])).fetchone():
+            con.execute("INSERT INTO portadores (conta_id, pessoa_id, padrao, papel) VALUES (?,?,?,?)",
+                        (conta["id"], pessoa, p["padrao"], p.get("papel", "titular")))
+            n += 1
+    con.commit()
+    return n
+
+
 def aplicar_regras(con, aj: dict) -> int:
     n = 0
     for r in aj.get("regras", []):
@@ -141,6 +157,7 @@ def main() -> int:
     for k, v in aj.get("config", {}).items():
         db.definir_config(con, k, json.dumps(v) if isinstance(v, list) else v)
     aplicar_regras(con, aj)          # antes de importar: já entram classificados
+    aplicar_portadores(con, aj)
     lote = Lote(con)
     lote.pasta(entrada)
     print("\n".join(aplicar_dividas(con, aj)))
