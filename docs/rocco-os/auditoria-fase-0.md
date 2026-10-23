@@ -13,7 +13,7 @@
 | 0A | Pesquisa pública (documentação e sites oficiais) | Claude | **Concluída em 23/10/2026** (seção 2) |
 | 0B | Único Drop: plano, cadastro de custo, exportação, histórico, API | Proprietária + suporte da Único Drop | Aguardando informações (seção 4) |
 | 0C | Cartpanda / Cartpanda Pay: taxas contratadas, parcelamento, exportações, token | Proprietária + suporte da Cartpanda | Aguardando informações (seção 5) |
-| 0D | Shopify: leituras sem dados pessoais pelo conector | Claude, **com OK específico** | Aguardando OK (seção 6) |
+| 0D | Shopify: leituras sem dados pessoais pelo conector | Claude, **com OK específico** | Consultas preparadas e revisadas; execução aguarda aprovação (seção 6) |
 | 0E | Teste do lucro da Único Drop: 10 pedidos × cálculo manual | Proprietária + Claude | Depois de 0B e 0C |
 | 0F | Ambiente e termos (Docker, MFA, termos Supabase e Cloudflare) | Claude | A fazer (não depende das suas contas) |
 
@@ -67,7 +67,7 @@ Limite: a rede deste ambiente bloqueia o acesso direto a help.cartpanda.com, dev
 
 ---
 
-## 4. Etapa 0B · Único Drop: o que preciso de você
+## 4. Etapa 0B · Único Drop: lista completa (só se a rodada mínima da seção 10 não bastar)
 
 1. **Nome do seu plano atual.**
 2. **Capturas de tela** (sem dados de clientes):
@@ -96,7 +96,7 @@ Limite: a rede deste ambiente bloqueia o acesso direto a help.cartpanda.com, dev
 
 ---
 
-## 5. Etapa 0C · Cartpanda / Cartpanda Pay: o que preciso de você
+## 5. Etapa 0C · Cartpanda / Cartpanda Pay: lista completa (só se a rodada mínima da seção 10 não bastar)
 
 1. **Captura de Admin > Pagamentos > Cartpanda Pay > Gerenciar** com as suas taxas por método e prazo, o prazo de recebimento escolhido e a antecipação.
 2. **Configuração de parcelamento:**
@@ -126,22 +126,115 @@ Limite: a rede deste ambiente bloqueia o acesso direto a help.cartpanda.com, dev
 
 ---
 
-## 6. Etapa 0D · Shopify: leituras propostas (aguardam o seu OK)
+## 6. Etapa 0D · Shopify: as seis leituras (preparadas, **não executadas**)
 
-Feitas pelo conector Shopify desta conta, **somente consulta**. Nenhum campo de cliente (nome, e-mail, telefone, endereço, cliente) é pedido. Em `customAttributes`, peço **só o nome da chave**, sem o valor, porque o valor pode conter dados pessoais.
+**Situação em 23/10/2026:** preparação e revisão autorizadas; execução aguarda aprovação explícita das consultas abaixo.
 
-| # | Para quê | Consulta (resumo) |
-|---|---|---|
-| Q1 | H6: fuso e moeda da loja | `shop { ianaTimezone currencyCode }` |
-| Q2 | H12, H13: como o pedido Cartpanda aparece na Shopify | 20 pedidos recentes não-teste: `id name processedAt updatedAt sourceName sourceIdentifier tags paymentGatewayNames customAttributes { key } displayFinancialStatus cancelledAt currentTotalPriceSet totalRefundedSet` |
-| Q3 | H4, H8: reembolsos refletidos e `updatedAt` | 10 pedidos com `financial_status:refunded` ou `partially_refunded`: `id name updatedAt refunds { processedAt createdAt totalRefundedSet }` |
-| Q4 | H11 e cobertura de custo: a Shopify tem o custo? | Variantes: `id sku inventoryItem { unitCost { amount currencyCode } }`, paginado, para contar quantas têm custo e comparar 5 com a Único Drop |
-| Q5 | H3: campo de receita líquida do item | 1 pedido: `lineItems(first: 5) { nodes { currentQuantity priceAfterAllDiscountsBeforeTaxesSet { shopMoney { amount } } } }`. Se o conector recusar o campo, isso só mostra que a versão fixada do conector não o tem; o teste definitivo é na versão 2026-10 (Fase 2) |
-| Q6 | Volume (R6) | Contagem de pedidos não-teste dos últimos 90 dias |
+**Regras:**
+- Só a ferramenta de consulta (`graphql_query`) do conector Shopify. Nenhuma mutação, app, token ou alteração.
+- Todos os campos foram conferidos no esquema do conector em 23/10/2026.
+- **Campos de cliente nunca pedidos:** `customer`, `email`, `phone`, endereços, `note`, `clientIp`, `billingAddress`, `shippingAddress`, `displayAddress`, valores de `customAttributes`, `customerJourneySummary`.
+- **`tags` fica fora**, porque é texto livre e pode conter dado pessoal (ver a nota de risco).
+- **O que é guardado:** só conclusões agregadas (contagens, se o campo existe, nome do gateway, nomes de chaves). Os valores lidos aparecem só nesta sessão; nada vai para o repositório além disso.
 
-**Fora do conector (você confere):**
-- **H1:** no Dev Dashboard (dev.shopify.com), em "Lojas", a loja da Rocco aparece na sua organização? Só olhar, **não criar app**.
-- **L20:** a fatura da Shopify tem linha de "taxas de transação"?
+### Q1 · fuso e moeda da loja (H6)
+```graphql
+query Q1 { shop { ianaTimezone currencyCode } }
+```
+Retorna: fuso IANA e moeda da loja. Dado pessoal: nenhum.
+
+### Q2 · como o pedido Cartpanda aparece na Shopify (H12, H13)
+```graphql
+query Q2 {
+  orders(first: 20, sortKey: PROCESSED_AT, reverse: true, query: "test:false") {
+    nodes {
+      id name processedAt updatedAt
+      sourceName sourceIdentifier
+      paymentGatewayNames
+      customAttributes { key }
+      displayFinancialStatus cancelledAt
+      currentTotalPriceSet { shopMoney { amount currencyCode } }
+      totalRefundedSet { shopMoney { amount } }
+    }
+  }
+}
+```
+Retorna, para 20 pedidos:
+- ID interno e número (#1001);
+- datas;
+- canal de origem e identificador externo;
+- nomes dos gateways;
+- **só os nomes** das chaves de atributos;
+- status financeiro, data de cancelamento, total e valor reembolsado.
+
+Dado pessoal: nenhum pedido. `sourceIdentifier` é, pela doc, um identificador de pedido de terceiro.
+
+### Q3 · reembolsos e `updatedAt` (H4, H8)
+```graphql
+query Q3 {
+  orders(first: 10, sortKey: PROCESSED_AT, reverse: true,
+         query: "test:false AND (financial_status:refunded OR financial_status:partially_refunded)") {
+    nodes {
+      id name processedAt updatedAt
+      totalRefundedSet { shopMoney { amount } }
+      refunds { id createdAt processedAt totalRefundedSet { shopMoney { amount } } }
+    }
+  }
+}
+```
+Retorna: número do pedido, datas e, por reembolso, ID, datas e valor. A nota do reembolso (`note`, texto livre) fica fora. Dado pessoal: nenhum.
+
+### Q4 · a Shopify tem o custo? (H11, cobertura)
+```graphql
+query Q4($after: String) {
+  productVariants(first: 250, after: $after) {
+    nodes { id sku inventoryItem { unitCost { amount currencyCode } } }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+```
+Retorna: ID, SKU e custo atual de cada variante, paginado até o fim do catálogo. Dado pessoal: nenhum.
+
+Uso: contar variantes com e sem custo e comparar 5 SKUs com a Único Drop quando houver amostra. Pode exigir a permissão "View product costs" no usuário do conector. Se o campo vier vazio por permissão, isso fica registrado.
+
+### Q5 · campo de receita líquida do item (H3)
+```graphql
+query Q5 {
+  orders(first: 1, sortKey: PROCESSED_AT, reverse: true, query: "test:false") {
+    nodes {
+      name
+      lineItems(first: 5) {
+        nodes {
+          sku quantity currentQuantity
+          originalUnitPriceSet { shopMoney { amount } }
+          discountedUnitPriceAfterAllDiscountsSet { shopMoney { amount } }
+          priceAfterAllDiscountsBeforeTaxesSet { shopMoney { amount } }
+        }
+      }
+    }
+  }
+}
+```
+Retorna: SKU, quantidades e preços dos itens de 1 pedido. O item `customAttributes` (personalização) fica fora. Dado pessoal: nenhum.
+
+**Resultado esperado:** o esquema do conector não lista `priceAfterAllDiscountsBeforeTaxesSet`, então o conector deve **recusar a consulta antes de executar**. Nada é lido. Isso só mostra que a versão fixada do conector não tem o campo; a versão 2026-10 tem, pela doc. Nesse caso, roda-se uma vez a mesma consulta sem esse campo.
+
+### Q6 · volume de pedidos (R6)
+```graphql
+query Q6 {
+  ordersCount(query: "test:false AND processed_at:>='2026-07-25'", limit: null) { count precision }
+}
+```
+Retorna: um número (pedidos não-teste dos últimos 90 dias) e se é exato. Dado pessoal: nenhum.
+
+### Nota de risco
+- **`tags` excluído:** em algumas lojas, apps gravam dados do cliente nas tags. Se Q2 não mostrar onde fica o número do pedido Cartpanda, peço autorização separada para ler `tags` só de 3 pedidos, sabendo do risco.
+- **Escopo do conector:** ele age com as permissões da conta conectada. Se alguma consulta devolver erro de acesso, paro e registro; não tento outro caminho.
+- **Valores financeiros** (totais, custos) não são dados pessoais, mas são sensíveis para o negócio. Ficam só nesta sessão e em conclusões agregadas.
+
+**Fora do conector, a seu critério:**
+- H1: ver no Dev Dashboard se a loja aparece na organização.
+- L20: ver se a fatura da Shopify tem "taxas de transação".
 
 ---
 
@@ -174,3 +267,42 @@ Depois de 0B e 0C:
 | 23/10/2026 | 0A Único Drop | Buscas em unicodrop.com.br (páginas de integração, dashboard, planos) | API só citada no Elite; sem doc; exportação não documentada |
 | 23/10/2026 | 0A Cartpanda | Buscas em help.cartpanda.com e dev.cartpanda.com | Painel tem taxa por pedido; API sem campo de taxa documentado; CSVs de pedidos e cobranças existem |
 | 23/10/2026 | 0A Shopify | Esquema via conector | `fees` só Shopify Payments; campos de ligação e de fuso existem |
+
+---
+
+## 10. Rodada mínima (pedido de 23/10/2026: nada além do necessário)
+
+Atende às prioridades 1, 2, 3 e 4 com o menor esforço. As listas completas das seções 4 e 5 só são pedidas se esta rodada não fechar a questão.
+
+| # | Item | Responde a | Esforço estimado |
+|---|---|---|---|
+| M1 | **10 pedidos de um mês fechado na Único Drop**, com o detalhamento que ela mostra (receita, custo do produto, frete, taxas, publicidade, lucro), por exportação ou captura, **com dados de cliente ocultos**. Mistura sugerida: cartão à vista, cartão parcelado, Pix e, se houver, um com reembolso | Prioridades 1 e 2 | 10–15 min |
+| M2 | **Uma ou duas capturas das configurações da Único Drop** onde ficam taxas, custos e publicidade | Prioridade 1: o que é real e o que é estimado | 5 min |
+| M3 | **Cartpanda: captura da lista de colunas da Exportação Avançada de pedidos** (só a tela de escolha de colunas, sem gerar arquivo). Se houver coluna de taxa ou recebível: exportar os mesmos 10 pedidos só com número, método, parcelas, bruto e taxa/recebível | Prioridade 3 e os componentes de taxa da prioridade 1 | 5–10 min |
+| M4 | **Três perguntas ao suporte da Único Drop** (texto abaixo) | Prioridades 1 e 4 | 2 min para enviar |
+| M5 | **Suas decisões-alvo:** marque quais decisões você quer tomar com o lucro por pedido (lista abaixo) | Prioridade 2 | 2 min |
+
+**Texto para o suporte da Único Drop (M4):**
+
+> Olá! Três dúvidas sobre o lucro por pedido:
+> 1. Quando altero o custo de um produto, os pedidos antigos mantêm o custo da época ou passam a usar o custo novo?
+> 2. A taxa de pagamento de cada pedido vem do valor real cobrado pela Cartpanda Pay ou de um percentual que eu configuro?
+> 3. Como o gasto de anúncios é distribuído entre os pedidos (por dia, por campanha, igualmente)?
+>
+> Obrigada!
+
+**Decisões-alvo (M5), marque as que importam:**
+- [ ] Manter, cortar ou repor um produto (margem por produto)
+- [ ] Ajustar preço ou desconto de um produto
+- [ ] Escalar ou pausar uma campanha (resultado depois do anúncio por campanha)
+- [ ] Definir o CPA máximo aceitável por produto
+- [ ] Oferecer frete grátis, parcelamento sem juros ou Pix com desconto
+- [ ] Saber o lucro real do mês
+- [ ] Outra: ________
+
+**Ainda não peço** (só se M1–M3 mostrarem necessidade):
+- taxas contratadas do Cartpanda Pay e configuração de parcelamento (só se M3 mostrar que a taxa por pedido não é exportável);
+- CSV de cobranças;
+- extrato;
+- planos;
+- arquivos de produtos.
