@@ -266,6 +266,39 @@ dialog[open] { animation: surgir .25s ease both; }
 .toast.visivel { opacity: 1; transform: translate(-50%, 0); }
 .abas { display: none; }
 
+/* ---------- plano (Fase 2) */
+.plano-intro p { margin: 4px 0 0; }
+.tabela { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tabela-rolagem { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.tabela th, .tabela td { padding: 9px 10px; border-bottom: 1px solid var(--linha); text-align: right; white-space: nowrap; }
+.tabela th:first-child, .tabela td:first-child { text-align: left; }
+.tabela thead th { color: var(--mudo); font-weight: 600; font-size: 12.5px; }
+.tabela tfoot td { font-weight: 600; border-bottom: 0; }
+.tabela td.num, .tabela th.num { font-variant-numeric: tabular-nums; }
+.tabela input { width: 110px; padding: 6px 8px; text-align: right; }
+.tabela .linha-resultado td { font-weight: 600; }
+.grafico { position: relative; margin: 6px 0 14px; }
+.grafico svg { width: 100%; height: auto; display: block; overflow: visible; fill: initial; stroke: none; }
+.grafico .eixo { stroke: var(--linha-forte); stroke-width: 1; }
+.grafico .grade-y { stroke: var(--linha); stroke-width: 1; }
+.grafico text { fill: var(--mudo); font: 12px var(--fonte-num); font-variant-numeric: tabular-nums; }
+.grafico text.valor { fill: var(--texto-2); font-weight: 600; }
+.grafico .col { cursor: default; transition: opacity .15s; }
+.grafico .col:hover, .grafico .col:focus { opacity: .8; outline: none; }
+.grafico .linha-serie { fill: none; stroke: var(--acento); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.grafico .area-serie { fill: var(--acento); opacity: .1; }
+.grafico .mira { stroke: var(--linha-forte); stroke-width: 1; }
+.grafico .ponto { fill: var(--acento); stroke: var(--sup); stroke-width: 2; }
+.dica { position: absolute; pointer-events: none; background: var(--sup); border: 1px solid var(--linha); box-shadow: var(--sombra);
+        border-radius: 10px; padding: 8px 10px; font-size: 12.5px; white-space: nowrap; opacity: 0; transition: opacity .1s; z-index: 3; }
+.dica.visivel { opacity: 1; }
+.dica b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+.dica span { color: var(--mudo); }
+.controles { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
+.controles label.campo { min-width: 200px; flex: 0 1 260px; }
+.controles .chips { margin: 0; }
+.nota { font-size: 12.5px; color: var(--mudo); margin: 10px 0 0; }
+
 /* ---------- celular */
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
@@ -289,5 +322,10 @@ dialog[open] { animation: surgir .25s ease both; }
   .abas .contador { position: absolute; top: 0; right: 18%; min-width: 18px; height: 18px; font-size: 10.5px; padding: 0 5px; }
   .duvida-topo { flex-direction: column; gap: 4px; }
   .tx { padding: 12px 6px; }
+  .cartao-cab { flex-wrap: wrap; }
+  .tabela .col-mes { display: none; }
+  .tabela td:first-child { white-space: normal; min-width: 128px; }
+  .tabela th, .tabela td { padding: 9px 6px; }
+  .controles label.campo { flex: 1 1 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

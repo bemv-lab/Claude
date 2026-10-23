@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from nucleo import alertas, analises, backup, categorizar, db, demo, dividas, importacao, resumo
+from nucleo import alertas, analises, backup, categorizar, db, demo, dividas, importacao, planejamento, resumo
 from nucleo.util import agora_iso, hoje, normalizar, parse_valor
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -444,6 +444,25 @@ def r_sim_antecipacao(con, q, corpo):
     return dividas.simular_antecipacao(_centavos(corpo.get("parcela")) or 0, _int(corpo.get("restantes")) or 0,
                                        float(str(corpo.get("juros") or 0).replace(",", ".")),
                                        _int(corpo.get("antecipar")) or 0)
+
+
+# ---------------------------------------------------------------- plano (orçamento, projeção, quitação)
+
+@rota("GET", "/api/plano")
+def r_plano(con, q, corpo):
+    extra = _centavos(q.get("extra")) if q.get("extra") not in (None, "") else None
+    meses = min(24, max(1, _int(q.get("meses")) or 3))
+    return planejamento.plano(con, extra, meses, q.get("bola", "1") != "0", _centavos(q.get("liberar")) or 0)
+
+
+@rota("POST", "/api/orcamento/aplicar")
+def r_orcamento_aplicar(con, q, corpo):
+    itens = [{"id": _int(i.get("id")), "orcamento": _centavos(i.get("orcamento"))} for i in corpo.get("itens", [])]
+    if not itens:
+        raise Erro("Nenhuma categoria enviada")
+    total = planejamento.aplicar_orcamento(con, itens)
+    alertas.gerar(con)
+    return {"ok": True, "orcamento_mensal": total}
 
 
 # ---------------------------------------------------------------- metas e configuração

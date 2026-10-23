@@ -7,10 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo import analises, categorizar, db, demo, dividas, resumo  # noqa: E402
+from nucleo import analises, categorizar, db, demo, dividas, planejamento, resumo  # noqa: E402
 from nucleo.importacao import Lote, atualizar  # noqa: E402
 from nucleo.importadores import csv_, ofx  # noqa: E402
-from nucleo.util import chave_estabelecimento, detectar_parcela, parse_data, parse_valor  # noqa: E402
+from nucleo.util import chave_estabelecimento, detectar_parcela, hoje, parse_data, parse_valor, somar_meses  # noqa: E402
 
 
 class TestUtil(unittest.TestCase):
@@ -443,3 +443,72 @@ class TestFaturaVsPlanilha(BaseBanco):
         self.assertEqual(linhas["LA PLAYA BAR E RESTAUR"], "Lazer")   # categoria veio da planilha
         self.assertNotIn("Ajuste antigo", linhas)
         self.assertIn("Compra de agosto", linhas)                    # fora da janela: a planilha completa
+
+
+class TestPlanejamento(BaseBanco):
+    """Fase 2: orçamento realista, projeção e plano de quitação, sobre três meses completos."""
+
+    def lancar(self, meses_atras, categoria, valor, apelido="inter-conta", **extra):
+        mes = somar_meses(hoje().strftime("%Y-%m"), -meses_atras)
+        n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
+        campos = {"conta_id": self.conta(apelido), "data": f"{mes}-10", "descricao": categoria, "valor": valor,
+                  "categoria_id": db.categoria_id(self.con, categoria), "tipo": "normal", "classificacao": "manual",
+                  "hash": f"t{n}", "criado_em": "2026-01-01", **extra}
+        self.con.execute(f"INSERT INTO transacoes ({', '.join(campos)}) VALUES ({', '.join('?' * len(campos))})",
+                         tuple(campos.values()))
+
+    def setUp(self):
+        super().setUp()
+        for k, (aluguel, restaurante) in enumerate([(290000, 10000), (290000, 30000), (580000, 20000)], 1):
+            self.lancar(k, "Salário", 900000)
+            self.lancar(k, "Aluguel", -aluguel)             # mês da mudança: dois aluguéis
+            self.lancar(k, "Restaurante", -restaurante)
+        self.lancar(2, "Lazer", -30000)                        # esporádico
+        self.lancar(1, "Supermercado", -60000, apelido="flash")  # pago com benefício
+        self.con.commit()
+
+    def test_projecao_mediana_nas_essenciais_e_media_no_resto(self):
+        p = planejamento.projecao(self.con, 3)
+        self.assertEqual(p["renda"]["valor"], 900000)
+        self.assertEqual(p["dia_a_dia"], 290000 + 20000 + 10000)      # aluguel pela mediana; flash fora
+        consignado = dividas.painel(self.con)["mensal_comprometido"]
+        self.assertEqual(p["meses"][0]["resultado"], 900000 - 320000 - consignado)
+        self.assertEqual(p["meses"][2]["acumulado"], sum(m["resultado"] for m in p["meses"]))
+
+    def test_orcamento_inclui_flash_e_corta_so_o_que_e_escolha(self):
+        o = planejamento.orcamento_sugerido(self.con, liberar=1000000)
+        itens = {i["nome"]: i for i in o["itens"]}
+        self.assertEqual(itens["Supermercado"]["tipico"], 20000)       # média com o Flash, como na Início
+        self.assertEqual(itens["Aluguel"]["sugestao"], 290000)          # essencial: não corta
+        self.assertEqual(itens["Supermercado"]["corte"], 0)             # gastar menos do Flash não libera dinheiro
+        self.assertLessEqual(itens["Restaurante"]["corte"], 20000 * 0.3)
+        self.assertGreater(o["falta_depois_do_corte"], 0)               # R$ 10 mil não cabem só em corte
+
+    def test_corte_bate_o_alvo_sem_sobrar(self):
+        self.lancar(1, "Extras", -100000)
+        self.lancar(2, "Extras", -100000)
+        self.lancar(3, "Extras", -100000)
+        o = planejamento.orcamento_sugerido(self.con, liberar=10000)
+        self.assertGreaterEqual(o["corte_sugerido"], 10000)
+        self.assertLess(o["corte_sugerido"], 10000 + 1000)
+        self.assertEqual(o["falta_depois_do_corte"], 0)
+
+    def test_aplicar_orcamento(self):
+        rest = db.categoria_id(self.con, "Restaurante")
+        total = planejamento.aplicar_orcamento(self.con, [{"id": rest, "orcamento": 15000}])
+        self.assertEqual(self.con.execute("SELECT orcamento FROM categorias WHERE id = ?", (rest,)).fetchone()[0], 15000)
+        self.assertEqual(db.config_int(self.con, "orcamento_mensal"), total)
+
+    def test_quitacao_extra_e_teto_de_juros_do_cartao(self):
+        self.con.execute("INSERT INTO dividas (nome, tipo, status, saldo_base, data_base, criado_em) "
+                         "VALUES ('Cartão X', 'cartao', 'ativa', 100000, ?, '2026-01-01')", (hoje().isoformat(),))
+        self.con.commit()
+        sem = planejamento.plano_quitacao(self.con, 0, bola_de_neve=False)
+        x = next(d for d in sem["dividas"] if d["nome"] == "Cartão X")
+        self.assertIsNone(x["quitada_em"])
+        self.assertTrue(x["juros_estimado"])
+        self.assertLessEqual(x["juros_pagos"], 100000)                  # Lei 14.690: juros até 100% do original
+        com = planejamento.plano_quitacao(self.con, 50000)
+        x = next(d for d in com["dividas"] if d["nome"] == "Cartão X")
+        self.assertEqual(x["quitada_em"], somar_meses(hoje().strftime("%Y-%m"), 3))   # 8% a.m. estimado
+        self.assertEqual(com["dividas"][0]["nome"], "Cartão X")         # juros mais caros primeiro

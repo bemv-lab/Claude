@@ -24,6 +24,7 @@ const ICONES = {
   inicio: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
   lancamentos: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   duvidas: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
+  plano: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   dividas: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
   importar: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
   ajustes: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -34,7 +35,7 @@ const ICONES = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
-const NAV = [["inicio", "Início"], ["lancamentos", "Lançamentos"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["plano", "Plano"], ["lancamentos", "Lançamentos"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
 
 /* ------------------------------------------------------------------ infraestrutura */
 async function api(caminho, { metodo = "GET", corpo, bruto, silencioso } = {}) {
@@ -203,6 +204,206 @@ function alertaHTML(a) {
 async function dispensar(id, btn) {
   await api(`/api/alertas/${id}/dispensar`, { metodo: "POST" });
   btn.closest(".alerta").style.opacity = 0; setTimeout(render, 250);
+}
+
+/* ------------------------------------------------------------------ Plano (Fase 2) */
+S.plano = { meses: 3, extra: null, bola: true, liberar: "" };
+const compacto = (c, sinal = false) => {
+  const a = Math.abs(c) / 100;
+  const s = a >= 1000 ? `${(a / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} mil` : a.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+  return (c < 0 ? "−" : sinal && c > 0 ? "+" : "") + s;
+};
+const passoBonito = (v) => { const e = 10 ** Math.floor(Math.log10(Math.max(v, 1))); const f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; };
+
+TELAS.plano = async (el) => {
+  const P = S.plano;
+  const qs = new URLSearchParams({ meses: P.meses, bola: P.bola ? "1" : "0" });
+  if (P.extra !== null) qs.set("extra", P.extra);
+  if (P.liberar) qs.set("liberar", P.liberar);
+  const d = await api(`/api/plano?${qs}`);
+  const pr = d.projecao, q = d.quitacao, o = d.orcamento, se = d.sem_extra;
+  if (!pr.meses_referencia.length) {
+    el.innerHTML = `<div class="cartao vazio"><div class="grande">🧭</div><h3>Ainda sem base para planejar</h3><p>O plano usa os últimos meses completos de gastos. Importem os extratos e voltem aqui.</p></div>`;
+    return;
+  }
+  const ref = pr.meses_referencia.map(nomeMesCurto).join(", ");
+  const m1 = pr.meses[0], ult = pr.meses[pr.meses.length - 1];
+  const linhaProj = (rotulo, campo, sinal = -1, cls = "") => `<tr class="${cls}"><td>${rotulo}</td>${pr.meses.map((m) => `<td class="num">${brl(sinal * m[campo], cls !== "")}</td>`).join("")}</tr>`;
+  const livre = (x) => (x.livre_em ? nomeMesCurto(x.livre_em) : `mais de ${Math.round(x.limite_meses / 12)} anos`);
+  const ganhoMeses = q.livre_em && se.livre_em ? (+se.livre_em.slice(0, 4) * 12 + +se.livre_em.slice(5)) - (+q.livre_em.slice(0, 4) * 12 + +q.livre_em.slice(5)) : null;
+
+  el.innerHTML = `<div class="pilha">
+    <div class="plano-intro"><h2 style="font-size:22px">Plano</h2>
+      <p class="mudo">Feito com o gasto real de ${esc(ref)}. É estimativa: muda a cada importação e melhora com o tempo.</p></div>
+
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Próximos meses</h2>
+        <div class="segmentos" id="seg-meses">${[3, 6, 12].map((n) => `<button data-n="${n}" class="${P.meses === n ? "ativo" : ""}">${n} meses</button>`).join("")}</div></div>
+      <div class="grade g2" style="margin-bottom:8px">
+        <div class="estat"><span class="rotulo">Sobra prevista em ${esc(nomeMes(m1.mes))}</span>
+          <span class="valor-grande ${m1.resultado >= 0 ? "pos" : ""}">${brl(m1.resultado, true)}</span>
+          <span class="mudo" style="font-size:13px">${m1.resultado >= 0 ? "depois de todas as contas, parcelas e contratos" : "o mês típico não fecha: vejam o orçamento abaixo"}</span></div>
+        <div class="estat"><span class="rotulo">Somando os ${pr.meses.length} meses</span>
+          <span class="valor-grande">${brl(ult.acumulado, true)}</span>
+          <span class="mudo" style="font-size:13px">${pr.primeiro_positivo && pr.primeiro_positivo !== m1.mes ? `fica positivo a partir de ${nomeMesCurto(pr.primeiro_positivo)}` : "se não abrirem parcelas novas"}</span></div>
+      </div>
+      <div class="grafico" id="graf-proj"></div>
+      <div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Por mês</th>${pr.meses.map((m) => `<th class="num">${nomeMesCurto(m.mes)}</th>`).join("")}</tr></thead><tbody>
+        ${linhaProj("Renda típica", "renda", 1)}
+        ${linhaProj("Dia a dia", "dia_a_dia")}
+        ${linhaProj("Parcelas de cartão já feitas", "parcelas")}
+        ${linhaProj("Dívidas com parcela fixa", "dividas")}
+        ${linhaProj("Resultado do mês", "resultado", 1, "linha-resultado")}
+        ${linhaProj("Acumulado", "acumulado", 1, "mudo")}
+      </tbody></table></div>
+      <p class="nota">Renda típica: ${pr.renda.informada ? "valor informado em Ajustes" : pr.renda.fontes.filter((f) => f.tipico).map((f) => `${esc(f.nome)} ${brl(f.tipico)}`).join(" + ")}.
+        Dia a dia: o que não é parcela nem dívida, com mediana nas contas essenciais (um mês com dois aluguéis não puxa a conta) e média no resto.
+        O Flash fica de fora dos dois lados. Parcelas e contratos seguem o calendário de cada um, então o alívio quando terminam já aparece aqui.</p>
+    </div>
+
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Plano de quitação</h2><a class="btn-texto" href="#/dividas">Ver dívidas</a></div>
+      <form class="controles" id="f-quit">
+        <label class="campo">Quanto separar por mês, além das parcelas <small>sugerido: ${brl(d.extra_sugerido)} (${Math.round((1 - d.margem) * 100)}% da sobra prevista)</small>
+          <input name="extra" inputmode="decimal" value="${paraInput(q.extra_mensal)}"></label>
+        <div class="chips">${[...new Set([d.extra_sugerido, 50000, 100000])].map((v) => `<button type="button" class="chip ${v === q.extra_mensal ? "sugerido" : ""}" data-extra="${v}">${brl(v)}</button>`).join("")}</div>
+        <label class="linha-ajuste" style="gap:10px;margin:0;padding:0;border:0"><span style="font-size:13.5px">Bola de neve</span>
+          <span class="chave"><input type="checkbox" name="bola" ${q.bola_de_neve ? "checked" : ""} aria-label="Bola de neve"><span></span></span></label>
+        <button class="btn btn-primario">Recalcular</button>
+      </form>
+      <div class="grade g3">
+        <div class="estat"><span class="rotulo">Livres de dívidas em</span><span class="valor-grande">${livre(q)}</span>
+          <span class="mudo" style="font-size:13px">${ganhoMeses ? `${ganhoMeses} meses antes que sem o extra` : q.nao_quitam.length ? `não quitam: ${q.nao_quitam.map(esc).join(", ")}` : ""}</span></div>
+        <div class="estat"><span class="rotulo">Juros no caminho</span><span class="valor-grande">${brl(q.juros_total)}</span>
+          <span class="mudo" style="font-size:13px">${se.juros_total > q.juros_total ? `${brl(se.juros_total - q.juros_total)} a menos que sem o extra` : "nas dívidas sem contrato"}</span></div>
+        <div class="estat"><span class="rotulo">Sem o extra</span><span class="valor-grande">${livre(se)}</span>
+          <span class="mudo" style="font-size:13px">só parcelas${se.bola_de_neve ? " e bola de neve" : ""} · juros ${brl(se.juros_total)}</span></div>
+      </div>
+      <h3 style="font-size:14px;margin:18px 0 0;color:var(--texto-2)">Total devido mês a mês, seguindo o plano</h3>
+      <div class="grafico" id="graf-div"></div>
+      <div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Ordem</th><th>Saldo hoje</th><th>Juros/mês</th><th>Por mês</th><th>Quitada em</th><th>Juros pagos</th></tr></thead><tbody>
+        ${q.dividas.map((x, i) => `<tr><td>${i + 1}. ${esc(x.nome)}</td><td class="num">${brl(x.saldo_hoje)}</td>
+          <td class="num">${x.contrato ? "contrato" : x.juros_estimado && !x.juros_mensal ? "não informado" : `${pctBR(x.juros_mensal, 1)}${x.juros_estimado ? " <small class='mudo'>est.</small>" : ""}`}</td>
+          <td class="num">${x.parcela ? brl(x.parcela) : "—"}</td><td class="num">${x.quitada_em ? nomeMesCurto(x.quitada_em) : "—"}</td>
+          <td class="num">${brl(x.juros_pagos)}</td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="nota">O extra vai para a primeira da ordem sugerida (urgência, depois juros, depois saldo) até zerar, e passa para a seguinte.
+        ${q.bola_de_neve ? "Com bola de neve, a parcela de um contrato que termina passa a reforçar o extra. " : ""}
+        ${q.dividas.some((x) => x.juros_estimado) ? "“est.” = taxa estimada (8% a.m. para banco/cartão sem taxa informada): informem a taxa real em Dívidas > Editar. " : ""}
+        ${q.dividas.some((x) => x.juros_estimado) ? "Em dívida de cartão, juros e encargos param em 100% do valor original (Lei 14.690/2023). " : ""}
+        Antecipar parcelas de contrato aqui abate o valor cheio; com o desconto de juros (CDC art. 52) sai ainda melhor.</p>
+    </div>
+
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Orçamento realista</h2></div>
+      <form class="controles" id="f-orc">
+        <label class="campo">Quanto querem liberar por mês <small>para dívidas ou reserva, cortando no que é escolha</small>
+          <input name="liberar" inputmode="decimal" value="${paraInput(o.liberar || null)}" placeholder="0,00"></label>
+        <div class="chips">${[20000, 50000].map((v) => `<button type="button" class="chip ${v === o.liberar ? "sugerido" : ""}" data-liberar="${v}">${brl(v)}</button>`).join("")}</div>
+        <button class="btn">Recalcular</button>
+      </form>
+      <p style="margin:0 0 14px">${o.deficit ? `O mês típico não fecha: faltam <b>${brl(o.deficit)}</b>. ` : "O mês típico fecha com sobra, então a sugestão parte do gasto real, arredondado. "}
+        ${o.alvo ? `Para ${o.deficit ? "fechar" : `liberar ${brl(o.liberar)}`}, o corte sugerido é de <b>${brl(o.corte_sugerido)}</b> por mês, no máximo 30% de cada categoria, sem mexer em moradia, contas, saúde, educação e negócio.` : ""}
+        ${o.falta_depois_do_corte ? ` <span style="color:var(--atencao)">Mesmo assim faltam ${brl(o.falta_depois_do_corte)}: aí a saída é renda extra ou renegociar dívidas.</span>` : ""}</p>
+      <div class="tabela-rolagem"><table class="tabela" id="tab-orc"><thead><tr><th>Categoria</th>${o.meses_referencia.map((m) => `<th class="num col-mes">${nomeMesCurto(m)}</th>`).join("")}<th class="num">Típico</th><th class="num">Orçado hoje</th><th class="num">Sugestão</th></tr></thead><tbody>
+        ${o.itens.map((i) => `<tr><td>${esc(i.nome)}${i.essencial ? " <small class='mudo'>essencial</small>" : ""}</td>${i.meses.map((v) => `<td class="num mudo col-mes">${v ? brl(v) : "—"}</td>`).join("")}
+          <td class="num">${brl(i.tipico)}</td><td class="num">${i.orcamento ? brl(i.orcamento) : "—"}${i.orcamento && i.tipico > i.orcamento * 1.1 ? " <span class='tag duv'>abaixo do real</span>" : ""}</td>
+          <td><input data-orc="${i.id}" inputmode="decimal" value="${paraInput(i.sugestao)}" aria-label="Orçado sugerido para ${esc(i.nome)}"></td></tr>`).join("")}
+      </tbody><tfoot><tr><td>Total</td>${o.meses_referencia.map(() => `<td class="col-mes"></td>`).join("")}<td class="num">${brl(o.total_tipico)}</td><td class="num">${brl(o.total_orcado)}</td><td class="num" id="tot-orc">${brl(o.total_sugerido)}</td></tr></tfoot></table></div>
+      <div class="modal-acoes" style="justify-content:flex-start;margin-top:14px"><button class="btn btn-primario" id="aplicar-orc">Usar como orçado do mês</button></div>
+      <p class="nota">Inclui o que foi pago com o Flash, como a comparação da Início. Dívidas ficam de fora: elas têm o plano acima.
+        Ao usar, cada categoria passa a ter esse orçado e os alertas de “passou do orçado” seguem os novos valores.</p>
+    </div>
+  </div>`;
+
+  $$("#seg-meses button", el).forEach((b) => b.addEventListener("click", () => { P.meses = +b.dataset.n; render(); }));
+  $("#f-quit", el).addEventListener("submit", (e) => { e.preventDefault(); const v = form(e.target); P.extra = v.extra.trim() || null; P.bola = !!v.bola; render(); });
+  $$("[data-extra]", el).forEach((b) => b.addEventListener("click", () => { P.extra = paraInput(+b.dataset.extra); render(); }));
+  $("#f-orc", el).addEventListener("submit", (e) => { e.preventDefault(); P.liberar = form(e.target).liberar.trim(); P.extra = null; render(); });
+  $$("[data-liberar]", el).forEach((b) => b.addEventListener("click", () => { P.liberar = paraInput(+b.dataset.liberar); P.extra = null; render(); }));
+  $$("[data-orc]", el).forEach((i) => i.addEventListener("input", () => {
+    const t = $$("[data-orc]", el).reduce((s, x) => s + (Math.round(parseFloat(x.value.replace(/\./g, "").replace(",", ".")) * 100) || 0), 0);
+    $("#tot-orc", el).textContent = brl(t);
+  }));
+  $("#aplicar-orc", el).addEventListener("click", async () => {
+    const itens = $$("[data-orc]", el).map((x) => ({ id: +x.dataset.orc, orcamento: x.value.trim() }));
+    const r = await api("/api/orcamento/aplicar", { metodo: "POST", corpo: { itens } });
+    toast(`Orçado salvo · ${brl(r.orcamento_mensal)} por mês`); await carregarCadastros(); render();
+  });
+  graficoResultado($("#graf-proj", el), pr.meses);
+  graficoDivida($("#graf-div", el), q.serie);
+};
+
+function mostrarDica(box, x, y, valor, rotulo) {
+  let d = $(".dica", box);
+  if (!d) { d = document.createElement("div"); d.className = "dica"; box.appendChild(d); }
+  const b = document.createElement("b"); b.textContent = valor;
+  const s = document.createElement("span"); s.textContent = rotulo;
+  d.replaceChildren(b, s); d.classList.add("visivel");
+  d.style.left = Math.min(Math.max(0, x - d.offsetWidth / 2), box.clientWidth - d.offsetWidth) + "px";
+  d.style.top = Math.max(-8, y - d.offsetHeight - 10) + "px";
+}
+const esconderDica = (box) => $(".dica", box)?.classList.remove("visivel");
+
+function graficoResultado(box, meses) {
+  const W = Math.max(280, box.clientWidth), H = 200, topo = 26;
+  const vals = meses.map((m) => m.resultado);
+  const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
+  const base = min < 0 ? 44 : 26;
+  const y = (v) => topo + ((max - v) / ((max - min) || 1)) * (H - topo - base);
+  const passo = W / meses.length, larg = Math.min(24, passo * 0.5), r = 4, y0 = y(0);
+  const rotular = (i) => meses.length <= 6 || i === meses.length - 1;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Resultado previsto por mês (valores na tabela abaixo)">`;
+  meses.forEach((m, i) => {
+    const cx = passo * i + passo / 2, x0 = cx - larg / 2, y1 = y(m.resultado), pos = m.resultado >= 0;
+    const rr = Math.min(r, Math.abs(y1 - y0)), dy = pos ? rr : -rr;
+    const caminho = `M${x0},${y0} V${y1 + dy} Q${x0},${y1} ${x0 + rr},${y1} H${x0 + larg - rr} Q${x0 + larg},${y1} ${x0 + larg},${y1 + dy} V${y0} Z`;
+    svg += `<g class="col" tabindex="0" data-i="${i}"><rect x="${cx - passo / 2}" y="0" width="${passo}" height="${H - 20}" fill="transparent"/>
+      <path d="${caminho}" fill="var(${pos ? "--bom" : "--critico"})"/></g>`;
+    if (rotular(i)) svg += `<text class="valor" x="${cx}" y="${pos ? y1 - 7 : y1 + 15}" text-anchor="middle">${compacto(m.resultado, true)}</text>`;
+    svg += `<text x="${cx}" y="${H - 4}" text-anchor="middle">${nomeMesCurto(m.mes)}</text>`;
+  });
+  svg += `<line class="eixo" x1="0" x2="${W}" y1="${y0}" y2="${y0}"/></svg>`;
+  box.innerHTML = svg;
+  $$(".col", box).forEach((g) => {
+    const m = meses[+g.dataset.i], cx = passo * +g.dataset.i + passo / 2;
+    const ver = () => mostrarDica(box, cx, Math.min(y(m.resultado), y0), brl(m.resultado, true), `${nomeMes(m.mes)} · resultado previsto`);
+    g.addEventListener("pointerenter", ver); g.addEventListener("focus", ver);
+    g.addEventListener("pointerleave", () => esconderDica(box)); g.addEventListener("blur", () => esconderDica(box));
+  });
+}
+
+function graficoDivida(box, serie) {
+  const W = Math.max(280, box.clientWidth), H = 210, topo = 18, base = 26, esq = 52, dir = 16, n = serie.length;
+  const max = Math.max(1, ...serie.map((p) => p.saldo));
+  const passoY = passoBonito(max / 3), maxY = Math.ceil(max / passoY) * passoY;
+  const x = (i) => esq + (n > 1 ? (i / (n - 1)) * (W - esq - dir) : 0);
+  const y = (v) => topo + (1 - v / maxY) * (H - topo - base);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Total devido mês a mês (detalhes na tabela abaixo)">`;
+  for (let v = 0; v <= maxY + 1; v += passoY) {
+    svg += `<line class="${v ? "grade-y" : "eixo"}" x1="${esq}" x2="${W - dir}" y1="${y(v)}" y2="${y(v)}"/><text x="${esq - 8}" y="${y(v) + 4}" text-anchor="end">${compacto(v)}</text>`;
+  }
+  const cada = Math.max(1, Math.ceil(n / 6));
+  serie.forEach((p, i) => { if (i % cada === 0) svg += `<text x="${x(i)}" y="${H - 4}" text-anchor="middle">${nomeMesCurto(p.mes)}</text>`; });
+  const pts = serie.map((p, i) => `${x(i)},${y(p.saldo)}`);
+  svg += `<path class="area-serie" d="M${x(0)},${y(0)} L${pts.join(" L")} L${x(n - 1)},${y(0)} Z"/><path class="linha-serie" d="M${pts.join(" L")}"/>`;
+  const ult = serie[n - 1];
+  svg += `<circle class="ponto" cx="${x(n - 1)}" cy="${y(ult.saldo)}" r="4"/>`;
+  svg += `<text class="valor" x="${x(n - 1)}" y="${y(ult.saldo) - 10}" text-anchor="end">${ult.saldo ? compacto(ult.saldo) : `zero em ${nomeMesCurto(ult.mes)}`}</text>`;
+  svg += `<line class="mira" id="mira" x1="0" x2="0" y1="${topo}" y2="${H - base}" visibility="hidden"/><circle class="ponto" id="mira-ponto" r="4" visibility="hidden"/>`;
+  svg += `<rect id="alvo" x="${esq}" y="0" width="${W - esq - dir}" height="${H - base}" fill="transparent"/></svg>`;
+  box.innerHTML = svg;
+  const alvo = $("#alvo", box), mira = $("#mira", box), ponto = $("#mira-ponto", box);
+  alvo.addEventListener("pointermove", (e) => {
+    const rect = box.querySelector("svg").getBoundingClientRect();
+    const px = ((e.clientX - rect.left) / rect.width) * W;
+    const i = Math.max(0, Math.min(n - 1, Math.round(((px - esq) / (W - esq - dir)) * (n - 1))));
+    const p = serie[i];
+    mira.setAttribute("x1", x(i)); mira.setAttribute("x2", x(i)); mira.setAttribute("visibility", "visible");
+    ponto.setAttribute("cx", x(i)); ponto.setAttribute("cy", y(p.saldo)); ponto.setAttribute("visibility", "visible");
+    mostrarDica(box, (x(i) / W) * box.clientWidth, (y(p.saldo) / H) * box.clientHeight, brl(p.saldo), `${nomeMes(p.mes)} · total devido`);
+  });
+  alvo.addEventListener("pointerleave", () => { mira.setAttribute("visibility", "hidden"); ponto.setAttribute("visibility", "hidden"); esconderDica(box); });
 }
 
 /* ------------------------------------------------------------------ Fila de dúvidas */

@@ -1,7 +1,7 @@
 # Parceiro de Prosperidade · finanças do casal
 
 Sistema local de finanças pessoais da Bárbara e do Lucas. Roda só no computador de vocês,
-sem custo, sem agregador e sem senha de banco. Estamos na **Fase 1 (MVP)**.
+sem custo, sem agregador e sem senha de banco. Fase 1 (MVP) pronta; **Fase 2** em andamento (tela Plano).
 
 ## Como rodar
 
@@ -61,6 +61,15 @@ Comece pelo modo demo (**Ajustes > Dados > Modo demo**, ou `python app.py --demo
 - Tema claro/escuro (botão no topo) e o celular (`python app.py --rede`).
 
 Depois, desligue o modo demo e importem os extratos de verdade.
+
+## Tela Plano (Fase 2)
+
+- **Próximos meses**: sobra prevista de 3, 6 ou 12 meses (renda típica − dia a dia − parcelas já feitas −
+  contratos), com gráfico e tabela. As parcelas e os contratos que terminam já aparecem como alívio.
+- **Plano de quitação**: quanto separar por mês além das parcelas (sugestão: 80% da sobra prevista),
+  bola de neve, mês em que ficam livres de dívidas, juros no caminho e a comparação com "sem o extra".
+- **Orçamento realista**: o típico de cada categoria nos últimos 3 meses, o orçado atual e uma sugestão
+  editável. Digitem quanto querem liberar por mês para ver onde cortar. "Usar como orçado do mês" grava.
 
 ## Primeira carga (já feita em 23/10/2026)
 

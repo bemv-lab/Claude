@@ -160,3 +160,32 @@ Fontes: OFX da conta Inter (jul–out), Excel do BB (jul–out), CSV do Flash (9
   fatura de novembro chegar).
 - **Empréstimo BB**: quitado (confirmado pelo Lucas). **Flash**: a compra de 12/10 foi cancelada (estorno).
 - As respostas da fila de dúvidas viraram regras no `dados/ajustes.json`; refazer a carga não as perde.
+
+## Fatura do Inter (vencimento 20/09/2026)
+
+- Transcrita do texto colado (128 linhas, 4 cartões); bate no centavo com os totais impressos. Com as duas
+  faturas, a planilha só completa o cartão Inter antes de 14/08. A planilha não tinha cerca de R$ 2,5 mil de
+  compras dessa fatura, o que explica a diferença apontada acima.
+
+## Fase 2: tela Plano (orçamento realista, projeção, quitação)
+
+- **Base**: os 3 últimos meses completos com gastos. Contas essenciais que aparecem todo mês (aluguel, energia...)
+  usam a **mediana**, para um mês fora da curva (dois aluguéis na mudança) não puxar a conta. O resto usa a
+  **média**, que não esconde os meses caros. Renda: mediana do salário mais a média das entradas esporádicas,
+  ou o valor de "renda esperada" em Ajustes.
+- **Projeção** = renda típica − dia a dia − parcelas de cartão já feitas − dívidas com parcela fixa. O dia a dia
+  exclui parcelas e pagamentos de dívida, que entram pelo calendário de cada um: o alívio quando um
+  parcelamento ou contrato termina aparece no mês certo. O Flash fica de fora dos dois lados (não é renda
+  livre). Pagamentos voluntários a dívidas sem contrato (ex.: Nubank) não são custo fixo: eles saem da sobra,
+  que é o que o plano de quitação distribui.
+- **Plano de quitação**: contratos seguem o calendário; o valor extra vai para a primeira dívida da ordem
+  sugerida até zerar. "Bola de neve" (ligada por padrão): a parcela de um contrato que termina reforça o extra.
+  Sugestão de extra = 80% da sobra prevista, arredondada para baixo em R$ 50 (a projeção é estimativa).
+  Dívida de cartão sem taxa usa os 8% a.m. estimados, com juros limitados a 100% do valor original
+  (Lei 14.690/2023). Antecipar contrato abate o valor cheio (conservador: o desconto do CDC art. 52 melhora).
+- **Orçamento realista**: o valor típico de cada categoria, arredondado para cima em R$ 10, incluindo o Flash
+  (é o que a Início compara com o orçado). Se o mês típico não fecha, ou se vocês pedem para liberar um valor,
+  o corte vai para o que é escolha, no máximo 30% de cada categoria e só sobre o que sai das contas.
+  Moradia, contas, saúde, educação e negócio não entram no corte. O ajuste é feito de R$ 10 em R$ 10 até bater
+  o alvo. "Usar como orçado" grava o orçado de cada categoria e o total do mês.
+
