@@ -254,6 +254,8 @@ class Lote:
     # ------------------------------------------------------------ depois de importar
     def finalizar(self) -> dict:
         con = self.con
+        from .db import atualizar_mes_ref
+        atualizar_mes_ref(con, so_vazios=True)
         pares = transferencias.parear(con)
         aprendizado = planilha.aprender_contas(con) if con.execute(
             "SELECT 1 FROM planilha_linhas WHERE aprendida = 0 LIMIT 1").fetchone() else {}

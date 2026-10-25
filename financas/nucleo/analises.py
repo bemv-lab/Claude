@@ -12,7 +12,7 @@ FILTRO_REAL = "t.tipo = 'normal' AND c.tipo != 'beneficio'"
 
 
 def totais_mes(con, mes: str) -> dict:
-    ini, fim = limites_mes(mes)
+    """Totais do mês em regime de caixa: cartão pelo mês da fatura (t.mes_ref)."""
     r = con.execute(f"""
         SELECT
           COALESCE(SUM(CASE WHEN t.valor > 0 AND cat.tipo = 'receita' THEN t.valor END), 0) AS receitas,
@@ -24,20 +24,19 @@ def totais_mes(con, mes: str) -> dict:
           COALESCE(SUM(CASE WHEN c.tipo = 'cartao' AND t.valor < 0 THEN -t.valor END), 0) AS cartao
         FROM transacoes t JOIN contas c ON c.id = t.conta_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
-        WHERE {FILTRO_REAL} AND t.data BETWEEN ? AND ?""", (ini, fim)).fetchone()
+        WHERE {FILTRO_REAL} AND t.mes_ref = ?""", (mes,)).fetchone()
     return dict(r)
 
 
 def gasto_por_categoria(con, mes: str) -> list[dict]:
-    ini, fim = limites_mes(mes)
     return [dict(r) for r in con.execute(f"""
         SELECT COALESCE(cat.id, 0) AS id, COALESCE(cat.nome, 'A classificar') AS nome,
                COALESCE(cat.cor, '#B9BEC7') AS cor, cat.orcamento AS orcamento, -SUM(t.valor) AS total, COUNT(*) AS qtd
         FROM transacoes t JOIN contas c ON c.id = t.conta_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
-        WHERE t.tipo = 'normal' AND t.data BETWEEN ? AND ?
+        WHERE t.tipo = 'normal' AND t.mes_ref = ?
           AND (cat.tipo IN ('despesa','divida') OR (t.categoria_id IS NULL AND t.valor < 0))
-        GROUP BY 1 HAVING total > 0 ORDER BY total DESC""", (ini, fim))]
+        GROUP BY 1 HAVING total > 0 ORDER BY total DESC""", (mes,))]
 
 
 def media_categorias(con, mes: str, meses: int = 3) -> dict[int, float]:
@@ -123,11 +122,8 @@ def recorrentes(con, meses: int = 6) -> list[dict]:
 
 def mes_da_fatura(conta: dict, data_iso: str) -> str:
     """Mês em que o lançamento é pago: no cartão, o mês da fatura (depois do fechamento vai para a seguinte)."""
-    if conta["tipo"] == "cartao" and conta["dia_vencimento"]:
-        from .dividas import vencimento_fatura
-        return vencimento_fatura(date.fromisoformat(data_iso), conta["dia_fechamento"],
-                                 conta["dia_vencimento"]).strftime("%Y-%m")
-    return data_iso[:7]
+    from .db import mes_da_fatura as _m
+    return _m(conta, data_iso)
 
 
 def _ja_pago(conta: dict, mes: str, ref: date) -> bool:

@@ -15,7 +15,22 @@ from statistics import median
 
 from . import analises, dividas
 from .db import categoria_id, linhas
-from .util import agora_iso, hoje, limites_mes, somar_meses
+from .util import agora_iso, hoje, somar_meses
+
+
+CONTAS_FIXAS = {"Aluguel", "Moradia", "Condomínio", "Energia", "Contas da casa", "Internet Fixa", "Internet Móvel", "IPTU",
+                "Impostos", "Imposto LB", "Terapia", "Educação"}
+
+
+def _gasto_variavel(con, mes: str, cartao: bool) -> int:
+    """Gasto do dia a dia já lançado no mês (sem parcelas, dívidas e contas fixas)."""
+    marcas = ",".join("?" * len(CONTAS_FIXAS))
+    return con.execute(f"""
+        SELECT COALESCE(-SUM(t.valor), 0) FROM transacoes t JOIN contas c ON c.id = t.conta_id
+        JOIN categorias cat ON cat.id = t.categoria_id
+        WHERE {analises.FILTRO_REAL} AND cat.tipo = 'despesa' AND t.mes_ref = ? AND t.parcela_total IS NULL
+          AND t.divida_id IS NULL AND c.tipo {'=' if cartao else '!='} 'cartao' AND cat.nome NOT IN ({marcas})""",
+                       (mes, *CONTAS_FIXAS)).fetchone()[0]
 
 
 def _ajustes(con, mes: str) -> dict[str, dict]:
@@ -26,25 +41,28 @@ def _ajustes(con, mes: str) -> dict[str, dict]:
     return out
 
 
-def _realizado_chave(con, chave: str, mes: str, sinal: int) -> int:
-    ini, fim = limites_mes(mes)
+def _realizado(con, campo: str, valor, mes: str, sinal: int) -> int:
+    """Quanto já aconteceu no mês (pelo mês em que conta) para uma chave de estabelecimento ou categoria."""
     v = con.execute(f"""SELECT COALESCE(SUM(t.valor), 0) FROM transacoes t JOIN contas c ON c.id = t.conta_id
-                        WHERE {analises.FILTRO_REAL} AND t.chave = ? AND t.data BETWEEN ? AND ?
-                        AND t.valor {'>' if sinal > 0 else '<'} 0""", (chave, ini, fim)).fetchone()[0]
+                        WHERE t.tipo = 'normal' AND t.{campo} = ? AND t.mes_ref = ?
+                        AND t.valor {'>' if sinal > 0 else '<'} 0""", (valor, mes)).fetchone()[0]
     return abs(v)
+
+
+def _realizado_chave(con, chave: str, mes: str, sinal: int) -> int:
+    return _realizado(con, "chave", chave, mes, sinal)
 
 
 def _renda_recorrente(con, ref_meses: list[str]) -> list[dict]:
     """Entradas da categoria de receita com a mesma chave em pelo menos 2 dos meses de referência."""
     por_chave: dict[str, dict] = {}
     for i, m in enumerate(ref_meses):
-        ini, fim = limites_mes(m)
         for r in con.execute(f"""
             SELECT t.chave, MIN(t.descricao) AS descricao, SUM(t.valor) AS total, MIN(t.data) AS primeira,
                    cat.nome AS categoria, cat.id AS categoria_id
             FROM transacoes t JOIN contas c ON c.id = t.conta_id JOIN categorias cat ON cat.id = t.categoria_id
             WHERE {analises.FILTRO_REAL} AND cat.tipo = 'receita' AND t.valor > 0 AND COALESCE(t.chave,'') != ''
-              AND t.data BETWEEN ? AND ? GROUP BY t.chave""", (ini, fim)):
+              AND t.mes_ref = ? GROUP BY t.chave""", (m,)):
             c = por_chave.setdefault(r["chave"], {"chave": r["chave"], "descricao": r["descricao"],
                                                   "categoria": r["categoria"], "categoria_id": r["categoria_id"],
                                                   "totais": [], "dias": []})
@@ -84,26 +102,43 @@ def automaticos(con, mes: str) -> list[dict]:
         itens.append({"chave_auto": f"divida:{d['id']}", "origem": "contrato", "descricao": d["nome"],
                       "valor": -d["mensal"], "dia": d["dia_vencimento"], "categoria": "Dívidas", "realizado": pago})
     # contas fixas (fora parcelas e dívidas, que já entraram acima)
-    fixas = 0
+    atual = hoje().strftime("%Y-%m")
+    cartao = dividas.cartao_principal(con)
+    # o cartão conta pelo mês da fatura: com a fatura do mês já fechada, o que vier no cartão é do mês seguinte
+    fechada = mes == atual and cartao and cartao["dia_fechamento"] and hoje().day > cartao["dia_fechamento"]
+    fixas = {True: 0, False: 0}          # no cartão / fora do cartão
+    cancelados = {k for k, v in _ajustes(con, mes).items() if v["status"] == "cancelado" and v["mes"] == "*"}
     for r in analises.recorrentes(con):
         if r["divida"]:
             continue
-        fixas += r["valor_medio"]
+        if f"conta:{r['chave']}" not in cancelados:
+            fixas[r["forma"] in ("Cartão", "Pix no crédito")] += r["valor_medio"]
+        feito = _realizado_chave(con, r["chave"], mes, -1)
+        if fechada and r["forma"] in ("Cartão", "Pix no crédito") and not feito:
+            continue
         itens.append({"chave_auto": f"conta:{r['chave']}", "origem": "conta_fixa", "descricao": nome_bonito(r["chave"]),
                       "valor": -r["valor_medio"], "dia": r["dia"], "categoria": r["categoria"], "forma": r["forma"],
-                      "realizado": _realizado_chave(con, r["chave"], mes, -1)})
+                      "realizado": feito})
     # dia a dia variável até o fim do mês
-    atual = hoje().strftime("%Y-%m")
     if mes >= atual:
         y, m = map(int, mes.split("-"))
         total_dias = calendar.monthrange(y, m)[1]
         fracao = (total_dias - hoje().day + 1) / total_dias if mes == atual else 1.0
-        variavel = max(0, projecao(con, 1)["dia_a_dia"] - fixas)
+        from .planejamento import _por_categoria, meses_referencia as _ref
+        ref = _ref(con)
+        # contas fixas (aluguel, energia...) têm previsto próprio ou já foram pagas: o dia a dia é o resto
+        tipico = {c: sum(x["tipico"] for x in _por_categoria(con, ref, "despesa", so_avulsos=True, cartao=c).values()
+                         if x["nome"] not in CONTAS_FIXAS) for c in (True, False)}
+        gasto = {c: _gasto_variavel(con, mes, c) for c in (True, False)}
+        # fora do cartão: o que ainda cabe no ritmo dos dias que faltam, sem passar do típico
+        resto_conta = min(max(0, tipico[False] - fixas[False]) * fracao, max(0, tipico[False] - fixas[False] - gasto[False]))
+        # no cartão: a fatura do mês ainda aberta recebe o que falta para chegar no típico
+        resto_cartao = 0 if fechada else max(0, tipico[True] - fixas[True] - gasto[True])
+        variavel = int(resto_conta + resto_cartao)
         if variavel:
             itens.append({"chave_auto": "variavel", "origem": "variavel",
                           "descricao": "Dia a dia até o fim do mês (estimativa)" if mes == atual else "Dia a dia (estimativa)",
-                          "valor": -int(variavel * fracao), "dia": None, "categoria": None, "realizado": 0,
-                          "estimativa": True})
+                          "valor": -variavel, "dia": None, "categoria": None, "realizado": 0, "estimativa": True})
     return itens
 
 
@@ -123,6 +158,8 @@ def do_mes(con, mes: str) -> dict:
         x = aj.get(a["chave_auto"])
         a["ajuste_id"] = x["id"] if x else None
         a["ajuste_sempre"] = bool(x and x["mes"] == "*")
+        if x and x["descricao"] and x["status"] != "cancelado":
+            a["descricao"] = x["descricao"]
         if x and x["status"] == "cancelado":
             a["status"] = "cancelado"
         elif x and x["status"] == "realizado":
@@ -137,10 +174,16 @@ def do_mes(con, mes: str) -> dict:
         a["manual"] = False
         itens.append(a)
     for m in _manuais(con, mes):
-        falta = m["valor"] if m["status"] == "previsto" and not passado else 0
+        x = aj.get(f"manual:{m['id']}")          # ajuste só deste mês num previsto que se repete
+        status, valor = (x["status"], x["valor"] if x["status"] == "previsto" else m["valor"]) if x else (m["status"], m["valor"])
+        # um previsto com categoria se resolve sozinho quando o extrato traz o gasto (ex.: o boleto do aluguel)
+        feito = _realizado(con, "categoria_id", m["categoria_id"], mes, 1 if valor > 0 else -1) if m["categoria_id"] else 0
+        if status == "previsto" and feito >= abs(valor) * 0.97:
+            status = "realizado"
+        falta = max(0, abs(valor) - feito) * (1 if valor > 0 else -1) if status == "previsto" and not passado else 0
         itens.append({"id": m["id"], "chave_auto": None, "origem": "manual", "descricao": m["descricao"],
-                      "valor": m["valor"], "dia": m["dia"], "categoria": m["categoria"], "realizado": 0,
-                      "status": m["status"], "falta": falta, "manual": True, "observacao": m["observacao"],
+                      "valor": valor, "dia": m["dia"], "categoria": m["categoria"], "realizado": feito,
+                      "status": status, "falta": falta, "ajuste_id": x["id"] if x else None, "manual": True, "observacao": m["observacao"],
                       "repete": bool(m["ate"] and m["ate"] != m["mes"]), "mes_inicio": m["mes"], "ate": m["ate"],
                       "no_plano": bool(m["no_plano"])})
     itens.sort(key=lambda i: (i["status"] == "cancelado", i["dia"] or 99))

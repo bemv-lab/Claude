@@ -669,7 +669,8 @@ TELAS.lancamentos = async (el) => {
           t.escopo === "negocio" ? `<span class="tag neg">negócio</span>` : "",
           t.tipo === "transferencia" ? `<span class="tag">transferência</span>` : t.tipo === "fatura" ? `<span class="tag">fatura</span>` : "",
           t.divida ? `<span class="tag">${esc(t.divida)}</span>` : "",
-          t.marketplace && !t.produto ? `<span class="tag duv">descrever produto</span>` : ""].join("");
+          t.marketplace && !t.produto ? `<span class="tag duv">descrever produto</span>` : "",
+          t.mes_ref && t.mes_ref !== t.data.slice(0, 7) ? `<span class="tag" title="${t.conta_tipo === "cartao" && !t.competencia ? "paga na fatura deste mês" : "vocês escolheram este mês"}">${t.conta_tipo === "cartao" && !t.competencia ? "fatura de " : "conta em "}${nomeMesCurto(t.mes_ref)}</span>` : ""].join("");
         return `${dia}<div class="tx" data-id="${t.id}" tabindex="0"><span class="desc">${t.produto ? `${esc(t.produto)} <small class="mudo">· ${esc(t.descricao)}</small>` : esc(t.descricao)}</span>
           <span class="val num ${t.valor > 0 ? "pos" : ""}" ${t.tipo !== "normal" ? 'style="opacity:.55"' : ""}>${brl(t.valor, true)}</span>
           <span class="meta-tx">${esc(t.categoria || "Sem categoria")} · ${esc(t.conta)}${t.pessoa ? " · " + esc(t.pessoa) : ""} ${tags}</span></div>`;
@@ -688,6 +689,7 @@ function editarTx(t, depois) {
       <label class="campo">Categoria<select name="categoria_id">${opcoes(S.cad.categorias, t.categoria_id, "Sem categoria")}</select></label>
       <label class="campo">Quem<select name="pessoa_id">${opcoes(S.cad.pessoas, t.pessoa_id)}</select></label>
       <label class="campo">Pessoal ou negócio<select name="escopo"><option value="pessoal">Pessoal</option><option value="negocio" ${t.escopo === "negocio" ? "selected" : ""}>Negócio (Rocco Kids)</option></select></label>
+      <label class="campo">Conta no mês de <small>${t.conta_tipo === "cartao" ? "padrão: mês da fatura" : "padrão: mês da data"}</small><input type="month" name="competencia" value="${esc(t.competencia || t.mes_ref || "")}"></label>
       <label class="campo" style="grid-column:1/-1">Observação<input type="text" name="observacao" value="${esc(t.observacao || "")}"></label>
       <label style="display:flex;gap:10px;align-items:center;grid-column:1/-1;font-size:14px"><span class="chave"><input type="checkbox" name="lembrar" checked><span></span></span> Aplicar aos próximos parecidos (${esc(t.chave || "—")})</label>
     </form>
@@ -700,6 +702,7 @@ function editarTx(t, depois) {
       }
       const corpo = { pessoa_id: v.pessoa_id, escopo: v.escopo, observacao: v.observacao };
       if ("produto" in v) corpo.produto = v.produto;
+      if (v.competencia && v.competencia !== (t.competencia || t.mes_ref)) corpo.competencia = v.competencia;
       await api(`/api/transacoes/${t.id}`, { metodo: "PATCH", corpo });
       $("#modal").close(); toast("Salvo"); depois(); atualizarContador();
     });

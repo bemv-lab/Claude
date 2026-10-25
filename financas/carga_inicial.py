@@ -15,6 +15,7 @@ O arquivo de ajustes (JSON) pode ter:
   "negociacoes":         [{"divida": "...", "data": "AAAA-MM-DD", "texto": "..."}]
   "lancamentos_estimados": [{"conta": "itau", "data": "AAAA-MM-DD", "descricao": "...", "valor": 112763,
                              "categoria": "Salário"}]     (ficam marcados como "estimado")
+  "competencia":         [{"conta": "bb", "data": "AAAA-MM-DD", "valor": -290000, "mes": "AAAA-MM"}]
   "previstos":           [{"mes": "AAAA-MM", "ate": "AAAA-MM", "dia": 29, "descricao": "...", "valor": -290000}]
                           (com "chave_auto", ajusta um previsto automático; "mes": "*" vale para todos os meses)
   "orcamento":           "realista"   grava o orçado sugerido pelo gasto real (tela Plano) em cada categoria
@@ -145,6 +146,18 @@ def aplicar_estimados(con, aj: dict) -> int:
     return novos
 
 
+def aplicar_competencias(con, aj: dict) -> int:
+    """Lançamentos que contam em outro mês (ex.: salário de outubro pago em 28/09)."""
+    n = 0
+    for c in aj.get("competencia", []):
+        cur = con.execute("""UPDATE transacoes SET competencia = ?, observacao = COALESCE(?, observacao)
+                             WHERE conta_id = (SELECT id FROM contas WHERE apelido = ?) AND data = ? AND valor = ?""",
+                          (c["mes"], c.get("observacao"), c["conta"], c["data"], c["valor"]))
+        n += cur.rowcount
+    db.atualizar_mes_ref(con)
+    return n
+
+
 def aplicar_previstos(con, aj: dict) -> int:
     from nucleo import previstos
     n = 0
@@ -184,6 +197,7 @@ def main() -> int:
         from nucleo import alertas
         alertas.gerar(con)
         r["duvidas"] = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao='duvida'").fetchone()[0]
+    aplicar_competencias(con, aj)
     aplicar_previstos(con, aj)
     if aj.get("orcamento") == "realista":
         from nucleo import alertas, planejamento

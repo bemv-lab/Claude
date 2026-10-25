@@ -223,3 +223,14 @@ Fontes: OFX da conta Inter (jul–out), Excel do BB (jul–out), CSV do Flash (9
 - **Cores dos gráficos de duas séries** (entradas e saídas): verde-azulado e laranja, conferidos para daltonismo
   nos temas claro e escuro.
 
+## Regime de caixa (correção de 25/10/2026, pedido do Lucas)
+
+- **Os totais do mês seguem a planilha de vocês**: o cartão conta no mês em que a fatura é paga (compra depois
+  do corte vai para a fatura seguinte), e o resto no mês da data. Cada lançamento guarda esse mês (`mes_ref`).
+- **"Conta no mês de"**: vocês podem escolher outro mês para um lançamento (competência). Usado em outubro para o
+  salário adiantado em 28/09 e para o aluguel e a energia de outubro pagos em 29 e 30/09.
+- **Dia a dia que falta**: fora do cartão, o que cabe no ritmo dos dias restantes sem passar do típico; no cartão,
+  só enquanto a fatura do mês está aberta. Contas fixas (aluguel, energia...) ficam de fora porque têm previsto próprio.
+- **Previsto com categoria se resolve sozinho** quando o extrato traz o gasto daquela categoria no mês.
+- **Saúde do mês**: "no vermelho" só quando falta mais de 2% do que entra; perto de zero é "atenção".
+

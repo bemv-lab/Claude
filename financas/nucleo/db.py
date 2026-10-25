@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS transacoes (
   importacao_id INTEGER REFERENCES importacoes(id),
   observacao TEXT,
   produto TEXT,                          -- o que foi comprado (marketplace: Amazon, Mercado Livre...)
+  competencia TEXT,                      -- AAAA-MM escolhido por vocês (ex.: salário adiantado conta no mês seguinte)
+  mes_ref TEXT,                          -- mês em que conta: competência, ou mês da fatura no cartão, ou o da data
   criado_em TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_tx_data ON transacoes(data);
@@ -391,7 +393,8 @@ def migrar(con: sqlite3.Connection) -> None:
     for tabela, novas in (("dividas", (("parcelas_total", "INTEGER"), ("data_inicio", "TEXT"),
                                        ("valor_emprestado", "INTEGER"))),
                           ("categorias", (("orcamento", "INTEGER"),)),
-                          ("transacoes", (("estimado", "INTEGER NOT NULL DEFAULT 0"), ("produto", "TEXT"))),
+                          ("transacoes", (("estimado", "INTEGER NOT NULL DEFAULT 0"), ("produto", "TEXT"), ("competencia", "TEXT"),
+                                          ("mes_ref", "TEXT"))),
                           ("previstos", (("ate", "TEXT"), ("no_plano", "INTEGER NOT NULL DEFAULT 1")))):
         cols = {r["name"] for r in con.execute(f"PRAGMA table_info({tabela})")}
         for c, tipo in novas:
@@ -427,6 +430,8 @@ def migrar(con: sqlite3.Connection) -> None:
     for tipo, nome, desc, ativo, par in ALERTAS_PADRAO:
         con.execute("INSERT OR IGNORE INTO config_alertas (tipo, nome, descricao, ativo, parametros) "
                     "VALUES (?,?,?,?,?)", (tipo, nome, desc, ativo, json.dumps(par)))
+    con.execute("CREATE INDEX IF NOT EXISTS ix_tx_mes_ref ON transacoes(mes_ref)")
+    atualizar_mes_ref(con, so_vazios=True)
     con.execute("INSERT INTO config (chave, valor) VALUES ('versao_dados', ?) "
                 "ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor", (str(VERSAO_DADOS),))
     con.commit()
@@ -541,3 +546,27 @@ def definir_config(con, chave, valor):
 
 def linhas(cur) -> list[dict]:
     return [dict(r) for r in cur.fetchall()]
+
+
+def mes_da_fatura(conta, data_iso: str) -> str:
+    """Mês em que a compra é paga: no cartão, o da fatura (compra depois do fechamento vai para a seguinte)."""
+    if conta["tipo"] != "cartao" or not conta["dia_vencimento"]:
+        return data_iso[:7]
+    y, m, d = int(data_iso[:4]), int(data_iso[5:7]), int(data_iso[8:10])
+    fech, venc = conta["dia_fechamento"], conta["dia_vencimento"]
+    if fech and d > fech:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    if fech and venc < fech:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return f"{y}-{m:02d}"
+
+
+def atualizar_mes_ref(con, so_vazios: bool = False) -> None:
+    """Regime de caixa, como a planilha de vocês: o cartão conta no mês em que a fatura é paga; o resto no mês
+    da data, a não ser que vocês tenham escolhido outro (competência)."""
+    contas = {r["id"]: r for r in con.execute("SELECT * FROM contas")}
+    filtro = "WHERE mes_ref IS NULL" if so_vazios else ""
+    novos = [(t["competencia"] or mes_da_fatura(contas[t["conta_id"]], t["data"]), t["id"])
+             for t in con.execute(f"SELECT id, conta_id, data, competencia FROM transacoes {filtro}")]
+    con.executemany("UPDATE transacoes SET mes_ref = ? WHERE id = ?", novos)
+    con.commit()

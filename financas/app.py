@@ -192,7 +192,7 @@ def r_categoria(con, q, corpo, cid):
 def r_transacoes(con, q, corpo):
     filtros, args = ["1=1"], []
     if q.get("mes"):
-        filtros.append("t.data LIKE ?"); args.append(q["mes"] + "%")
+        filtros.append("t.mes_ref = ?"); args.append(q["mes"])          # regime de caixa (cartão pela fatura)
     for campo in ("conta_id", "categoria_id", "pessoa_id"):
         if q.get(campo):
             if q[campo] == "0":
@@ -262,6 +262,12 @@ def r_tx(con, q, corpo, tid):
         campos["observacao"] = corpo["observacao"]
     if "produto" in corpo:
         analises.salvar_produto(con, int(tid), corpo["produto"])
+    if "competencia" in corpo:
+        comp = corpo["competencia"] or None
+        if comp and not re.fullmatch(r"\d{4}-\d{2}", comp):
+            raise Erro("Mês inválido (use AAAA-MM)")
+        con.execute("UPDATE transacoes SET competencia = ?, mes_ref = NULL WHERE id = ?", (comp, int(tid)))
+        db.atualizar_mes_ref(con, so_vazios=True)
     if campos:
         con.execute(f"UPDATE transacoes SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?",
                     (*campos.values(), int(tid)))

@@ -454,7 +454,7 @@ class TestPlanejamento(BaseBanco):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
         campos = {"conta_id": self.conta(apelido), "data": f"{mes}-10", "descricao": categoria, "valor": valor,
                   "categoria_id": db.categoria_id(self.con, categoria), "tipo": "normal", "classificacao": "manual",
-                  "chave": categoria.upper(),
+                  "chave": categoria.upper(), "mes_ref": mes,
                   "hash": f"t{n}", "criado_em": "2026-01-01", **extra}
         self.con.execute(f"INSERT INTO transacoes ({', '.join(campos)}) VALUES ({', '.join('?' * len(campos))})",
                          tuple(campos.values()))

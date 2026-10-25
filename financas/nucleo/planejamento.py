@@ -41,21 +41,22 @@ def _valor_tipico(valores: list[int], essencial: bool) -> int:
 
 
 def _por_categoria(con, meses: list[str], tipo_cat: str, so_avulsos: bool,
-                   com_beneficio: bool = False) -> dict[int, dict]:
+                   com_beneficio: bool = False, cartao: bool | None = None) -> dict[int, dict]:
     """Total por categoria em cada mês. `so_avulsos` tira parcelas de cartão e pagamentos de dívida
     (a projeção soma esses dois pelo calendário de cada um). `com_beneficio` inclui o que foi pago com o Flash,
     como faz a comparação com o orçado na Início."""
     sinal = "-" if tipo_cat == "despesa" else ""
     filtro = "AND t.parcela_total IS NULL AND t.divida_id IS NULL" if so_avulsos else ""
     base = "t.tipo = 'normal'" if com_beneficio else analises.FILTRO_REAL
+    if cartao is not None:
+        filtro += " AND c.tipo " + ("= 'cartao'" if cartao else "!= 'cartao'")
     acum: dict[int, dict] = {}
     for i, m in enumerate(meses):
-        ini, fim = limites_mes(m)
         for r in con.execute(f"""
             SELECT cat.id, cat.nome, cat.orcamento, {sinal}SUM(t.valor) AS total
             FROM transacoes t JOIN contas c ON c.id = t.conta_id JOIN categorias cat ON cat.id = t.categoria_id
-            WHERE {base} AND cat.tipo = ? AND t.data BETWEEN ? AND ? {filtro}
-            GROUP BY cat.id""", (tipo_cat, ini, fim)):
+            WHERE {base} AND cat.tipo = ? AND t.mes_ref = ? {filtro}
+            GROUP BY cat.id""", (tipo_cat, m)):
             c = acum.setdefault(r["id"], {"id": r["id"], "nome": r["nome"], "orcamento": r["orcamento"],
                                           "meses": [0] * len(meses)})
             c["meses"][i] = max(0, r["total"])
