@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -578,7 +579,16 @@ def atualizar_mes_ref(con, so_vazios: bool = False) -> None:
     da data, a não ser que vocês tenham escolhido outro (competência)."""
     contas = {r["id"]: r for r in con.execute("SELECT * FROM contas")}
     filtro = "WHERE mes_ref IS NULL" if so_vazios else ""
+    # linhas de fatura: contam no mês do vencimento da fatura de onde vieram (ex.: venc-2026-10-20 -> outubro)
+    for imp_id, arq in con.execute("SELECT id, arquivo FROM importacoes").fetchall():
+        m = re.search(r"venc-(\d{4}-\d{2})-\d{2}", arq or "")
+        if m:
+            con.execute("UPDATE transacoes SET mes_ref = ? WHERE importacao_id = ? AND competencia IS NULL",
+                        (m.group(1), imp_id))
     novos = [(t["competencia"] or mes_da_fatura(contas[t["conta_id"]], t["data"]), t["id"])
              for t in con.execute(f"SELECT id, conta_id, data, competencia FROM transacoes {filtro}")]
     con.executemany("UPDATE transacoes SET mes_ref = ? WHERE id = ?", novos)
+    # dinheiro liberado pelo cartão (Pix no crédito) não é renda nem gasto: a saída é o Pix que sai da conta
+    con.execute("UPDATE transacoes SET tipo = 'transferencia' WHERE valor > 0 AND descricao LIKE 'Pix No Cr%' "
+                "AND tipo = 'normal'")
     con.commit()

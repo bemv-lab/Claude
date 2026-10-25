@@ -38,11 +38,11 @@ def saude(entradas: int, saldo_previsto: int, orc: dict) -> dict:
     margem = saldo_previsto / entradas if entradas else 0
     ritmo = (orc["percentual"] or 0) - orc["mes_decorrido"]
     if saldo_previsto < 0 and margem < -0.02:
-        return {"nivel": "critico", "titulo": "No vermelho",
-                "texto": f"O mês deve fechar faltando {brl(-saldo_previsto)}. Segurem o variável e revejam os previstos."}
+        return {"nivel": "critico", "titulo": "Saídas maiores que entradas",
+                "texto": f"Pelo que já entrou e o que ainda vai entrar, as saídas passam das entradas em {brl(-saldo_previsto)} neste mês."}
     if saldo_previsto < 0:
-        return {"nivel": "atencao", "titulo": "Atenção",
-                "texto": f"Praticamente no zero a zero: deve faltar {brl(-saldo_previsto)}. Qualquer gasto extra pesa."}
+        return {"nivel": "atencao", "titulo": "Fecha no zero",
+                "texto": f"Entradas e saídas empatam quase: o mês fica {brl(-saldo_previsto)} no negativo. Qualquer gasto extra pesa."}
     if margem < 0.10 or ritmo > 0.10:
         motivo = ("a sobra prevista é pequena" if margem < 0.10
                   else f"o gasto está {ritmo:.0%} à frente do ritmo do mês")
