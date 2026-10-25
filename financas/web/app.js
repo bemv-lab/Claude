@@ -208,6 +208,7 @@ TELAS.inicio = async (el) => {
         <div><span class="rotulo-claro">${passado ? `Resultado de ${esc(nome)}` : `Resultado previsto de ${esc(nome)}`} (entradas − saídas)</span>
           <div class="valor-heroi">${brl(passado ? h.saldo : h.saldo_previsto, true)}</div>
           <div class="heroi-sub">Entradas ${brl(E.previsto)} − saídas ${brl(X.previsto)} (já aconteceu + o que falta)</div>
+          <div class="heroi-sub">Fechamento das contas: saldo hoje ${brl(h.saldo_contas)} + o que vai entrar ${brl(E.a_receber)} − o que vai sair ${brl(X.a_pagar)} = <b class="num">${brl(h.fechamento, true)}</b></div>
           <div class="heroi-sub">${passado ? "" : `Até agora <b class="num">${brl(h.saldo, true)}</b> · `}${h.saldo_mes_anterior ? `${varSaldo >= 0 ? "melhor" : "pior"} que o mês anterior em <b class="num">${brl(Math.abs(varSaldo))}</b>` : ""}</div></div>
         <div class="saude ${sa.nivel}"><span class="rotulo-claro">Saúde do mês</span><b><i aria-hidden="true"></i>${esc(sa.titulo)}</b><small>${esc(sa.texto)}</small></div>
       </div>

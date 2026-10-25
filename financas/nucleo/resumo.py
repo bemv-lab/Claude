@@ -100,6 +100,8 @@ def home(con, mes: str | None = None) -> dict:
         "provisionado": {"entradas": prev["a_receber"], "saidas": prev["a_pagar"],
                          "manuais": prev["manuais_entradas"] + prev["manuais_saidas"]},
         "saldo_previsto": saldo_prev,
+        "saldo_contas": config_int(con, "saldo_contas_atual"),
+        "fechamento": config_int(con, "saldo_contas_atual") + prev["a_receber"] - prev["a_pagar"],
         "saude": saude(entradas_prev, saldo_prev, orc) if mes >= hoje().strftime("%Y-%m") else
                  saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),
         "previstos": prev["itens"],
