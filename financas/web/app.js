@@ -25,6 +25,8 @@ const ICONES = {
   lancamentos: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   duvidas: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   plano: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  encontros: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>',
+  mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   dividas: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
   importar: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
   ajustes: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -35,7 +37,8 @@ const ICONES = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
-const NAV = [["inicio", "Início"], ["plano", "Plano"], ["lancamentos", "Lançamentos"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
+const NAV_CELULAR = ["inicio", "plano", "lancamentos", "encontros"];
 
 /* ------------------------------------------------------------------ infraestrutura */
 async function api(caminho, { metodo = "GET", corpo, bruto, silencioso } = {}) {
@@ -69,7 +72,7 @@ const catsDe = (tipos) => S.cad.categorias.filter((c) => tipos.includes(c.tipo))
 
 async function carregarCadastros() { S.cad = await api("/api/cadastros"); }
 async function carregarEstado() {
-  const e = await api("/api/estado"); S.modo = e.modo;
+  const e = await api("/api/estado"); S.modo = e.modo; S.hoje = e.hoje;
   $("#selo-demo").hidden = e.modo !== "demo";
   const m = await api("/api/meses"); S.meses = m.meses;
   if (!S.mes) S.mes = e.hoje.slice(0, 7);
@@ -83,7 +86,13 @@ function montarNav() {
   const atual = (location.hash.replace("#/", "") || "inicio").split("?")[0];
   const item = ([id, nome]) => `<a href="#/${id}" class="${atual === id ? "ativo" : ""}">${icone(id)}<span>${nome}</span>${id === "duvidas" && S.nDuvidas ? `<span class="contador">${S.nDuvidas}</span>` : ""}</a>`;
   $("#menu").innerHTML = NAV.map(item).join("");
-  $("#abas").innerHTML = NAV.filter(([id]) => id !== "ajustes" || window.innerWidth > 900).slice(0, 5).map(item).join("");
+  const resto = NAV.filter(([id]) => !NAV_CELULAR.includes(id));
+  $("#abas").innerHTML = NAV.filter(([id]) => NAV_CELULAR.includes(id)).map(item).join("") +
+    `<a href="#" id="aba-mais" class="${resto.some(([id]) => id === atual) ? "ativo" : ""}">${icone("mais")}<span>Mais</span>${S.nDuvidas ? `<span class="contador">${S.nDuvidas}</span>` : ""}</a>`;
+  $("#aba-mais").addEventListener("click", (e) => {
+    e.preventDefault();
+    abrirModal(`<h3>Mais</h3><nav class="menu-mais">${resto.map(item).join("")}</nav>`, (m) => $$("a", m).forEach((a) => a.addEventListener("click", () => $("#modal").close())));
+  });
 }
 function montarMes(visivel) {
   const el = $("#mes-nav");
@@ -106,6 +115,32 @@ async function render() {
 }
 
 /* ------------------------------------------------------------------ Início */
+const mesAtual = () => (S.hoje || new Date().toISOString()).slice(0, 7);
+const ORIGEM = { renda: "renda", contrato: "contrato", conta_fixa: "conta fixa", variavel: "estimativa", manual: "lançado por vocês" };
+const pct = (v) => `${Math.round(v * 100)}%`;
+
+function fluxoHTML(rotulo, feito, falta, total, cls, nomeFeito, nomeFalta) {
+  const p = total ? Math.min(1, feito / total) : 0;
+  return `<div class="fluxo-item">
+    <div class="fluxo-cab"><span>${rotulo}</span><b class="num">${brl(total)}</b></div>
+    <div class="fluxo-barra ${cls}" role="img" aria-label="${rotulo}: ${nomeFeito} ${brl(feito)}, ${nomeFalta} ${brl(falta)}"><i style="width:${p * 100}%"></i></div>
+    <div class="fluxo-leg"><span><i class="tecla ${cls}"></i>${nomeFeito} <b class="num">${brl(feito)}</b></span><span><i class="tecla ${cls} vazia"></i>${nomeFalta} <b class="num">${brl(falta)}</b></span></div>
+  </div>`;
+}
+
+function previstoHTML(i) {
+  const entrada = i.valor > 0;
+  const st = i.status === "cancelado" ? `<span class="tag">não vai acontecer${i.ajuste_sempre ? " (sempre)" : ""}</span>`
+    : i.status === "realizado" ? `<span class="tag ok">✓ ${entrada ? "recebido" : "pago"}</span>`
+    : i.realizado ? `<span class="tag duv">falta ${brl(Math.abs(i.falta))}</span>` : `<span class="tag duv">${entrada ? "a receber" : "a pagar"}</span>`;
+  return `<div class="previsto ${i.status === "cancelado" ? "riscado" : ""}">
+    <span class="sinal ${entrada ? "entrada" : "saida"}" aria-hidden="true">${entrada ? "↓" : "↑"}</span>
+    <div class="previsto-txt"><b>${esc(i.descricao)}</b>
+      <small>${i.dia ? `dia ${i.dia} · ` : ""}${ORIGEM[i.origem] || ""}${i.forma ? ` · ${esc(i.forma)}` : ""}${i.repete ? ` · todo mês${i.ate && i.ate !== "9999-12" ? ` até ${nomeMesCurto(i.ate)}` : ""}` : ""}${i.ajustado ? " · ajustado" : ""}${i.observacao ? ` · <span title="${esc(i.observacao)}">ℹ︎ obs.</span>` : ""}</small></div>
+    <div class="previsto-val"><b class="num">${brl(i.valor, true)}</b>${st}</div>
+    <button class="btn-texto" data-prev="${esc(i.chave_auto || "m" + i.id)}">Ajustar</button></div>`;
+}
+
 TELAS.inicio = async (el) => {
   const h = await api(`/api/home?mes=${S.mes}`);
   if (h.vazio) {
@@ -117,30 +152,66 @@ TELAS.inicio = async (el) => {
     $("#ir-demo")?.addEventListener("click", () => trocarModo("demo"));
     return;
   }
-  const o = h.orcamento;
-  const pct = o.limite ? Math.min(1, o.gasto / o.limite) : 0;
-  const classeMed = o.percentual > 1 ? "estouro" : o.percentual > 0.85 ? "perto" : "";
+  const o = h.orcamento, E = h.entradas, X = h.saidas, sa = h.saude;
+  const passado = S.mes < mesAtual();
+  const nome = nomeMes(S.mes);
+  const usado = o.limite ? Math.min(1.2, o.gasto / o.limite) : 0;
   const varSaldo = h.saldo - h.saldo_mes_anterior;
+  const ativos = h.previstos.filter((i) => i.status === "previsto");
+  const feitos = h.previstos.filter((i) => i.status === "realizado");
+  const cancel = h.previstos.filter((i) => i.status === "cancelado");
   h.categorias.forEach((c) => { c.ref = c.orcamento || c.media; c.refNome = c.orcamento ? "orçado" : "média"; });
   const maxCat = Math.max(1, ...h.categorias.map((c) => Math.max(c.total, c.ref || 0)));
-  el.innerHTML = `
-  <div class="pilha">
-    <div class="cartao heroi">
-      <div>
-        <div class="rotulo">Saldo do mês</div>
-        <div class="valor-gigante num ${h.saldo >= 0 ? "pos" : ""}">${brl(h.saldo, true)}</div>
-        <div class="mini-linhas"><span>Entrou <b class="num">${brl(h.receitas)}</b></span><span>Saiu <b class="num">${brl(h.despesas)}</b></span></div>
-        ${h.entradas_pendentes ? `<p class="mudo" style="font-size:13px;margin:12px 0 0">+ ${brl(h.entradas_pendentes)} em entradas esperando classificação.</p>` : ""}
-        ${h.saldo_mes_anterior ? `<p class="mudo" style="font-size:13px;margin:8px 0 0">${varSaldo >= 0 ? "Melhor" : "Pior"} que o mês anterior em ${brl(Math.abs(varSaldo))}.</p>` : ""}
+  el.innerHTML = `<div class="pilha">
+    <section class="painel-heroi">
+      <div class="heroi-topo">
+        <div><span class="rotulo-claro">${passado ? `Saldo de ${esc(nome)}` : `Saldo previsto de ${esc(nome)}`}</span>
+          <div class="valor-heroi">${brl(passado ? h.saldo : h.saldo_previsto, true)}</div>
+          <div class="heroi-sub">${passado ? "" : `Até agora <b class="num">${brl(h.saldo, true)}</b> · `}${h.saldo_mes_anterior ? `${varSaldo >= 0 ? "melhor" : "pior"} que o mês anterior em <b class="num">${brl(Math.abs(varSaldo))}</b>` : ""}</div></div>
+        <div class="saude ${sa.nivel}"><span class="rotulo-claro">Saúde do mês</span><b><i aria-hidden="true"></i>${esc(sa.titulo)}</b><small>${esc(sa.texto)}</small></div>
       </div>
-      <div>
-        <div class="rotulo">Ainda podem gastar</div>
-        <div class="valor-grande num">${brl(Math.max(0, o.restante))}</div>
-        ${o.restante < 0 ? `<span class="selo critico">Passou ${brl(-o.restante)} do orçamento</span>`
-          : o.dias_restantes ? `<div class="mudo" style="font-size:13.5px">${brl(o.por_dia)} por dia nos ${o.dias_restantes} dias que faltam</div>` : ""}
-        <div class="medidor ${classeMed}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct * 100)}" aria-label="Orçamento usado"><i style="width:${pct * 100}%"></i></div>
-        <div class="mudo" style="font-size:12.5px">${brl(o.gasto)} de ${brl(o.limite)} ${o.automatico ? `· orçamento automático: renda ${brl(o.renda_referencia)} − dívidas ${brl(o.compromissos_dividas)}${o.meta_poupanca ? ` − poupança ${brl(o.meta_poupanca)}` : ""}` : "· orçamento definido por vocês"}</div>
+      <div class="fluxo">
+        ${fluxoHTML("Entradas do mês", E.recebido, E.a_receber, E.previsto, "entrada", "já entrou", "falta entrar")}
+        ${fluxoHTML("Saídas do mês", X.pago, X.a_pagar, X.previsto, "saida", "já saiu", "falta sair")}
       </div>
+    </section>
+
+    <div class="kpis">
+      <button class="kpi" data-ajustar="entrada"><span class="rotulo">Entradas</span><b class="num">${brl(E.previsto)}</b>
+        <small>${brl(E.recebido)} recebido · ${brl(E.a_receber)} a receber</small><span class="kpi-acao">Ajustar</span></button>
+      <button class="kpi" data-ajustar="saida"><span class="rotulo">Saídas</span><b class="num">${brl(X.previsto)}</b>
+        <small>${brl(X.pago)} pago · ${brl(X.a_pagar)} a pagar</small><span class="kpi-acao">Ajustar</span></button>
+      <button class="kpi" data-ajustar="previstos"><span class="rotulo">Provisionado (líquido)</span><b class="num">${brl(h.provisionado.entradas - h.provisionado.saidas, true)}</b>
+        <small>${brl(h.provisionado.saidas)} a pagar · ${brl(h.provisionado.entradas)} a receber</small><span class="kpi-acao">Lançar</span></button>
+      <a class="kpi" href="#/plano"><span class="rotulo">Ainda podem gastar</span><b class="num">${brl(Math.max(0, o.restante))}</b>
+        <small>${o.restante < 0 ? `passou ${brl(-o.restante)} do orçamento` : o.dias_restantes ? `${brl(o.por_dia)} por dia · ${o.dias_restantes} dias` : "do orçamento do mês"}</small><span class="kpi-acao">Orçamento</span></a>
+    </div>
+
+    <div class="grade g2">
+      <div class="cartao">
+        <div class="cartao-cab"><h2>Previstos de ${esc(nome)}</h2><button class="btn" data-novo-prev>+ Lançar previsto</button></div>
+        ${ativos.length ? `<div class="previstos">${ativos.map(previstoHTML).join("")}</div>` : `<p class="mudo">Nada pendente: tudo o que estava previsto já aconteceu.</p>`}
+        ${feitos.length ? `<details class="mais"><summary>${feitos.length} já ${feitos.length > 1 ? "resolvidos" : "resolvido"} (${brl(feitos.reduce((s, i) => s + Math.max(0, i.valor), 0))} recebidos · ${brl(-feitos.reduce((s, i) => s + Math.min(0, i.valor), 0))} pagos)</summary><div class="previstos">${feitos.map(previstoHTML).join("")}</div></details>` : ""}
+        ${cancel.length ? `<details class="mais"><summary>${cancel.length} que não vão acontecer</summary><div class="previstos">${cancel.map(previstoHTML).join("")}</div></details>` : ""}
+        <p class="nota">Salários, contratos e contas que se repetem entram sozinhos. Ajustem quando algo mudar (ex.: um adiantamento) e lancem o que não é rotina.</p>
+      </div>
+      <div class="cartao">
+        <div class="cartao-cab"><h2>Orçamento do mês</h2><a class="btn-texto" href="#/plano">Ajustar por categoria</a></div>
+        <div class="orc-num"><b class="num">${brl(o.gasto)}</b><span class="mudo"> de ${brl(o.limite)}</span></div>
+        <div class="medidor ${usado > 1 ? "estouro" : usado > o.mes_decorrido + 0.1 ? "perto" : ""}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(usado * 100)}" aria-label="Orçamento usado">
+          <i style="width:${Math.min(1, usado) * 100}%"></i>${o.mes_decorrido && o.mes_decorrido < 1 ? `<span class="marca-ritmo" style="left:${o.mes_decorrido * 100}%" title="ritmo do mês"></span>` : ""}</div>
+        <p style="margin:12px 0 0;font-size:14px">${o.limite ? `Usaram <b>${pct(o.gasto / o.limite)}</b> do orçamento${o.mes_decorrido && o.mes_decorrido < 1 ? ` com <b>${pct(o.mes_decorrido)}</b> do mês passado` : ""}.` : "Ainda não há orçado por categoria."}</p>
+        <p class="nota">O orçamento é a <b>soma do orçado de cada categoria</b> (${o.n_categorias} categorias), incluindo o que é pago com o Flash. Dívidas ficam fora: elas têm plano próprio.
+          ${o.realista ? `Ele cobre o gasto típico de vocês (${brl(o.tipico)} por mês).` : `<span style="color:var(--atencao)">Ele está abaixo do gasto típico de vocês (${brl(o.tipico)} por mês): ajustem no Plano.</span>`}</p>
+      </div>
+    </div>
+
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Entradas e saídas, mês a mês</h2>
+        <div class="legenda"><span><i class="tecla entrada"></i>Entradas</span><span><i class="tecla saida"></i>Saídas</span></div></div>
+      <div class="grafico" id="graf-meses"></div>
+      <details class="mais"><summary>Ver os números</summary><div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Mês</th><th class="num">Entradas</th><th class="num">Saídas</th><th class="num">Saldo</th></tr></thead>
+        <tbody>${h.serie.map((m) => `<tr><td>${nomeMesCurto(m.mes)}</td><td class="num">${brl(m.entradas)}</td><td class="num">${brl(m.saidas)}</td><td class="num">${brl(m.saldo, true)}</td></tr>`).join("")}</tbody></table></div></details>
     </div>
 
     <div class="grade g2">
@@ -149,51 +220,128 @@ TELAS.inicio = async (el) => {
         ${h.alertas.length ? h.alertas.map(alertaHTML).join("") : `<p class="mudo">Nenhum alerta agora. Bom sinal. 🌿</p>`}
       </div>
       <div class="cartao">
-        <div class="cartao-cab"><h2>Fila de dúvidas ${h.n_duvidas ? `<span class="contador">${h.n_duvidas}</span>` : ""}</h2>
-          ${h.n_duvidas ? `<a class="btn btn-primario" href="#/duvidas">Classificar</a>` : ""}</div>
-        ${h.duvidas.length ? `<div class="lista">${h.duvidas.map((t) => `
-          <a class="tx" href="#/duvidas" style="text-decoration:none;color:inherit">
-            <span class="desc">${esc(t.descricao)}</span><span class="val num">${brl(t.valor)}</span>
-            <span class="meta-tx">${dataBR(t.data)} · ${esc(t.conta)}</span></a>`).join("")}</div>
-          <p class="mudo" style="font-size:13px;margin:10px 0 0">Um clique por estabelecimento: o sistema aprende e classifica os parecidos sozinho.</p>`
-          : `<p class="mudo">Tudo classificado. ✨</p>`}
-      </div>
-    </div>
-
-    <div class="grade g2">
-      <div class="cartao">
         <div class="cartao-cab"><h2>Para onde foi o dinheiro</h2><a class="btn-texto" href="#/lancamentos">Ver lançamentos</a></div>
         ${h.categorias.length ? `<div class="barras">${h.categorias.map((c) => `
           <div class="barra-linha" title="${esc(c.nome)}: ${brl(c.total)} (${c.qtd} lançamentos)${c.ref ? ` · ${c.refNome} ${brl(c.ref)}` : ""}">
             <span>${esc(c.nome)}${c.orcamento && c.total > c.orcamento ? ` <span class="tag duv">passou do orçado</span>` : ""}</span><span class="num">${brl(c.total)}</span>
             <div class="trilho"><i style="width:${(c.total / maxCat) * 100}%"></i>${c.ref ? `<span class="media" style="left:${(c.ref / maxCat) * 100}%"></span>` : ""}</div>
           </div>`).join("")}</div>
-          <div class="legenda-media"><i></i> orçado de vocês (sem orçado: média dos 3 meses anteriores)</div>` : `<p class="mudo">Sem gastos neste mês.</p>`}
-      </div>
-      <div class="cartao">
-        <div class="cartao-cab"><h2>Metas</h2><a class="btn-texto" href="#/ajustes?metas">Editar</a></div>
-        ${h.metas.length ? h.metas.map((m) => { const p = Math.min(1, m.guardado / m.valor_alvo); return `
-          <div class="meta"><div class="meta-topo"><span>${esc(m.nome)}</span><span class="num">${Math.round(p * 100)}%</span></div>
-          <div class="medidor"><i style="width:${p * 100}%"></i></div>
-          <small class="num">${brl(m.guardado)} de ${brl(m.valor_alvo)}${m.prazo ? ` · até ${nomeMesCurto(m.prazo)}` : ""}</small></div>`; }).join("")
-          : `<p class="mudo">Cadastrem a primeira meta em Ajustes (reserva, viagem, uma compra).</p>`}
+          <div class="legenda-media"><i></i> orçado da categoria (sem orçado: média dos 3 meses anteriores)</div>` : `<p class="mudo">Sem gastos neste mês.</p>`}
       </div>
     </div>
 
-    <div class="grade g3">
-      <a class="cartao estat" href="#/dividas" style="text-decoration:none;color:inherit"><span class="rotulo">Dívidas em aberto</span>
+    <div class="grade g4">
+      <a class="cartao estat" href="#/dividas"><span class="rotulo">Dívidas em aberto</span>
         <span class="valor-grande num">${brl(h.dividas.total)}</span>
-        <span class="mudo" style="font-size:13px">${brl(h.dividas.mensal)} por mês${h.dividas.a_confirmar.length ? ` · ${h.dividas.a_confirmar.length} a confirmar` : ""}</span></a>
-      <a class="cartao estat" href="#/lancamentos?parcelados" style="text-decoration:none;color:inherit"><span class="rotulo">Parcelas ainda por vir</span>
-        <span class="valor-grande num">${brl(h.parcelas_restante)}</span>
-        <span class="mudo" style="font-size:13px">${h.n_parcelamentos} compra(s) parcelada(s)</span></a>
+        <span class="mudo" style="font-size:13px">${brl(h.dividas.mensal)} por mês em parcelas fixas</span></a>
+      <a class="cartao estat" href="#/lancamentos?parcelados"><span class="rotulo">Parcelas pagas em ${esc(nomeMesCurto(S.mes))}</span>
+        <span class="valor-grande num">${brl(h.parcelas_mes.valor)}</span>
+        <span class="mudo" style="font-size:13px">${h.parcelas_mes.qtd} parcela(s) · ${brl(h.parcelas_restante)} ainda por vir</span></a>
+      <a class="cartao estat" href="#/duvidas"><span class="rotulo">Fila de dúvidas</span>
+        <span class="valor-grande num">${h.n_duvidas}</span>
+        <span class="mudo" style="font-size:13px">${h.n_duvidas ? "lançamento(s) esperando categoria" : "tudo classificado ✨"}</span></a>
       <div class="cartao estat"><span class="rotulo">Benefício (Flash)</span>
         <span class="valor-grande num">${h.beneficios.length ? brl(h.beneficios[0].saldo) : "—"}</span>
-        <span class="mudo" style="font-size:13px">saldo de benefício, fora da renda livre</span></div>
+        <span class="mudo" style="font-size:13px">saldo, fora da renda livre</span></div>
     </div>
     ${h.negocio ? `<p class="mudo" style="font-size:13px">Gastos do negócio no mês (separados do pessoal): ${brl(h.negocio)}.</p>` : ""}
   </div>`;
+  const porChave = Object.fromEntries(h.previstos.map((i) => [i.chave_auto || "m" + i.id, i]));
+  $$("[data-prev]", el).forEach((b) => b.addEventListener("click", () => editarPrevisto(porChave[b.dataset.prev], render)));
+  $("[data-novo-prev]", el).addEventListener("click", () => novoPrevisto({ mes: S.mes }, render));
+  $$("[data-ajustar]", el).forEach((b) => b.addEventListener("click", () => {
+    const tipo = b.dataset.ajustar;
+    if (tipo === "previstos") return novoPrevisto({ mes: S.mes }, render);
+    const lista = h.previstos.filter((i) => (tipo === "entrada" ? i.valor > 0 : i.valor < 0));
+    abrirModal(`<h3>${tipo === "entrada" ? "Entradas" : "Saídas"} previstas de ${esc(nome)}</h3>
+      <p class="mudo" style="margin:-6px 0 0">${tipo === "entrada" ? `Já entraram ${brl(E.recebido)} nos extratos.` : `Já saíram ${brl(X.pago)} nos extratos.`} Ajustem o que ainda vai ${tipo === "entrada" ? "entrar" : "sair"}, ou lancem algo fora da rotina.</p>
+      <div class="previstos">${lista.map(previstoHTML).join("") || `<p class="mudo">Nada previsto.</p>`}</div>
+      <div class="modal-acoes"><button class="btn" data-fechar>Fechar</button><button class="btn btn-primario" id="novo-no-modal">+ Lançar ${tipo === "entrada" ? "entrada" : "saída"}</button></div>`, (m) => {
+      $$("[data-prev]", m).forEach((x) => x.addEventListener("click", () => editarPrevisto(porChave[x.dataset.prev], render)));
+      $("#novo-no-modal", m).addEventListener("click", () => novoPrevisto({ mes: S.mes, sentido: tipo }, render));
+    });
+  }));
+  graficoMeses($("#graf-meses", el), h.serie);
 };
+
+function novoPrevisto(p, depois) {
+  const sentido = p.sentido || (p.valor > 0 ? "entrada" : "saida");
+  abrirModal(`<h3>${p.id ? "Editar previsto" : "Lançar previsto"}</h3>
+    <p class="mudo" style="margin:-6px 0 0">Algo que vocês esperam receber ou pagar e que ainda não está no extrato: um freela, um presente, o IPVA, uma consulta.</p>
+    <form id="f-prev" class="grade-form">
+      <div class="segmentos" style="grid-column:1/-1;justify-self:start" id="seg-sentido">
+        <button type="button" data-s="saida" class="${sentido === "saida" ? "ativo" : ""}">Saída</button><button type="button" data-s="entrada" class="${sentido === "entrada" ? "ativo" : ""}">Entrada</button></div>
+      <input type="hidden" name="sentido" value="${sentido}">
+      <label class="campo" style="grid-column:1/-1">Descrição<input name="descricao" value="${esc(p.descricao || "")}" placeholder="Ex.: Freela de design, IPVA, presente da Joana"></label>
+      <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" value="${p.valor ? paraInput(Math.abs(p.valor)) : ""}" placeholder="0,00"></label>
+      <label class="campo">Mês<input type="month" name="mes" value="${esc(p.mes_inicio || p.mes || S.mes)}"></label>
+      <label class="campo">Dia <small>opcional</small><input type="number" name="dia" min="1" max="31" value="${esc(p.dia ?? "")}"></label>
+      <label class="campo">Repetir<select name="repetir"><option value="">Só neste mês</option><option value="ate" ${p.ate && p.ate !== "9999-12" ? "selected" : ""}>Todo mês até…</option><option value="sempre" ${p.ate === "9999-12" ? "selected" : ""}>Todo mês, sem fim</option></select></label>
+      <label class="campo" id="campo-ate" ${p.ate && p.ate !== "9999-12" ? "" : "hidden"}>Até<input type="month" name="ate" value="${esc(p.ate && p.ate !== "9999-12" ? p.ate : "")}"></label>
+      <label class="campo">Categoria <small>opcional</small><select name="categoria_id">${opcoes(S.cad.categorias, p.categoria_id, "—")}</select></label>
+      <label style="display:flex;gap:10px;align-items:center;grid-column:1/-1;font-size:14px"><span class="chave"><input type="checkbox" name="no_plano" ${p.no_plano === false ? "" : "checked"}><span></span></span> Somar na projeção do Plano (é fora do gasto normal)</label>
+      <label class="campo" style="grid-column:1/-1">Observação<input name="observacao" value="${esc(p.observacao || "")}"></label>
+    </form>
+    <div class="modal-acoes">${p.id ? `<button class="btn" id="apagar-prev" style="margin-right:auto">Apagar</button>` : ""}<button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-prev">Salvar</button></div>`, (m) => {
+    $$("#seg-sentido button", m).forEach((b) => b.addEventListener("click", () => {
+      $$("#seg-sentido button", m).forEach((x) => x.classList.toggle("ativo", x === b)); $("[name=sentido]", m).value = b.dataset.s; }));
+    $("[name=repetir]", m).addEventListener("change", (e) => { $("#campo-ate", m).hidden = e.target.value !== "ate"; });
+    $("#ok-prev", m).addEventListener("click", async () => {
+      const v = form($("#f-prev", m));
+      v.ate = v.repetir === "sempre" ? "9999-12" : v.repetir === "ate" ? v.ate : null;
+      v.no_plano = !!v.no_plano; delete v.repetir;
+      await api(p.id ? `/api/previstos/${p.id}` : "/api/previstos", { metodo: p.id ? "PATCH" : "POST", corpo: v });
+      $("#modal").close(); toast("Previsto salvo"); depois();
+    });
+    $("#apagar-prev", m)?.addEventListener("click", async () => { await api(`/api/previstos/${p.id}`, { metodo: "DELETE" }); $("#modal").close(); toast("Apagado"); depois(); });
+  });
+}
+
+function editarPrevisto(i, depois) {
+  if (i.manual) return novoPrevisto(i, depois);
+  const entrada = i.valor > 0;
+  const salvar = async (corpo) => { await api("/api/previstos", { metodo: "POST", corpo: { chave_auto: i.chave_auto, mes: S.mes, descricao: i.descricao, ...corpo } }); $("#modal").close(); toast("Ajuste salvo"); depois(); };
+  abrirModal(`<h3>${esc(i.descricao)}</h3>
+    <p class="mudo" style="margin:-6px 0 0">Previsto automaticamente (${ORIGEM[i.origem]}): ${brl(i.valor, true)}. Nos extratos deste mês: ${brl(i.realizado)}.</p>
+    <form id="f-aj" class="grade-form"><label class="campo">Valor esperado neste mês (R$)<input name="valor" inputmode="decimal" value="${paraInput(Math.abs(i.valor))}"></label></form>
+    <div class="modal-acoes" style="justify-content:flex-start;flex-wrap:wrap">
+      <button class="btn btn-primario" id="aj-valor">Usar este valor</button>
+      <button class="btn" id="aj-feito">Já ${entrada ? "recebido" : "pago"}</button>
+      <button class="btn" id="aj-nao">Não vai acontecer este mês</button>
+      <button class="btn" id="aj-nunca">Parar de prever</button>
+      ${i.ajuste_id ? `<button class="btn-texto" id="aj-desfazer">Desfazer ajuste</button>` : ""}</div>`, (m) => {
+    $("#aj-valor", m).addEventListener("click", () => salvar({ valor: $("[name=valor]", m).value, sentido: entrada ? "entrada" : "saida" }));
+    $("#aj-feito", m).addEventListener("click", () => salvar({ valor: i.valor, status: "realizado" }));
+    $("#aj-nao", m).addEventListener("click", () => salvar({ valor: 0, status: "cancelado" }));
+    $("#aj-nunca", m).addEventListener("click", () => salvar({ valor: 0, status: "cancelado", mes: "*" }));
+    $("#aj-desfazer", m)?.addEventListener("click", async () => { await api(`/api/previstos/${i.ajuste_id}`, { metodo: "DELETE" }); $("#modal").close(); depois(); });
+  });
+}
+
+function graficoMeses(box, serie) {
+  if (!serie.length) { box.innerHTML = `<p class="mudo">Sem meses para comparar ainda.</p>`; return; }
+  const W = Math.max(280, box.clientWidth), H = 220, topo = 22, base = 26, esq = 48;
+  const max = Math.max(1, ...serie.flatMap((m) => [m.entradas, m.saidas]));
+  const passoY = passoBonito(max / 3), maxY = Math.ceil(max / passoY) * passoY;
+  const y = (v) => topo + (1 - v / maxY) * (H - topo - base);
+  const banda = (W - esq) / serie.length, larg = Math.min(22, banda * 0.28), gap = 2;
+  const col = (x, v, cor) => { const yy = y(v), r = Math.min(4, y(0) - yy); return `<path d="M${x},${y(0)} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + larg - r} Q${x + larg},${yy} ${x + larg},${yy + r} V${y(0)} Z" fill="var(${cor})"/>`; };
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Entradas e saídas por mês (números na tabela abaixo)">`;
+  for (let v = 0; v <= maxY + 1; v += passoY) svg += `<line class="${v ? "grade-y" : "eixo"}" x1="${esq}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${esq - 8}" y="${y(v) + 4}" text-anchor="end">${compacto(v)}</text>`;
+  serie.forEach((m, i) => {
+    const cx = esq + banda * i + banda / 2;
+    svg += `<g class="col" tabindex="0" data-i="${i}"><rect x="${cx - banda / 2}" y="0" width="${banda}" height="${H - 20}" fill="transparent"/>
+      ${col(cx - larg - gap / 2, m.entradas, "--serie-entrada")}${col(cx + gap / 2, m.saidas, "--serie-saida")}</g>
+      <text x="${cx}" y="${H - 4}" text-anchor="middle">${nomeMesCurto(m.mes)}</text>`;
+  });
+  box.innerHTML = svg + "</svg>";
+  $$(".col", box).forEach((g) => {
+    const m = serie[+g.dataset.i], cx = esq + banda * +g.dataset.i + banda / 2;
+    const ver = () => mostrarDica(box, cx, y(Math.max(m.entradas, m.saidas)), `${brl(m.saldo, true)}`, `${nomeMes(m.mes)} · entrou ${brl(m.entradas)} · saiu ${brl(m.saidas)}`);
+    g.addEventListener("pointerenter", ver); g.addEventListener("focus", ver);
+    g.addEventListener("pointerleave", () => esconderDica(box)); g.addEventListener("blur", () => esconderDica(box));
+  });
+}
 
 function alertaHTML(a) {
   const nivel = { 3: "Importante", 2: "Atenção", 1: "Aviso" }[a.severidade];
@@ -253,12 +401,23 @@ TELAS.plano = async (el) => {
         ${linhaProj("Dia a dia", "dia_a_dia")}
         ${linhaProj("Parcelas de cartão já feitas", "parcelas")}
         ${linhaProj("Dívidas com parcela fixa", "dividas")}
+        ${pr.meses.some((m) => m.previstos_entradas) ? linhaProj("Entradas fora da rotina", "previstos_entradas", 1) : ""}
+        ${pr.meses.some((m) => m.previstos_saidas) ? linhaProj("Saídas fora da rotina", "previstos_saidas") : ""}
         ${linhaProj("Resultado do mês", "resultado", 1, "linha-resultado")}
         ${linhaProj("Acumulado", "acumulado", 1, "mudo")}
       </tbody></table></div>
       <p class="nota">Renda típica: ${pr.renda.informada ? "valor informado em Ajustes" : pr.renda.fontes.filter((f) => f.tipico).map((f) => `${esc(f.nome)} ${brl(f.tipico)}`).join(" + ")}.
         Dia a dia: o que não é parcela nem dívida, com mediana nas contas essenciais (um mês com dois aluguéis não puxa a conta) e média no resto.
         O Flash fica de fora dos dois lados. Parcelas e contratos seguem o calendário de cada um, então o alívio quando terminam já aparece aqui.</p>
+    </div>
+
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Previstos fora da rotina</h2><button class="btn" id="novo-prev-plano">+ Lançar previsto</button></div>
+      ${(() => { const its = pr.meses.flatMap((m) => m.previstos_itens.map((i) => ({ ...i, mes_ref: m.mes })));
+        return its.length ? `<div class="previstos">${its.map((i) => `<div class="previsto"><span class="sinal ${i.valor > 0 ? "entrada" : "saida"}" aria-hidden="true">${i.valor > 0 ? "↓" : "↑"}</span>
+          <div class="previsto-txt"><b>${esc(i.descricao)}</b><small>${nomeMesCurto(i.mes_ref)}${i.dia ? `, dia ${i.dia}` : ""}${i.categoria ? ` · ${esc(i.categoria)}` : ""}${i.ate && i.ate !== i.mes ? " · repete" : ""}</small></div>
+          <div class="previsto-val"><b class="num">${brl(i.valor, true)}</b></div><button class="btn-texto" data-prev-plano="${i.id}">Editar</button></div>`).join("")}</div>`
+          : `<p class="mudo">Lancem aqui o que não é rotina e vai mexer nos próximos meses: 13º, férias, freela, IPVA, matrícula, uma viagem. Entra na projeção acima.</p>`; })()}
     </div>
 
     <div class="cartao">
@@ -317,6 +476,11 @@ TELAS.plano = async (el) => {
   </div>`;
 
   $$("#seg-meses button", el).forEach((b) => b.addEventListener("click", () => { P.meses = +b.dataset.n; render(); }));
+  $("#novo-prev-plano", el).addEventListener("click", () => novoPrevisto({ mes: somarMes(mesAtual(), 1) }, render));
+  $$("[data-prev-plano]", el).forEach((b) => b.addEventListener("click", () => {
+    const i = pr.meses.flatMap((m) => m.previstos_itens).find((x) => x.id === +b.dataset.prevPlano);
+    novoPrevisto({ ...i, mes_inicio: i.mes, no_plano: !!i.no_plano }, render);
+  }));
   $("#f-quit", el).addEventListener("submit", (e) => { e.preventDefault(); const v = form(e.target); P.extra = v.extra.trim() || null; P.bola = !!v.bola; render(); });
   $$("[data-extra]", el).forEach((b) => b.addEventListener("click", () => { P.extra = paraInput(+b.dataset.extra); render(); }));
   $("#f-orc", el).addEventListener("submit", (e) => { e.preventDefault(); P.liberar = form(e.target).liberar.trim(); P.extra = null; render(); });
@@ -411,7 +575,8 @@ TELAS.duvidas = async (el) => {
   const d = await api("/api/duvidas");
   S.nDuvidas = d.total; montarNav();
   if (!d.itens.length) {
-    el.innerHTML = `<div class="cartao vazio"><div class="grande">✨</div><h3>Fila vazia</h3><p>Tudo classificado. Quando importarem extratos novos, o que o sistema não souber aparece aqui.</p></div>`;
+    el.innerHTML = `<div class="pilha"><div class="cartao vazio"><div class="grande">✨</div><h3>Fila vazia</h3><p>Tudo classificado. Quando importarem extratos novos, o que o sistema não souber aparece aqui.</p></div><div id="produtos"></div></div>`;
+    produtosPendentes($("#produtos", el));
     return;
   }
   const usados = [...S.cad.categorias].sort((a, b) => (b.usos || 0) - (a.usos || 0));
@@ -443,6 +608,8 @@ TELAS.duvidas = async (el) => {
           <label><span class="chave"><input type="checkbox" data-lembrar checked><span></span></span> Lembrar para os próximos</label>
         </div></div>`;
     }).join("")}</div>`;
+  el.firstElementChild.insertAdjacentHTML("beforeend", `<div id="produtos"></div>`);
+  produtosPendentes($("#produtos", el));
   $$(".duvida", el).forEach((card) => {
     const enviar = async (categoria_id, extra = {}) => {
       const corpo = { categoria_id, pessoa_id: $("[data-pessoa]", card).value, lembrar: $("[data-lembrar]", card).checked,
@@ -501,8 +668,9 @@ TELAS.lancamentos = async (el) => {
           t.estimado ? `<span class="tag" title="${esc(t.observacao || "")}">estimado</span>` : "",
           t.escopo === "negocio" ? `<span class="tag neg">negócio</span>` : "",
           t.tipo === "transferencia" ? `<span class="tag">transferência</span>` : t.tipo === "fatura" ? `<span class="tag">fatura</span>` : "",
-          t.divida ? `<span class="tag">${esc(t.divida)}</span>` : ""].join("");
-        return `${dia}<div class="tx" data-id="${t.id}" tabindex="0"><span class="desc">${esc(t.descricao)}</span>
+          t.divida ? `<span class="tag">${esc(t.divida)}</span>` : "",
+          t.marketplace && !t.produto ? `<span class="tag duv">descrever produto</span>` : ""].join("");
+        return `${dia}<div class="tx" data-id="${t.id}" tabindex="0"><span class="desc">${t.produto ? `${esc(t.produto)} <small class="mudo">· ${esc(t.descricao)}</small>` : esc(t.descricao)}</span>
           <span class="val num ${t.valor > 0 ? "pos" : ""}" ${t.tipo !== "normal" ? 'style="opacity:.55"' : ""}>${brl(t.valor, true)}</span>
           <span class="meta-tx">${esc(t.categoria || "Sem categoria")} · ${esc(t.conta)}${t.pessoa ? " · " + esc(t.pessoa) : ""} ${tags}</span></div>`;
       }).join("")}</div>` : `<div class="vazio"><h3>Nada por aqui</h3><p>Nenhum lançamento neste mês com esses filtros.</p></div>`;
@@ -514,8 +682,9 @@ TELAS.lancamentos = async (el) => {
 
 function editarTx(t, depois) {
   abrirModal(`<h3>${esc(t.descricao)}</h3>
-    <p class="mudo" style="margin:-8px 0 0">${dataBR(t.data)} · ${esc(t.conta)} · <b class="num">${brl(t.valor, true)}</b>${t.portador ? ` · cartão: ${esc(t.portador)}` : ""}</p>
+    <p class="mudo" style="margin:-8px 0 0">${dataBR(t.data)} · ${esc(t.conta)} · <b class="num">${brl(t.valor, true)}</b>${t.portador ? ` · cartão: ${esc(t.portador)}` : ""}${t.parcela_total ? ` · parcela ${t.parcela_atual}/${t.parcela_total}` : ""}</p>
     <form id="f-tx" class="grade-form">
+      ${t.marketplace || t.produto ? `<label class="campo" style="grid-column:1/-1">O que foi comprado <small>${t.parcela_total ? "vale para todas as parcelas" : "marketplace"}</small><input name="produto" value="${esc(t.produto || "")}" placeholder="Ex.: fone de ouvido, cadeira, presente da Ana"></label>` : ""}
       <label class="campo">Categoria<select name="categoria_id">${opcoes(S.cad.categorias, t.categoria_id, "Sem categoria")}</select></label>
       <label class="campo">Quem<select name="pessoa_id">${opcoes(S.cad.pessoas, t.pessoa_id)}</select></label>
       <label class="campo">Pessoal ou negócio<select name="escopo"><option value="pessoal">Pessoal</option><option value="negocio" ${t.escopo === "negocio" ? "selected" : ""}>Negócio (Rocco Kids)</option></select></label>
@@ -529,40 +698,208 @@ function editarTx(t, depois) {
         const r = await api(`/api/transacoes/${t.id}/classificar`, { metodo: "POST", corpo: { categoria_id: v.categoria_id || null, pessoa_id: v.pessoa_id, escopo: v.escopo, lembrar: !!v.lembrar } });
         if (r.parecidos) toast(`Regra salva · ${r.parecidos} parecido(s) também`);
       }
-      await api(`/api/transacoes/${t.id}`, { metodo: "PATCH", corpo: { pessoa_id: v.pessoa_id, escopo: v.escopo, observacao: v.observacao } });
+      const corpo = { pessoa_id: v.pessoa_id, escopo: v.escopo, observacao: v.observacao };
+      if ("produto" in v) corpo.produto = v.produto;
+      await api(`/api/transacoes/${t.id}`, { metodo: "PATCH", corpo });
       $("#modal").close(); toast("Salvo"); depois(); atualizarContador();
     });
   });
 }
 
+const FORMA_CLS = { "Cartão": "cartao", "Pix no crédito": "cartao", Pix: "pix", Boleto: "boleto", "Débito automático": "debito", "Débito em conta": "debito", Flash: "flash", "Transferência": "pix" };
 async function recorrentes(el) {
   const { itens } = await api("/api/recorrentes");
-  const ass = itens.filter((i) => i.assinatura);
+  const soma = (l) => l.reduce((s, i) => s + i.valor_medio, 0);
+  const ass = itens.filter((i) => i.assinatura), cartao = itens.filter((i) => FORMA_CLS[i.forma] === "cartao"), conta = itens.filter((i) => FORMA_CLS[i.forma] !== "cartao");
+  const grupo = (titulo, lista, dica) => `<div class="cartao"><div class="cartao-cab"><h2>${titulo}</h2><span class="mudo num">${brl(soma(lista))}/mês</span></div>
+    ${lista.length ? `<div class="lista">${lista.map((i) => `<div class="tx" style="cursor:default"><span class="desc">${esc(i.descricao)}</span>
+      <span class="val num">${brl(i.valor_medio)}<small class="mudo" style="font-weight:400">/mês</small></span>
+      <span class="meta-tx"><span class="forma ${FORMA_CLS[i.forma] || ""}">${esc(i.forma)}</span> ${esc(i.categoria || "Sem categoria")} · ${esc(i.conta)} · todo dia ~${i.dia} · ${i.meses} meses${i.assinatura ? ' <span class="tag neg">assinatura</span>' : ""}${i.escopo === "negocio" ? ' <span class="tag neg">negócio</span>' : ""}${i.divida ? ' <span class="tag">dívida</span>' : ""}</span></div>`).join("")}</div>`
+      : `<p class="mudo">${dica}</p>`}</div>`;
   el.innerHTML = `<div class="pilha"><div class="grade g3">
-      <div class="cartao estat"><span class="rotulo">Assinaturas por mês</span><span class="valor-grande num">${brl(ass.reduce((s, i) => s + i.valor_medio, 0))}</span><span class="mudo" style="font-size:13px">${ass.length} assinatura(s) · ${brl(ass.reduce((s, i) => s + i.valor_medio, 0) * 12)} por ano</span></div>
-      <div class="cartao estat"><span class="rotulo">Todos os recorrentes</span><span class="valor-grande num">${brl(itens.reduce((s, i) => s + i.valor_medio, 0))}</span><span class="mudo" style="font-size:13px">${itens.length} cobrança(s) que se repetem todo mês</span></div>
+      <div class="cartao estat"><span class="rotulo">Assinaturas</span><span class="valor-grande num">${brl(soma(ass))}</span><span class="mudo" style="font-size:13px">${ass.length} assinatura(s) · ${brl(soma(ass) * 12)} por ano</span></div>
+      <div class="cartao estat"><span class="rotulo">No cartão</span><span class="valor-grande num">${brl(soma(cartao))}</span><span class="mudo" style="font-size:13px">${cartao.length} cobrança(s) por mês</span></div>
+      <div class="cartao estat"><span class="rotulo">Por Pix, boleto ou débito</span><span class="valor-grande num">${brl(soma(conta))}</span><span class="mudo" style="font-size:13px">${conta.length} cobrança(s) por mês</span></div>
     </div>
-    <div class="cartao"><div class="cartao-cab"><h2>Detectados automaticamente</h2></div>
-      ${itens.length ? `<div class="lista">${itens.map((i) => `<div class="tx" style="cursor:default"><span class="desc">${esc(i.chave)}</span>
-        <span class="val num">${brl(i.valor_medio)}<small class="mudo" style="font-weight:400">/mês</small></span>
-        <span class="meta-tx">${esc(i.categoria || "Sem categoria")} · ${esc(i.conta)} · ${i.meses} meses · próxima ~${dataBR(i.proxima)} ${i.assinatura ? '<span class="tag neg">assinatura</span>' : ""}</span></div>`).join("")}</div>`
-        : `<p class="mudo">Com pelo menos 2 ou 3 meses de extrato, as cobranças repetidas aparecem aqui.</p>`}
-    </div></div>`;
+    ${grupo("No cartão de crédito", cartao, "Nenhuma cobrança repetida no cartão.")}
+    ${grupo("Por Pix, boleto ou débito em conta", conta, "Nenhuma cobrança repetida nas contas.")}
+    <p class="nota">Detectados sozinhos: mesmo estabelecimento, valor parecido, em meses diferentes. Para mudar a categoria (ex.: uma assinatura), toquem no lançamento na lista de lançamentos.</p></div>`;
 }
 
 async function parcelados(el) {
-  const { itens, agenda } = await api("/api/parcelamentos");
-  const max = Math.max(1, ...agenda.map((a) => a.valor));
-  el.innerHTML = `<div class="pilha"><div class="grade g2">
-    <div class="cartao"><div class="cartao-cab"><h2>Renda futura já comprometida</h2></div>
-      <div class="barras">${agenda.map((a) => `<div class="barra-linha" title="${nomeMes(a.mes)}: ${brl(a.valor)}"><span>${nomeMes(a.mes).replace(/^./, (c) => c.toUpperCase())}</span><span class="num">${brl(a.valor)}</span><div class="trilho"><i style="width:${(a.valor / max) * 100}%"></i></div></div>`).join("")}</div>
-      <p class="mudo" style="font-size:13px;margin:14px 0 0">Regra do casal: evitar parcelamento. Cada parcela aqui é dinheiro de um mês que ainda não chegou.</p></div>
-    <div class="cartao"><div class="cartao-cab"><h2>Compras parceladas</h2></div>
-      ${itens.length ? itens.map((p) => `<div class="meta"><div class="meta-topo"><span>${esc(p.descricao)}</span><span class="num">${brl(p.restante)}</span></div>
-        <div class="medidor perto"><i style="width:${(p.parcela_atual / p.parcela_total) * 100}%"></i></div>
-        <small>${p.parcela_atual}/${p.parcela_total} de ${brl(p.valor_parcela)} · ${esc(p.pessoa || "")} · termina em ${nomeMesCurto(p.termina)}</small></div>`).join("")
-        : `<p class="mudo">Nenhuma compra parcelada. 👏</p>`}</div>
-  </div></div>`;
+  S.mesParc = S.mesParc && S.mesParc.slice(0, 7) === S.mes.slice(0, 7) ? S.mesParc : S.mes;
+  const d = await api(`/api/parcelamentos?mes=${S.mes}`);
+  const sel = d.agenda.find((a) => a.mes === S.mes) || { valor: 0, qtd: 0 };
+  const novas = d.detalhe.filter((x) => x.nova), ultimas = d.detalhe.filter((x) => x.ultima);
+  const max = Math.max(1, ...d.agenda.map((a) => a.valor));
+  const fim = d.detalhe.length ? d.detalhe.reduce((s, x) => s + x.restante_depois, 0) : 0;
+  el.innerHTML = `<div class="pilha">
+    <div class="grade g4">
+      <div class="cartao estat"><span class="rotulo">Parcelas pagas em ${esc(nomeMesCurto(S.mes))}</span><span class="valor-grande num">${brl(sel.valor)}</span><span class="mudo" style="font-size:13px">${sel.qtd} parcela(s) ${S.mes < mesAtual() ? "pagas" : "na fatura do mês"}</span></div>
+      <div class="cartao estat"><span class="rotulo">Compras novas no mês</span><span class="valor-grande num">${novas.length}</span><span class="mudo" style="font-size:13px">${novas.length ? `${brl(novas.reduce((s, x) => s + x.valor * x.n, 0))} parcelados` : "nenhuma parcela 1 este mês"}</span></div>
+      <div class="cartao estat"><span class="rotulo">Terminam no mês</span><span class="valor-grande num">${ultimas.length}</span><span class="mudo" style="font-size:13px">${ultimas.length ? `liberam ${brl(ultimas.reduce((s, x) => s + x.valor, 0))} por mês` : "nenhuma última parcela"}</span></div>
+      <div class="cartao estat"><span class="rotulo">Ainda a pagar, no total</span><span class="valor-grande num">${brl(d.restante_total)}</span><span class="mudo" style="font-size:13px">${d.termina ? `a última termina em ${nomeMesCurto(d.termina)}` : "nada em aberto 👏"}</span></div>
+    </div>
+    <div class="cartao"><div class="cartao-cab"><h2>Parcelas por mês</h2><span class="mudo" style="font-size:13px">no cartão, pelo mês da fatura · toquem num mês</span></div>
+      <div class="colunas-mes">${d.agenda.map((a) => `<button class="col-mes ${a.mes === S.mes ? "ativo" : ""} ${a.mes < mesAtual() ? "passado" : ""}" data-mes="${a.mes}" aria-label="${nomeMes(a.mes)}: ${brl(a.valor)}">
+        <span class="col-valor num">${compacto(a.valor)}</span><span class="col-trilho"><i style="height:${(a.valor / max) * 100}%"></i></span><span class="col-rotulo">${nomeMesCurto(a.mes)}</span></button>`).join("")}</div>
+      <p class="nota">Regra do casal: evitar parcelamento. Cada barra é dinheiro de um mês já comprometido antes de chegar.</p></div>
+    <div class="cartao"><div class="cartao-cab"><h2>Parcelas de ${esc(nomeMes(S.mes))}</h2><span class="num">${brl(sel.valor)}</span></div>
+      ${d.detalhe.length ? `<div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Compra</th><th class="num">Parcela</th><th class="num">Valor</th><th class="num">Depois deste mês</th><th class="num">Termina</th></tr></thead><tbody>
+        ${d.detalhe.map((x, n) => `<tr ${n >= 12 ? 'class="extra" hidden' : ""}><td><b>${esc(x.produto || x.descricao)}</b>${x.produto ? `<br><small class="mudo">${esc(x.descricao)}</small>` : ""}<br><small class="mudo">${esc(x.conta)}${x.pessoa ? " · " + esc(x.pessoa) : ""}${x.prevista ? " · prevista" : ""}</small>
+          ${x.nova ? ' <span class="tag duv">nova</span>' : ""}${x.ultima ? ' <span class="tag ok">última</span>' : ""}</td>
+          <td class="num">${x.k}/${x.n}</td><td class="num">${brl(x.valor)}</td><td class="num">${x.restante_depois ? brl(x.restante_depois) : "—"}</td><td class="num">${nomeMesCurto(x.termina)}</td></tr>`).join("")}
+      </tbody></table></div>${d.detalhe.length > 12 ? `<button class="btn-texto" data-ver="det">Ver todas as ${d.detalhe.length} parcelas</button>` : ""}<p class="nota">Depois de ${esc(nomeMesCurto(S.mes))}, essas compras ainda somam ${brl(fim)}.</p>` : `<p class="mudo">Nenhuma parcela em ${esc(nomeMes(S.mes))}.</p>`}</div>
+    <div class="cartao"><div class="cartao-cab"><h2>Compras em andamento</h2><span class="mudo" style="font-size:13px">${d.itens.length} compra(s)</span></div>
+      ${d.itens.length ? `<div class="lista-parc">${d.itens.map((p, n) => `<div class="parc ${n >= 10 ? "extra" : ""}" ${n >= 10 ? "hidden" : ""}>
+        <div class="parc-topo"><b>${esc(p.produto || p.descricao)}</b><span class="num">${brl(p.restante)} <small class="mudo">a pagar</small></span></div>
+        <div class="parc-passos" aria-label="${p.pagas} de ${p.parcela_total} pagas">${Array.from({ length: p.parcela_total }, (_, k) => `<i class="${k < p.pagas ? "paga" : ""}"></i>`).join("")}</div>
+        <small class="mudo">${p.pagas} de ${p.parcela_total} pagas · ${brl(p.valor_parcela)} por mês${p.proxima ? ` · próxima em ${nomeMesCurto(p.proxima.mes)}` : ""} · termina em ${nomeMesCurto(p.termina)}${p.pessoa ? " · " + esc(p.pessoa) : ""}</small></div>`).join("")}</div>${d.itens.length > 10 ? `<button class="btn-texto" data-ver="and">Ver todas as ${d.itens.length} compras</button>` : ""}`
+        : `<p class="mudo">Nenhuma compra parcelada em aberto. 👏</p>`}</div>
+  </div>`;
+  $$("[data-mes]", el).forEach((b) => b.addEventListener("click", () => { S.mes = b.dataset.mes; montarMes(true); parcelados(el); }));
+  $$("[data-ver]", el).forEach((b) => b.addEventListener("click", () => { $$(".extra", b.closest(".cartao")).forEach((x) => (x.hidden = false)); b.remove(); }));
+}
+
+async function produtosPendentes(box) {
+  const d = await api("/api/marketplace");
+  const pend = d.itens.filter((i) => !i.produto);
+  box.innerHTML = `<div class="cartao"><div class="cartao-cab"><h2>O que foi comprado? ${pend.length ? `<span class="contador">${pend.length}</span>` : ""}</h2><span class="mudo" style="font-size:13px">Amazon, Mercado Livre, Shopee, Shein…</span></div>
+    ${pend.length ? `<p class="mudo" style="margin:-6px 0 12px;font-size:13.5px">O extrato só mostra a loja. Escrevam o produto: depois fica fácil achar e decidir se valeu a pena. Numa compra parcelada, vale para todas as parcelas.</p>
+      <div class="lista">${pend.slice(0, 30).map((i) => `<form class="produto-linha" data-tx="${i.id}"><div><b>${esc(i.descricao)}</b><small class="mudo">${dataBR(i.data_compra || i.data)} · ${esc(i.conta)}${i.pessoa ? " · " + esc(i.pessoa) : ""} · ${i.parcela_total ? `${brl(i.total)} em ${i.parcela_total}x` : brl(i.valor)}</small></div>
+        <input name="produto" placeholder="Ex.: fone de ouvido" aria-label="Produto comprado em ${esc(i.descricao)}"><button class="btn">Salvar</button></form>`).join("")}</div>
+      ${pend.length > 30 ? `<p class="nota">Mostrando 30 de ${pend.length}.</p>` : ""}` : `<p class="mudo">Todas as compras de marketplace têm descrição. ✨</p>`}</div>`;
+  $$(".produto-linha", box).forEach((f) => f.addEventListener("submit", async (e) => {
+    e.preventDefault(); const v = form(f).produto.trim(); if (!v) return;
+    const r = await api(`/api/transacoes/${f.dataset.tx}`, { metodo: "PATCH", corpo: { produto: v } });
+    f.style.opacity = 0; setTimeout(() => produtosPendentes(box), 200); toast("Produto salvo");
+  }));
+}
+
+/* ------------------------------------------------------------------ Plano de ação (encontros) */
+const SITUACAO = { cumprindo: ["Cumprindo", "bom"], atencao: ["Atenção", "atencao"], quebrou: ["Não cumprido", "critico"],
+  melhor: ["Melhor que antes", "bom"], igual: ["Igual a antes", "neutro"], pior: ["Pior que antes", "critico"], sem_registro: ["Sem registro ainda", "neutro"] };
+const STATUS_ACAO = [["", "Continua valendo"], ["cumprida", "Cumprida"], ["parcial", "Cumprida em parte"], ["nao_cumprida", "Não cumprida"], ["cancelada", "Cancelar"]];
+const periodoBR = (a, b) => `${dataBR(a).slice(0, 5)} a ${dataBR(b)}`;
+
+function acaoHTML(a) {
+  const [sit, cls] = a.status !== "ativa" ? [a.status_nome, a.status === "cumprida" ? "bom" : a.status === "parcial" ? "atencao" : "neutro"] : SITUACAO[a.situacao] || ["", "neutro"];
+  const temCat = a.categoria_id && a.gasto !== undefined;
+  const usado = temCat && a.limite ? Math.min(1.2, a.gasto / a.limite) : 0;
+  return `<div class="acao">
+    <div class="acao-topo"><div><b>${esc(a.texto)}</b><small class="mudo">${esc(a.responsavel || "Casal")} · ${periodoBR(a.inicio, a.fim)}${a.status === "ativa" ? a.encerrada ? " · período encerrado" : ` · faltam ${a.dias_restantes} dia(s)` : ""}</small></div>
+      <span class="selo ${cls}">${esc(sit)}</span></div>
+    ${temCat ? `<div class="acao-num">
+        <div><span class="rotulo">${esc(a.categoria)} no período</span><b class="num">${brl(a.gasto)}</b>${a.limite !== null ? `<small class="mudo">limite ${a.limite ? brl(a.limite) : "zero"}</small>` : ""}</div>
+        <div><span class="rotulo">Antes (mesmos ${a.dias_passados} dias)</span><b class="num">${brl(a.gasto_antes)}</b><small class="${a.economia >= 0 ? "pos" : ""}">${a.economia >= 0 ? `${brl(a.economia)} a menos` : `${brl(-a.economia)} a mais`}</small></div></div>
+      ${a.limite ? `<div class="medidor ${usado > 1 ? "estouro" : usado > a.dias_passados / a.dias_total + 0.15 ? "perto" : ""}"><i style="width:${Math.min(1, usado) * 100}%"></i><span class="marca-ritmo" style="left:${(a.dias_passados / a.dias_total) * 100}%"></span></div>` : ""}
+      ${a.itens && a.itens.length ? `<details class="mais"><summary>${a.itens.length} compra(s) no período</summary><ul class="historico">${a.itens.map((i) => `<li>${dataBR(i.data)} · ${esc(i.produto || i.descricao)} · <b class="num">${brl(i.valor)}</b></li>`).join("")}</ul></details>` : ""}` : ""}
+    ${a.registros.length ? `<ul class="historico">${a.registros.slice(0, 3).map((r) => `<li>${dataBR(r.data)}${r.status ? ` · ${esc((STATUS_ACAO.find((x) => x[0] === r.status) || [, r.status])[1])}` : ""}${r.nota ? `: ${esc(r.nota)}` : ""}</li>`).join("")}</ul>` : ""}
+    ${a.status === "ativa" ? `<div class="modal-acoes" style="justify-content:flex-start;margin-top:10px"><button class="btn" data-registrar="${a.id}">Registrar como está indo</button></div>` : ""}
+  </div>`;
+}
+
+function linhaPeriodo(x) {
+  return `<div class="periodo"><span class="rotulo">${periodoBR(x.ini, x.fim)} · ${x.dias} dias</span>
+    <div class="periodo-num"><span>Entrou <b class="num">${brl(x.entradas)}</b></span><span>Saiu <b class="num">${brl(x.saidas)}</b></span><span>Saldo <b class="num ${x.saldo >= 0 ? "pos" : ""}">${brl(x.saldo, true)}</b></span></div></div>`;
+}
+
+TELAS.encontros = async (el) => {
+  const d = await api("/api/encontros");
+  const an = d.analise;
+  const varia = (l, cls) => l.length ? `<ul class="variacoes">${l.map((v) => `<li><span>${esc(v.categoria)}</span><b class="num ${cls}">${brl(v.diferenca, true)}</b><small class="mudo">${brl(v.antes)} → ${brl(v.agora)}</small></li>`).join("")}</ul>` : `<p class="mudo" style="font-size:13.5px">Nada relevante.</p>`;
+  el.innerHTML = `<div class="pilha">
+    <div class="cartao-cab" style="margin:0"><div><h2 style="font-size:22px;color:var(--texto)">Plano de ação</h2>
+      <p class="mudo" style="margin:4px 0 0">Os combinados dos encontros de alinhamento de vocês, e se estão sendo cumpridos.</p></div>
+      <button class="btn btn-primario" id="novo-encontro">+ Novo encontro</button></div>
+
+    <div class="cartao"><div class="cartao-cab"><h2>Compromissos em andamento</h2><button class="btn" id="nova-acao">+ Compromisso</button></div>
+      ${d.ativas.length ? `<div class="acoes">${d.ativas.map(acaoHTML).join("")}</div>`
+        : `<p class="mudo">Nenhum compromisso ativo. No próximo encontro, combinem 1 a 3 ações simples. Por exemplo: “não comprar roupas até o próximo encontro” (categoria Vestuário, limite zero) ou “no máximo R$ 300 em restaurante”.</p>`}</div>
+
+    <div class="cartao"><div class="cartao-cab"><h2>Análise entre períodos</h2></div>
+      <form class="controles" id="f-analise">
+        <label class="campo">Período anterior<span class="duas-datas"><input type="date" name="ini_antes" value="${an.antes.ini}"><input type="date" name="fim_antes" value="${an.antes.fim}"></span></label>
+        <label class="campo">Período atual<span class="duas-datas"><input type="date" name="ini" value="${an.agora.ini}"><input type="date" name="fim" value="${an.agora.fim}"></span></label>
+        <button class="btn">Comparar</button></form>
+      <div id="res-analise">${analiseHTML(an, varia)}</div>
+    </div>
+
+    <div class="cartao"><div class="cartao-cab"><h2>Encontros</h2><span class="mudo" style="font-size:13px">${d.encontros.length} registrado(s)</span></div>
+      ${d.encontros.length ? d.encontros.map((e) => `<details class="encontro" ${e === d.encontros[0] ? "open" : ""}><summary><b>${dataBR(e.data)}</b> ${esc(e.titulo || "Encontro de alinhamento")} <small class="mudo">${e.acoes.length} compromisso(s)</small></summary>
+        ${e.notas ? `<p class="notas">${esc(e.notas)}</p>` : ""}${e.acoes.length ? `<div class="acoes">${e.acoes.map(acaoHTML).join("")}</div>` : ""}</details>`).join("")
+        : `<p class="mudo">Registrem o primeiro encontro: data, o que conversaram e os compromissos até o próximo.</p>`}</div>
+  </div>`;
+  const ligar = (raiz) => $$("[data-registrar]", raiz).forEach((b) => b.addEventListener("click", () => registrarAcao(+b.dataset.registrar)));
+  ligar(el);
+  $("#novo-encontro", el).addEventListener("click", () => novoEncontro(d.ativas));
+  $("#nova-acao", el).addEventListener("click", () => novaAcao());
+  $("#f-analise", el).addEventListener("submit", async (e) => {
+    e.preventDefault(); const r = await api(`/api/analise?${new URLSearchParams(form(e.target))}`);
+    $("#res-analise", el).innerHTML = analiseHTML(r, varia); ligar($("#res-analise", el));
+  });
+};
+
+function analiseHTML(an, varia) {
+  const dif = an.agora.saldo - an.antes.saldo;
+  return `<div class="grade g2">${linhaPeriodo(an.antes)}${linhaPeriodo(an.agora)}</div>
+    <p style="margin:12px 0 0;font-size:14px">O saldo do período atual foi <b class="${dif >= 0 ? "pos" : ""}">${brl(Math.abs(dif))} ${dif >= 0 ? "melhor" : "pior"}</b> que o do anterior.${an.agora.dias !== an.antes.dias ? " Os períodos têm tamanhos diferentes: as categorias abaixo comparam o gasto proporcional." : ""}</p>
+    <div class="grade g2" style="margin-top:14px"><div><h4 class="subtitulo">Gastaram menos</h4>${varia(an.melhoraram, "pos")}</div><div><h4 class="subtitulo">Gastaram mais</h4>${varia(an.pioraram, "")}</div></div>
+    ${an.acoes.length ? `<h4 class="subtitulo" style="margin-top:16px">Compromissos do período</h4><div class="acoes">${an.acoes.map(acaoHTML).join("")}</div>` : ""}`;
+}
+
+function camposAcao(i, a = {}) {
+  const hoje = mesAtual() + S.hoje.slice(7, 10);
+  const fim = new Date(Date.parse(S.hoje) + 30 * 864e5).toISOString().slice(0, 10);
+  return `<div class="grade-form acao-form" data-i="${i}">
+    <label class="campo" style="grid-column:1/-1">Compromisso<input name="texto" value="${esc(a.texto || "")}" placeholder="Ex.: Não comprar roupas"></label>
+    <label class="campo">Acompanhar a categoria <small>opcional</small><select name="categoria_id">${opcoes(S.cad.categorias.filter((c) => c.tipo === "despesa"), a.categoria_id, "— só registro manual —")}</select></label>
+    <label class="campo">Limite no período (R$) <small>0 = não gastar nada</small><input name="limite" inputmode="decimal" placeholder="vazio = sem limite"></label>
+    <label class="campo">De<input type="date" name="inicio" value="${hoje}"></label>
+    <label class="campo">Até <small>próximo encontro</small><input type="date" name="fim" value="${fim}"></label>
+    <label class="campo">Quem<select name="responsavel">${["Casal", "Bárbara", "Lucas"].map((p) => `<option>${p}</option>`).join("")}</select></label></div>`;
+}
+
+function novaAcao() {
+  abrirModal(`<h3>Novo compromisso</h3>${camposAcao(0)}
+    <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-acao">Salvar</button></div>`, (m) => {
+    $("#ok-acao", m).addEventListener("click", async () => {
+      const v = Object.fromEntries($$("[name]", m).map((x) => [x.name, x.value]));
+      await api("/api/acoes", { metodo: "POST", corpo: v }); $("#modal").close(); toast("Compromisso salvo"); render();
+    });
+  });
+}
+
+function novoEncontro(ativas) {
+  let n = 1;
+  abrirModal(`<h3>Novo encontro de alinhamento</h3>
+    <div class="grade-form"><label class="campo">Data<input type="date" id="enc-data" value="${S.hoje}"></label>
+      <label class="campo">Título <small>opcional</small><input id="enc-titulo" placeholder="Ex.: Fechamento de outubro"></label>
+      <label class="campo" style="grid-column:1/-1">O que conversaram<textarea id="enc-notas" rows="3" placeholder="Decisões, preocupações, conquistas…"></textarea></label></div>
+    ${ativas.length ? `<h4 class="subtitulo">Como foram os compromissos</h4>${ativas.map((a) => `<div class="revisao" data-acao="${a.id}"><div><b>${esc(a.texto)}</b><small class="mudo">${esc((SITUACAO[a.situacao] || [""])[0])}${a.gasto !== undefined ? ` · ${brl(a.gasto)} no período` : ""}</small></div>
+      <select name="status">${STATUS_ACAO.map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input name="nota" placeholder="Comentário"></div>`).join("")}` : ""}
+    <h4 class="subtitulo">Compromissos até o próximo encontro</h4><div id="novas-acoes">${camposAcao(0)}</div>
+    <button class="btn-texto" id="mais-acao">+ outro compromisso</button>
+    <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-enc">Salvar encontro</button></div>`, (m) => {
+    $("#mais-acao", m).addEventListener("click", () => $("#novas-acoes", m).insertAdjacentHTML("beforeend", camposAcao(n++)));
+    $("#ok-enc", m).addEventListener("click", async () => {
+      const acoesNovas = $$(".acao-form", m).map((f) => Object.fromEntries($$("[name]", f).map((x) => [x.name, x.value]))).filter((a) => a.texto.trim());
+      const revisoes = $$(".revisao", m).map((r) => ({ acao_id: r.dataset.acao, status: $("[name=status]", r).value, nota: $("[name=nota]", r).value }));
+      await api("/api/encontros", { metodo: "POST", corpo: { data: $("#enc-data", m).value, titulo: $("#enc-titulo", m).value, notas: $("#enc-notas", m).value, acoes: acoesNovas, revisoes } });
+      $("#modal").close(); toast("Encontro registrado"); render();
+    });
+  });
+}
+
+function registrarAcao(id) {
+  abrirModal(`<h3>Como está indo?</h3><div class="grade-form">
+    <label class="campo">Situação<select id="reg-status">${STATUS_ACAO.map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+    <label class="campo" style="grid-column:1/-1">Comentário<input id="reg-nota" placeholder="Ex.: resistimos à promoção da Shein"></label></div>
+    <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-reg">Registrar</button></div>`, (m) =>
+    $("#ok-reg", m).addEventListener("click", async () => {
+      await api(`/api/acoes/${id}/registro`, { metodo: "POST", corpo: { status: $("#reg-status", m).value, nota: $("#reg-nota", m).value } });
+      $("#modal").close(); toast("Registrado"); render();
+    }));
 }
 
 /* ------------------------------------------------------------------ Dívidas */
@@ -576,7 +913,7 @@ TELAS.dividas = async (el) => {
       <div class="cartao estat"><span class="rotulo">Total devido</span><span class="valor-grande num">${brl(p.total_devido)}</span>
         <span class="mudo" style="font-size:13px">${p.a_confirmar.length ? `sem contar ${p.a_confirmar.map(esc).join(", ")} (a confirmar)` : "todas com valor informado"}</span></div>
       <div class="cartao estat"><span class="rotulo">Saída mensal com dívidas</span><span class="valor-grande num">${brl(p.mensal_comprometido)}</span>
-        <span class="mudo" style="font-size:13px">já descontada do orçamento do mês</span></div>
+        <span class="mudo" style="font-size:13px">${p.dividas.filter((d) => d.mensal && d.termino !== "quitada").map((d) => `${esc(d.nome.split(" (")[0])} ${brl(d.mensal)}`).join(" + ")}</span></div>
       <div class="cartao estat"><span class="rotulo">Juros do rotativo (simulações)</span><span class="valor-grande num">${String(p.juros_rotativo).replace(".", ",")}% a.m.</span>
         <span class="mudo" style="font-size:13px">ajuste em Ajustes se o app do cartão mostrar outro</span></div>
     </div>
@@ -815,7 +1152,6 @@ TELAS.ajustes = async (el) => {
     <div class="cartao"><div class="cartao-cab"><h2>Orçamento do mês</h2></div>
       <form id="f-cfg" class="grade-form">
         <label class="campo">Renda mensal esperada <small>vazio = média dos últimos meses</small><input name="renda_mensal_esperada" value="${paraInput(+cfg.renda_mensal_esperada || null)}" inputmode="decimal" placeholder="automático"></label>
-        <label class="campo">Orçamento de gastos <small>vazio = renda − dívidas − poupança</small><input name="orcamento_mensal" value="${paraInput(+cfg.orcamento_mensal || null)}" inputmode="decimal" placeholder="automático"></label>
         <label class="campo">Guardar por mês<input name="meta_poupanca_mensal" value="${paraInput(+cfg.meta_poupanca_mensal || null)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Limite combinado no cartão/mês<input name="limite_fatura_mensal" value="${paraInput(+cfg.limite_fatura_mensal || null)}" inputmode="decimal" placeholder="sem limite"></label>
         <label class="campo">Juros do rotativo (% a.m.)<input name="juros_rotativo_mensal" value="${esc(String(cfg.juros_rotativo_mensal).replace(".", ","))}" inputmode="decimal"></label>

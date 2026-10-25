@@ -62,6 +62,16 @@ Comece pelo modo demo (**Ajustes > Dados > Modo demo**, ou `python app.py --demo
 
 Depois, desligue o modo demo e importem os extratos de verdade.
 
+## Início, Ações e previstos (revisão de 25/10)
+
+- **Início**: saldo previsto do mês, saúde do mês, entradas (já entrou / falta entrar), saídas (já saiu / falta
+  sair), provisionado, orçamento (soma do orçado das categorias) e o gráfico de entradas e saídas mês a mês.
+- **Previstos**: o sistema prevê salários, contratos e contas fixas; vocês ajustam ou lançam o que não é rotina
+  (botão "+ Lançar previsto", no Início ou no Plano).
+- **Ações**: plano de ação dos encontros de alinhamento, com compromissos acompanhados e análise entre períodos.
+- **Parcelados** seguem o mês escolhido no topo (pelo mês da fatura); toquem numa barra para ver as parcelas do mês.
+- **Dúvidas** também pede o produto das compras de marketplace.
+
 ## Tela Plano (Fase 2)
 
 - **Próximos meses**: sobra prevista de 3, 6 ou 12 meses (renda típica − dia a dia − parcelas já feitas −

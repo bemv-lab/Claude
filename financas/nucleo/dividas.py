@@ -170,6 +170,8 @@ def prioridade(estados: list[dict]) -> list[dict]:
             motivo = "Juros não informados: preencham a taxa para a ordem ficar certa."
         elif e["tipo"] == "familia":
             motivo = "Sem juros: não é a mais cara, mas mantenham o combinado em dia para preservar a relação."
+        elif e["juros_mensal"] == 0:
+            motivo = "Sem juros: vem depois das que cobram juros. Combinem uma data para não virar cobrança."
         else:
             motivo = "Sem juros informados."
         e2 = dict(e, juros_considerado=j, juros_estimado=estimado, motivo_prioridade=motivo)

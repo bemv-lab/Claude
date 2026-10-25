@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo import analises, categorizar, db, demo, dividas, planejamento, resumo  # noqa: E402
+from nucleo import acoes, analises, categorizar, db, demo, dividas, planejamento, previstos, resumo  # noqa: E402
 from nucleo.importacao import Lote, atualizar  # noqa: E402
 from nucleo.importadores import csv_, ofx  # noqa: E402
 from nucleo.util import chave_estabelecimento, detectar_parcela, hoje, parse_data, parse_valor, somar_meses  # noqa: E402
@@ -371,7 +371,8 @@ class TestFormatos(BaseBanco):
                                "08/11/2026;LOJA CASA NOVA;Parcela 2/10;R$ 73,15\n", "inter-cartao")
         gs = analises.parcelamentos(self.con)
         self.assertEqual(len(gs), 1)
-        self.assertEqual((gs[0]["parcela_atual"], gs[0]["faltam"]), (2, 8))
+        self.assertEqual(len(gs[0]["ocorrencias"]), 10)                  # 2 lançadas + 8 por vir
+        self.assertEqual(gs[0]["pagas"] + gs[0]["faltam"], 10)
 
 
 class TestPlanilha(BaseBanco):
@@ -453,6 +454,7 @@ class TestPlanejamento(BaseBanco):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
         campos = {"conta_id": self.conta(apelido), "data": f"{mes}-10", "descricao": categoria, "valor": valor,
                   "categoria_id": db.categoria_id(self.con, categoria), "tipo": "normal", "classificacao": "manual",
+                  "chave": categoria.upper(),
                   "hash": f"t{n}", "criado_em": "2026-01-01", **extra}
         self.con.execute(f"INSERT INTO transacoes ({', '.join(campos)}) VALUES ({', '.join('?' * len(campos))})",
                          tuple(campos.values()))
@@ -512,3 +514,72 @@ class TestPlanejamento(BaseBanco):
         x = next(d for d in com["dividas"] if d["nome"] == "Cartão X")
         self.assertEqual(x["quitada_em"], somar_meses(hoje().strftime("%Y-%m"), 3))   # 8% a.m. estimado
         self.assertEqual(com["dividas"][0]["nome"], "Cartão X")         # juros mais caros primeiro
+
+
+class TestRevisao(TestPlanejamento):
+    """Revisão de 25/10: fatura, previstos, marketplace, plano de ação e regras manuais."""
+
+    def test_parcela_cai_no_mes_da_fatura(self):
+        cartao = dict(self.con.execute("SELECT * FROM contas WHERE apelido = 'inter-cartao'").fetchone())
+        self.assertEqual(analises.mes_da_fatura(cartao, "2026-10-12"), "2026-10")    # até o corte (13)
+        self.assertEqual(analises.mes_da_fatura(cartao, "2026-10-16"), "2026-11")    # depois do corte
+        conta = dict(self.con.execute("SELECT * FROM contas WHERE apelido = 'inter-conta'").fetchone())
+        self.assertEqual(analises.mes_da_fatura(conta, "2026-10-16"), "2026-10")
+
+    def test_previsto_manual_e_ajuste_de_automatico(self):
+        mes = hoje().strftime("%Y-%m")
+        previstos.salvar(self.con, {"mes": mes, "descricao": "Freela", "valor": 50000})
+        d = previstos.do_mes(self.con, mes)
+        self.assertGreaterEqual(d["a_receber"], 50000)
+        renda = next(i for i in d["itens"] if i["origem"] == "renda")
+        previstos.salvar(self.con, {"chave_auto": renda["chave_auto"], "mes": mes, "descricao": "x", "valor": 0,
+                                    "status": "cancelado"})
+        d2 = previstos.do_mes(self.con, mes)
+        self.assertEqual(next(i for i in d2["itens"] if i["chave_auto"] == renda["chave_auto"])["status"], "cancelado")
+        self.assertLess(d2["a_receber"], d["a_receber"] + 1)
+        # previsto fora da rotina entra na projeção do Plano
+        prox = somar_meses(mes, 1)
+        base = planejamento.projecao(self.con, 1)["meses"][0]["resultado"]
+        previstos.salvar(self.con, {"mes": prox, "descricao": "IPVA", "valor": -120000})
+        self.assertEqual(planejamento.projecao(self.con, 1)["meses"][0]["resultado"], base - 120000)
+
+    def test_orcamento_e_soma_das_categorias(self):
+        o = resumo.orcamento(self.con, hoje().strftime("%Y-%m"))
+        soma = self.con.execute("SELECT COALESCE(SUM(orcamento),0) FROM categorias WHERE tipo='despesa' AND ativa=1").fetchone()[0]
+        self.assertEqual(o["limite"], soma)
+
+    def test_marketplace_e_produto_em_todas_as_parcelas(self):
+        self.assertTrue(analises.eh_marketplace("AMAZONMKTPLC*REPSTOREL"))
+        self.assertTrue(analises.eh_marketplace("MERCADOLIVRE*MERCADOL"))
+        self.assertFalse(analises.eh_marketplace("AmazonPrimeBR"))
+        self.assertFalse(analises.eh_marketplace("PADARIA SAO JOAO"))
+        self.importar("f.csv", "Data;Lançamento;Tipo;Valor\n08/10/2026;AMAZON BR;Parcela 1/3;R$ 30,00\n"
+                               "08/11/2026;AMAZON BR;Parcela 2/3;R$ 30,00\n", "inter-cartao")
+        tx = self.con.execute("SELECT id FROM transacoes WHERE descricao = 'AMAZON BR' ORDER BY data").fetchone()["id"]
+        self.assertEqual(analises.salvar_produto(self.con, tx, "Fone de ouvido"), 2)
+        self.assertEqual(analises.compras_marketplace(self.con, so_sem_produto=True), [])
+
+    def test_compromisso_de_nao_gastar(self):
+        h = hoje()
+        aid = acoes.criar_acao(self.con, {"texto": "Não comprar roupas", "categoria_id": db.categoria_id(self.con, "Vestuário"),
+                                          "limite": 0, "inicio": h.replace(day=1).isoformat(), "fim": h.isoformat()})
+        a = acoes.acoes_ativas(self.con)[0]
+        self.assertEqual(a["situacao"], "cumprindo")
+        self.lancar(0, "Vestuário", -8000)                       # dia 10 do mês atual
+        self.con.commit()
+        a = next(x for x in acoes.acoes_ativas(self.con) if x["id"] == aid)
+        self.assertEqual(a["situacao"], "quebrou" if h.day >= 10 else "cumprindo")
+        acoes.registrar(self.con, aid, "nao_cumprida", "Promoção")
+        self.assertEqual(acoes.acoes_ativas(self.con), [])
+        an = acoes.analise(self.con)
+        self.assertIn("pioraram", an)
+
+    def test_regra_de_voces_vence_a_planilha(self):
+        self.lancar(1, "Lazer", -2090, descricao="Netflix", chave="NETFLIX", classificacao="importada")
+        self.con.execute("INSERT INTO regras (padrao, categoria_id, origem, criado_em) VALUES ('NETFLIX', ?, 'manual', '')",
+                         (db.categoria_id(self.con, "Assinaturas"),))
+        self.con.commit()
+        self.assertGreaterEqual(categorizar.reaplicar_manuais(self.con), 1)
+        cat = self.con.execute("SELECT c.nome FROM transacoes t JOIN categorias c ON c.id = t.categoria_id "
+                               "WHERE t.descricao = 'Netflix'").fetchone()[0]
+        self.assertEqual(cat, "Assinaturas")

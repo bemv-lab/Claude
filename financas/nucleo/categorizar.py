@@ -25,7 +25,7 @@ class Classificador:
         self.con = con
         regras = [dict(r) for r in con.execute(
             "SELECT * FROM regras WHERE categoria_id IS NOT NULL OR tipo IS NOT NULL")]
-        peso = {"manual": 2, "aprendida": 2, "semente": 1}
+        peso = {"manual": 3, "aprendida": 2, "semente": 1}
         self.regras = sorted(regras, key=lambda r: (peso.get(r["origem"], 1), len(r["padrao"])), reverse=True)
         self.nomes_casal = [normalizar(n) for n in json.loads(config(con, "nomes_casal", "[]") or "[]")]
         self.cat = {r["nome"]: r["id"] for r in con.execute("SELECT id, nome FROM categorias")}
@@ -193,5 +193,35 @@ def estornos_de_cartao(con, janela_dias: int = 90) -> int:
                         "motivo_duvida = NULL, sugestao_id = NULL, observacao = 'Estorno da compra' WHERE id = ?",
                         (compra["categoria_id"], compra["escopo"], t["id"]))
             n += 1
+    con.commit()
+    return n
+
+
+def reaplicar_manuais(con) -> int:
+    """As regras que vocês criaram valem sobre a categoria que veio da planilha antiga ou de uma regra aprendida
+    (ex.: Netflix estava em Lazer na planilha; vocês decidiram que é Assinaturas)."""
+    regras = [dict(r) for r in con.execute(
+        "SELECT r.* FROM regras r JOIN categorias c ON c.id = r.categoria_id WHERE r.origem = 'manual' "
+        "AND r.tipo IS NULL AND c.tipo IN ('despesa','receita','divida') ORDER BY LENGTH(r.padrao) DESC")]
+    if not regras:
+        return 0
+    n = 0
+    for t in con.execute("SELECT id, descricao, chave, valor, conta_id, categoria_id, escopo FROM transacoes "
+                         "WHERE classificacao IN ('importada','regra','heuristica') AND tipo = 'normal'").fetchall():
+        alvo_desc = f" {normalizar(t['descricao']).replace('/', ' ')} "
+        alvo_chave = f" {t['chave'] or ''} "
+        for r in regras:
+            if r["sinal"] == "saida" and t["valor"] > 0 or r["sinal"] == "entrada" and t["valor"] < 0:
+                continue
+            if r["conta_id"] and r["conta_id"] != t["conta_id"]:
+                continue
+            p = f" {r['padrao']} "
+            if p in alvo_desc or p in alvo_chave:
+                escopo = r["escopo"] or t["escopo"]
+                if (r["categoria_id"], escopo) != (t["categoria_id"], t["escopo"]):
+                    con.execute("UPDATE transacoes SET categoria_id = ?, escopo = ? WHERE id = ?",
+                                (r["categoria_id"], escopo, t["id"]))
+                    n += 1
+                break
     con.commit()
     return n

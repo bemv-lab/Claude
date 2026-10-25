@@ -87,17 +87,6 @@ def _dividas_fixas_no_mes(painel: dict, mes: str) -> list[dict]:
     return out
 
 
-def _parcelas_no_mes(con, mes: str, agenda: dict[str, int]) -> int:
-    """Parcelas de cartão do mês: as já lançadas com data no mês (a planilha traz algumas do mês seguinte)
-    mais as que o calendário dos parcelamentos ainda prevê."""
-    ini, fim = limites_mes(mes)
-    lancadas = con.execute(f"""
-        SELECT COALESCE(-SUM(t.valor), 0) FROM transacoes t JOIN contas c ON c.id = t.conta_id
-        WHERE {analises.FILTRO_REAL} AND t.parcela_total IS NOT NULL AND t.valor < 0 AND t.data BETWEEN ? AND ?""",
-                          (ini, fim)).fetchone()[0]
-    return lancadas + agenda.get(mes, 0)
-
-
 def projecao(con, meses: int = 3) -> dict:
     """Resultado previsto dos próximos meses: renda − dia a dia − parcelas de cartão − dívidas de contrato."""
     ref = meses_referencia(con)
@@ -106,16 +95,21 @@ def projecao(con, meses: int = 3) -> dict:
     dia_a_dia = sum(c["tipico"] for c in cats.values())
     painel = dividas.painel(con)
     base = hoje().strftime("%Y-%m")
-    agenda = {x["mes"]: x["valor"] for x in analises.compromisso_futuro_parcelas(con, meses)}
+    agenda = {x["mes"]: x["valor"] for x in analises.agenda_parcelas(con, somar_meses(base, 1), meses)}
+    from .previstos import manuais_por_mes
+    manuais = manuais_por_mes(con, [somar_meses(base, k) for k in range(1, meses + 1)])
     linhas, acumulado = [], 0
     for k in range(1, meses + 1):
         m = somar_meses(base, k)
-        parcelas = _parcelas_no_mes(con, m, agenda)
+        parcelas = agenda.get(m, 0)          # no cartão, pelo mês da fatura
         fixas = _dividas_fixas_no_mes(painel, m)
         total_dividas = sum(d["valor"] for d in fixas)
-        resultado = renda["valor"] - dia_a_dia - parcelas - total_dividas
+        man = manuais[m]
+        resultado = renda["valor"] + man["entradas"] - dia_a_dia - parcelas - total_dividas - man["saidas"]
         acumulado += resultado
         linhas.append({"mes": m, "renda": renda["valor"], "dia_a_dia": dia_a_dia, "parcelas": parcelas,
+                       "previstos_entradas": man["entradas"], "previstos_saidas": man["saidas"],
+                       "previstos_itens": man["itens"],
                        "dividas": total_dividas, "dividas_itens": fixas, "resultado": resultado,
                        "acumulado": acumulado})
     return {"meses_referencia": ref, "renda": renda, "dia_a_dia": dia_a_dia,
@@ -190,8 +184,14 @@ def orcamento_sugerido(con, liberar: int = 0) -> dict:
             "total_orcado": sum(i["orcamento"] or 0 for i in itens)}
 
 
-def aplicar_orcamento(con, itens: list[dict]) -> int:
-    """Grava o orçado de cada categoria e o total do mês (sem a categoria Dívidas, que tem plano próprio)."""
+def aplicar_orcamento(con, itens: list[dict], limpar_outros: bool = True) -> int:
+    """Grava o orçado de cada categoria e o total do mês (sem a categoria Dívidas, que tem plano próprio).
+    Com `limpar_outros`, as categorias de gasto fora da lista ficam sem orçado: assim o total é a soma do que
+    vocês de fato orçaram, sem sobras antigas da planilha."""
+    if limpar_outros:
+        ids = [int(i["id"]) for i in itens]
+        con.execute(f"UPDATE categorias SET orcamento = NULL WHERE tipo = 'despesa' "
+                    f"AND id NOT IN ({','.join('?' * len(ids)) or 'NULL'})", ids)
     for i in itens:
         con.execute("UPDATE categorias SET orcamento = ? WHERE id = ?", (i["orcamento"] or None, int(i["id"])))
     total = con.execute("SELECT COALESCE(SUM(orcamento), 0) FROM categorias WHERE tipo = 'despesa' AND ativa = 1"

@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS transacoes (
   hash TEXT NOT NULL UNIQUE,
   importacao_id INTEGER REFERENCES importacoes(id),
   observacao TEXT,
+  produto TEXT,                          -- o que foi comprado (marketplace: Amazon, Mercado Livre...)
   criado_em TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_tx_data ON transacoes(data);
@@ -153,6 +154,48 @@ CREATE TABLE IF NOT EXISTS metas (
   prioridade INTEGER DEFAULT 100, ativa INTEGER DEFAULT 1, criado_em TEXT
 );
 CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor TEXT);
+CREATE TABLE IF NOT EXISTS previstos (         -- provisões: o que vocês esperam receber ou pagar
+  id INTEGER PRIMARY KEY,
+  mes TEXT NOT NULL,                     -- AAAA-MM ('*' = vale para todos os meses, só em ajustes de automáticos)
+  ate TEXT,                              -- repete todo mês até este AAAA-MM (vazio = só no mês)
+  dia INTEGER,
+  descricao TEXT NOT NULL,
+  valor INTEGER NOT NULL,                -- centavos; negativo = saída
+  categoria_id INTEGER REFERENCES categorias(id),
+  chave_auto TEXT,                       -- preenchido quando ajusta um previsto automático (renda, contrato, conta fixa)
+  status TEXT NOT NULL DEFAULT 'previsto' CHECK (status IN ('previsto','realizado','cancelado')),
+  no_plano INTEGER NOT NULL DEFAULT 1,   -- 1 = é fora do normal e entra na projeção do Plano
+  observacao TEXT,
+  criado_em TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_previstos_mes ON previstos(mes);
+CREATE TABLE IF NOT EXISTS encontros (         -- encontros de alinhamento do casal
+  id INTEGER PRIMARY KEY,
+  data TEXT NOT NULL,
+  titulo TEXT,
+  notas TEXT,
+  criado_em TEXT
+);
+CREATE TABLE IF NOT EXISTS acoes (             -- compromissos combinados num encontro
+  id INTEGER PRIMARY KEY,
+  encontro_id INTEGER REFERENCES encontros(id),
+  texto TEXT NOT NULL,
+  categoria_id INTEGER REFERENCES categorias(id),   -- quando o compromisso é sobre gasto de uma categoria
+  limite INTEGER,                        -- centavos no período; 0 = não gastar nada
+  inicio TEXT NOT NULL,
+  fim TEXT NOT NULL,
+  responsavel TEXT DEFAULT 'Casal',
+  status TEXT NOT NULL DEFAULT 'ativa' CHECK (status IN ('ativa','cumprida','parcial','nao_cumprida','cancelada')),
+  criado_em TEXT
+);
+CREATE TABLE IF NOT EXISTS acao_registros (    -- o que foi dito sobre a ação em cada encontro
+  id INTEGER PRIMARY KEY,
+  acao_id INTEGER NOT NULL REFERENCES acoes(id),
+  encontro_id INTEGER REFERENCES encontros(id),
+  data TEXT NOT NULL,
+  status TEXT,
+  nota TEXT
+);
 """
 
 PESSOAS = [("Bárbara", "#B4637A"), ("Lucas", "#3F6FB5"), ("Casal", "#0F766E")]
@@ -269,9 +312,10 @@ REGRAS_SEMENTE = [
     *[(p, "Taxas", {}) for p in ["TARIFA", "IOF", "JUROS", "ENCARGOS", "MULTA", "ANUIDADE",
                                  "CESTA DE SERVICOS", "MORA"]],
     *[(p, "Impostos", {}) for p in ["DARF", "DAS SIMPLES", "PGDAS", "RECEITA FEDERAL", "GRU"]],
+    *[(p, "Assinaturas", {"escopo": "negocio"}) for p in ["SHOPIFY"]],     # assinatura da loja
     # negócio (Rocco Kids): ferramentas e anúncios
     *[(p, "Negócios", {"escopo": "negocio"}) for p in [
-        "SHOPIFY", "FACEBK", "FACEBOOK", "META ADS", "META PLATFORMS", "GOOGLE ADS", "RUNWAY",
+        "FACEBK", "FACEBOOK", "META ADS", "META PLATFORMS", "GOOGLE ADS", "RUNWAY",
         "METRICOOL", "MELHOR ENVIO", "CORREIOS", "ROCCO KIDS", "ROCO KIDS", "YAMPI", "NUVEMSHOP"]],
     # receitas
     *[(p, "Salário", {"sinal": "entrada"}) for p in ["SALARIO", "PAGTO SALARIO", "FOLHA DE PAGAMENTO",
@@ -347,7 +391,8 @@ def migrar(con: sqlite3.Connection) -> None:
     for tabela, novas in (("dividas", (("parcelas_total", "INTEGER"), ("data_inicio", "TEXT"),
                                        ("valor_emprestado", "INTEGER"))),
                           ("categorias", (("orcamento", "INTEGER"),)),
-                          ("transacoes", (("estimado", "INTEGER NOT NULL DEFAULT 0"),))):
+                          ("transacoes", (("estimado", "INTEGER NOT NULL DEFAULT 0"), ("produto", "TEXT"))),
+                          ("previstos", (("ate", "TEXT"), ("no_plano", "INTEGER NOT NULL DEFAULT 1")))):
         cols = {r["name"] for r in con.execute(f"PRAGMA table_info({tabela})")}
         for c, tipo in novas:
             if c not in cols:

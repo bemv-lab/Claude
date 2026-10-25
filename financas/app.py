@@ -22,7 +22,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from nucleo import alertas, analises, backup, categorizar, db, demo, dividas, importacao, planejamento, resumo
+from nucleo import (acoes, alertas, analises, backup, categorizar, db, demo, dividas, importacao, planejamento,
+                    previstos, resumo)
 from nucleo.util import agora_iso, hoje, normalizar, parse_valor
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -213,6 +214,8 @@ def r_transacoes(con, q, corpo):
         FROM transacoes t JOIN contas co ON co.id = t.conta_id LEFT JOIN pessoas p ON p.id = t.pessoa_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id LEFT JOIN dividas d ON d.id = t.divida_id
         WHERE {' AND '.join(filtros)} ORDER BY t.data DESC, t.id DESC LIMIT {limite}""", args))
+    for t in itens:
+        t["marketplace"] = t["valor"] < 0 and analises.eh_marketplace(t["descricao"])
     return {"itens": itens}
 
 
@@ -257,6 +260,8 @@ def r_tx(con, q, corpo, tid):
         campos["escopo"] = corpo["escopo"]
     if "observacao" in corpo:
         campos["observacao"] = corpo["observacao"]
+    if "produto" in corpo:
+        analises.salvar_produto(con, int(tid), corpo["produto"])
     if campos:
         con.execute(f"UPDATE transacoes SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?",
                     (*campos.values(), int(tid)))
@@ -301,7 +306,23 @@ def r_recorrentes(con, q, corpo):
 
 @rota("GET", "/api/parcelamentos")
 def r_parcelamentos(con, q, corpo):
-    return {"itens": analises.parcelamentos(con), "agenda": analises.compromisso_futuro_parcelas(con)}
+    mes = q.get("mes") or hoje().strftime("%Y-%m")
+    if not re.fullmatch(r"\d{4}-\d{2}", mes):
+        raise Erro("mês inválido")
+    from nucleo.util import somar_meses
+    grupos = analises.parcelamentos(con)
+    for g in grupos:
+        g.pop("ocorrencias", None)
+    agenda = analises.agenda_parcelas(con, somar_meses(mes, -2), 8)
+    return {"mes": mes, "itens": grupos, "agenda": agenda, "detalhe": analises.parcelas_do_mes(con, mes),
+            "restante_total": sum(g["restante"] for g in grupos),
+            "termina": max((g["termina"] for g in grupos), default=None)}
+
+
+@rota("GET", "/api/marketplace")
+def r_marketplace(con, q, corpo):
+    itens = analises.compras_marketplace(con, so_sem_produto=q.get("pendentes") == "1")
+    return {"itens": itens, "pendentes": sum(1 for i in itens if not i["produto"])}
 
 
 @rota("GET", "/api/meses")
@@ -463,6 +484,111 @@ def r_orcamento_aplicar(con, q, corpo):
     total = planejamento.aplicar_orcamento(con, itens)
     alertas.gerar(con)
     return {"ok": True, "orcamento_mensal": total}
+
+
+# ---------------------------------------------------------------- previstos (provisões)
+
+def _previsto_corpo(corpo):
+    d = {}
+    for k in ("mes", "ate", "descricao", "chave_auto", "status", "observacao", "categoria_id"):
+        if k in corpo:
+            d[k] = corpo[k] or None
+    if "dia" in corpo:
+        d["dia"] = _int(corpo["dia"], "dia")
+    if "no_plano" in corpo:
+        d["no_plano"] = 1 if corpo["no_plano"] in (True, 1, "1", "on", "true") else 0
+    if "valor" in corpo:
+        v = _centavos(corpo["valor"])
+        if v is None:
+            raise Erro("Informe o valor")
+        sinal = -1 if corpo.get("sentido") == "saida" else 1 if corpo.get("sentido") == "entrada" else None
+        d["valor"] = abs(v) * sinal if sinal else v
+    for k in ("mes", "ate"):
+        if d.get(k) and d[k] != "*" and not re.fullmatch(r"\d{4}-\d{2}", d[k]):
+            raise Erro("Mês inválido (use AAAA-MM)")
+    return d
+
+
+@rota("GET", "/api/previstos")
+def r_previstos(con, q, corpo):
+    return previstos.do_mes(con, q.get("mes") or hoje().strftime("%Y-%m"))
+
+
+@rota("POST", "/api/previstos")
+def r_previsto_novo(con, q, corpo):
+    d = _previsto_corpo(corpo)
+    if not d.get("mes") or not d.get("descricao") or "valor" not in d:
+        raise Erro("Mês, descrição e valor são obrigatórios")
+    return {"id": previstos.salvar(con, d)}
+
+
+@rota("PATCH", r"/api/previstos/(\d+)")
+def r_previsto(con, q, corpo, pid):
+    previstos.salvar(con, _previsto_corpo(corpo), int(pid))
+    return {"ok": True}
+
+
+@rota("DELETE", r"/api/previstos/(\d+)")
+def r_previsto_del(con, q, corpo, pid):
+    previstos.apagar(con, int(pid))
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- encontros e plano de ação
+
+@rota("GET", "/api/encontros")
+def r_encontros(con, q, corpo):
+    return {"encontros": acoes.encontros(con), "ativas": acoes.acoes_ativas(con), "analise": acoes.analise(con)}
+
+
+@rota("GET", "/api/analise")
+def r_analise(con, q, corpo):
+    return acoes.analise(con, q.get("ini"), q.get("fim"), q.get("ini_antes"), q.get("fim_antes"))
+
+
+@rota("POST", "/api/encontros")
+def r_encontro_novo(con, q, corpo):
+    if not corpo.get("data"):
+        raise Erro("Informe a data do encontro")
+    eid = acoes.criar_encontro(con, corpo["data"], corpo.get("titulo"), corpo.get("notas"))
+    for a in corpo.get("acoes", []):
+        a = dict(a, encontro_id=eid)
+        a["limite"] = _centavos(a.get("limite")) if a.get("limite") not in (None, "") else None
+        a["categoria_id"] = _int(a.get("categoria_id"))
+        acoes.criar_acao(con, a)
+    for r in corpo.get("revisoes", []):           # como foram os compromissos anteriores
+        if r.get("status") or r.get("nota"):
+            acoes.registrar(con, _int(r["acao_id"]), r.get("status"), r.get("nota"), eid, corpo["data"])
+    return {"id": eid}
+
+
+@rota("PATCH", r"/api/encontros/(\d+)")
+def r_encontro(con, q, corpo, eid):
+    campos = {k: corpo[k] for k in ("data", "titulo", "notas") if k in corpo}
+    if campos:
+        con.execute(f"UPDATE encontros SET {', '.join(k + ' = ?' for k in campos)} WHERE id = ?",
+                    (*campos.values(), int(eid)))
+        con.commit()
+    return {"ok": True}
+
+
+@rota("POST", "/api/acoes")
+def r_acao_nova(con, q, corpo):
+    a = dict(corpo)
+    a["limite"] = _centavos(a.get("limite")) if a.get("limite") not in (None, "") else None
+    a["categoria_id"] = _int(a.get("categoria_id"))
+    a["encontro_id"] = _int(a.get("encontro_id"))
+    try:
+        return {"id": acoes.criar_acao(con, a)}
+    except ValueError as e:
+        raise Erro(str(e))
+
+
+@rota("POST", r"/api/acoes/(\d+)/registro")
+def r_acao_registro(con, q, corpo, aid):
+    acoes.registrar(con, int(aid), corpo.get("status") or None, corpo.get("nota") or None,
+                    _int(corpo.get("encontro_id")), corpo.get("data"))
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- metas e configuração

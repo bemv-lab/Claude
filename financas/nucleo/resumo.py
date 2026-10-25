@@ -1,27 +1,51 @@
 """Números da home: saldo do mês, quanto ainda dá para gastar, metas, alertas, fila de dúvidas."""
 from __future__ import annotations
 
-from . import alertas, analises, dividas
+import calendar
+from statistics import median
+
+from . import alertas, analises, dividas, previstos
 from .db import config_int, linhas
-from .util import dias_restantes_mes, hoje, nome_mes, somar_meses
+from .util import brl, dias_restantes_mes, hoje, nome_mes, somar_meses
 
 
 def orcamento(con, mes: str) -> dict:
-    renda = alertas.renda_referencia(con, mes)
-    compromissos = dividas.mensal_comprometido(con)
-    poupanca = config_int(con, "meta_poupanca_mensal")
-    fixo = config_int(con, "orcamento_mensal")
-    automatico = not fixo
-    limite = fixo or max(0, renda - compromissos - poupanca)
-    tot = analises.totais_mes(con, mes)
-    gasto = tot["despesas"] - tot["dividas"]      # dívidas já saíram do orçamento acima
+    """Orçamento do mês = soma do orçado de cada categoria de gasto (Dívidas têm plano próprio).
+    O gasto conta tudo dessas categorias, inclusive o que foi pago com o Flash, como o orçado."""
+    cats = analises.gasto_por_categoria(con, mes)
+    tipos = {r["id"]: r["tipo"] for r in con.execute("SELECT id, tipo FROM categorias")}
+    limite = con.execute("SELECT COALESCE(SUM(orcamento), 0) FROM categorias WHERE tipo = 'despesa' AND ativa = 1"
+                         ).fetchone()[0]
+    n_orcadas = con.execute("SELECT COUNT(*) FROM categorias WHERE tipo = 'despesa' AND ativa = 1 AND orcamento > 0"
+                            ).fetchone()[0]
+    gasto = sum(c["total"] for c in cats if tipos.get(c["id"]) == "despesa" or c["id"] == 0)
     restante = limite - gasto
     atual = mes == hoje().strftime("%Y-%m")
     dias = dias_restantes_mes() if atual else 0
-    return {"renda_referencia": renda, "compromissos_dividas": compromissos, "meta_poupanca": poupanca,
-            "limite": limite, "automatico": automatico, "gasto": gasto, "restante": restante,
+    y, m = map(int, mes.split("-"))
+    total_dias = calendar.monthrange(y, m)[1]
+    decorrido = (total_dias - dias + 1) / total_dias if atual else (1.0 if mes < hoje().strftime("%Y-%m") else 0.0)
+    from .planejamento import orcamento_sugerido
+    tipico = orcamento_sugerido(con)["total_tipico"]
+    return {"limite": limite, "n_categorias": n_orcadas, "gasto": gasto, "restante": restante,
             "por_dia": int(restante / dias) if dias and restante > 0 else 0, "dias_restantes": dias,
-            "percentual": round(gasto / limite, 3) if limite else None}
+            "percentual": round(gasto / limite, 3) if limite else None, "mes_decorrido": round(decorrido, 3),
+            "tipico": tipico, "realista": bool(limite) and limite >= tipico * 0.9}
+
+
+def saude(entradas: int, saldo_previsto: int, orc: dict) -> dict:
+    """Leitura simples do mês: margem prevista e ritmo do gasto."""
+    margem = saldo_previsto / entradas if entradas else 0
+    ritmo = (orc["percentual"] or 0) - orc["mes_decorrido"]
+    if saldo_previsto < 0:
+        return {"nivel": "critico", "titulo": "No vermelho",
+                "texto": f"O mês deve fechar faltando {brl(-saldo_previsto)}. Segurem o variável e revejam os previstos."}
+    if margem < 0.10 or ritmo > 0.10:
+        motivo = ("a sobra prevista é pequena" if margem < 0.10
+                  else f"o gasto está {ritmo:.0%} à frente do ritmo do mês")
+        return {"nivel": "atencao", "titulo": "Atenção", "texto": f"Fecha no azul, mas {motivo}."}
+    return {"nivel": "bom", "titulo": "Saudável",
+            "texto": f"Deve sobrar {brl(saldo_previsto)} ({margem:.0%} do que entra). Bom mês para adiantar dívida."}
 
 
 def home(con, mes: str | None = None) -> dict:
@@ -42,6 +66,23 @@ def home(con, mes: str | None = None) -> dict:
     metas = linhas(con.execute("SELECT * FROM metas WHERE ativa = 1 ORDER BY prioridade, id LIMIT 4"))
     parc = analises.parcelamentos(con)
     painel = dividas.painel(con)
+    orc = orcamento(con, mes)
+    prev = previstos.do_mes(con, mes)
+    entradas_prev = tot["receitas"] + prev["a_receber"]
+    saidas_prev = tot["despesas"] + prev["a_pagar"]
+    saldo_prev = entradas_prev - saidas_prev
+    serie = []
+    for k in range(5, -1, -1):
+        m = somar_meses(mes, -k)
+        t = analises.totais_mes(con, m)
+        if t["receitas"] or t["despesas"]:
+            serie.append({"mes": m, "entradas": t["receitas"], "saidas": t["despesas"],
+                          "saldo": t["receitas"] - t["despesas"]})
+    if serie:      # meses com extrato só de uma conta (ex.: antes de julho) distorcem a comparação
+        ref = median(x["saidas"] for x in serie)
+        while serie and serie[0]["saidas"] < ref * 0.4:
+            serie.pop(0)
+    agenda = analises.agenda_parcelas(con, mes, 1)[0]
     ultima = con.execute("SELECT MAX(data) AS d FROM transacoes").fetchone()["d"]
     ultima_imp = con.execute("SELECT MAX(criado_em) AS d FROM importacoes WHERE status='ok'").fetchone()["d"]
     return {
@@ -49,7 +90,18 @@ def home(con, mes: str | None = None) -> dict:
         "receitas": tot["receitas"], "despesas": tot["despesas"], "saldo": tot["receitas"] - tot["despesas"],
         "saldo_mes_anterior": ant["receitas"] - ant["despesas"], "despesas_mes_anterior": ant["despesas"],
         "entradas_pendentes": tot["entradas_pendentes"], "negocio": tot["negocio"],
-        "orcamento": orcamento(con, mes),
+        "orcamento": orc,
+        "entradas": {"recebido": tot["receitas"], "a_receber": prev["a_receber"], "previsto": entradas_prev},
+        "saidas": {"pago": tot["despesas"], "a_pagar": prev["a_pagar"], "previsto": saidas_prev,
+                   "dividas": tot["dividas"]},
+        "provisionado": {"entradas": prev["a_receber"], "saidas": prev["a_pagar"],
+                         "manuais": prev["manuais_entradas"] + prev["manuais_saidas"]},
+        "saldo_previsto": saldo_prev,
+        "saude": saude(entradas_prev, saldo_prev, orc) if mes >= hoje().strftime("%Y-%m") else
+                 saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),
+        "previstos": prev["itens"],
+        "serie": serie,
+        "parcelas_mes": agenda,
         "categorias": cats[:6],
         "beneficios": [dict(r) for r in flash],
         "alertas": alertas.listar(con, 3),

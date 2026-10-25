@@ -189,3 +189,37 @@ Fontes: OFX da conta Inter (jul–out), Excel do BB (jul–out), CSV do Flash (9
   Moradia, contas, saúde, educação e negócio não entram no corte. O ajuste é feito de R$ 10 em R$ 10 até bater
   o alvo. "Usar como orçado" grava o orçado de cada categoria e o total do mês.
 
+## Revisão de 25/10/2026 (pedidos da Bárbara e do Lucas)
+
+- **Início**: saldo previsto do mês = (o que já entrou + o que falta entrar) − (o que já saiu + o que falta sair).
+  O que falta vem dos **previstos**: salários que se repetem, parcelas de contrato, contas fixas e o dia a dia
+  até o fim do mês (proporcional aos dias que faltam), mais o que vocês lançarem. "Saúde do mês": no vermelho se
+  o saldo previsto é negativo; atenção se a sobra é menor que 10% do que entra ou se o gasto está 10 pontos à
+  frente do ritmo do mês; saudável no resto.
+- **Ajuste manual**: cada previsto automático aceita outro valor, "já resolvido", "não vai acontecer" (no mês) ou
+  "parar de prever" (sempre). Os manuais podem repetir todo mês, até um mês ou sem fim. Os marcados como "fora da
+  rotina" entram na projeção do Plano; os que já estão no gasto típico (ex.: aluguel) não, para não contar duas vezes.
+- **Orçamento do mês = soma do orçado de cada categoria de gasto**, contando o que é pago com o Flash (o número
+  "definido por vocês" antigo era o total da planilha e não batia com as categorias). A carga aplica o orçamento
+  realista (gasto típico arredondado) e as categorias sem gasto ficam sem orçado.
+- **Parcelas pelo mês da fatura**: a parcela de uma compra feita depois do corte (dia 13 no Inter) é paga na
+  fatura seguinte. Cada compra guarda todas as parcelas (as que vieram nos arquivos e as que ainda vão vir);
+  "renda comprometida" soma por fatura. Antes, as parcelas de novembro que vieram na planilha ficavam de fora e
+  novembro aparecia menor que dezembro.
+- **Dívidas**: o "Empréstimo Sicoob" da planilha é o mesmo empréstimo de R$ 680 do dia 15 pago ao pai (renomeado).
+  O CDC do BB não está quitado: termina em fev/27 (5 parcelas de cerca de R$ 599). "Facebook Ads" (era MetaEds),
+  sem juros. Dívida com juros 0 informados não é tratada como "taxa desconhecida".
+- **Regras de vocês vencem a planilha**: depois de importar, as regras manuais reaplicam categoria e escopo sobre
+  o que veio da planilha ou de regra aprendida (ex.: Netflix era Lazer na planilha; agora é Assinaturas). Shopify:
+  Assinaturas, do negócio.
+- **Recorrentes**: mostram a forma de pagamento (cartão, Pix no crédito, Pix, boleto, débito automático, Flash) e
+  se separam em "no cartão" e "por Pix, boleto ou débito".
+- **Marketplace** (Amazon, Mercado Livre, Shopee, Shein, Magalu, AliExpress, Temu...): campo "o que foi comprado";
+  numa compra parcelada, vale para todas as parcelas. As pendentes aparecem na tela Dúvidas.
+- **Plano de ação**: encontros (data, notas) e compromissos com período e responsável. Ligado a uma categoria, o
+  compromisso é acompanhado sozinho: gasto no período contra o limite (0 = não gastar) e contra os mesmos dias
+  antes do compromisso. No encontro seguinte vocês registram como foi (cumprida, em parte, não cumprida). A análise
+  compara dois períodos quaisquer; o padrão é do último encontro até hoje contra o intervalo anterior do mesmo tamanho.
+- **Cores dos gráficos de duas séries** (entradas e saídas): verde-azulado e laranja, conferidos para daltonismo
+  nos temas claro e escuro.
+
