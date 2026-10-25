@@ -137,11 +137,12 @@ def aplicar_estimados(con, aj: dict) -> int:
                                 "chave": chave_estabelecimento(e["descricao"])}, conta["tipo"])
             cat, tipo = r["categoria_id"], r["tipo"]
         con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, pessoa_id, categoria_id, tipo,
-                       escopo, classificacao, estimado, observacao, hash, criado_em)
-                       VALUES (?,?,?,?,?,?,?,?,?, 'regra', 1, ?, ?, ?)""",
+                       escopo, classificacao, estimado, observacao, hash, criado_em, competencia)
+                       VALUES (?,?,?,?,?,?,?,?,?, 'regra', 1, ?, ?, ?, ?)""",
                     (conta["id"], e["data"], e["descricao"], chave_estabelecimento(e["descricao"]), e["valor"],
                      conta["titular_id"], cat, tipo, e.get("escopo", "pessoal"),
-                     e.get("observacao", "Estimado: sem extrato nesse período."), h, agora_iso()))
+                     e.get("observacao", "Estimado: sem extrato nesse período."), h, agora_iso(),
+                     e.get("competencia")))
         novos += 1
     con.commit()
     return novos
