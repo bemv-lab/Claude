@@ -74,7 +74,9 @@ def automaticos(con, mes: str) -> list[dict]:
             continue
         if d["termino"] and d["termino"] < mes:
             continue
-        pago = sum(p["valor"] for p in d["pagamentos"] if p["data"][:7] == mes)
+        # só conta como parcela do mês o que saiu depois da data-base (pagamento extra antes dela não abate)
+        pago = sum(p["valor"] for p in d["pagamentos"] if p["data"][:7] == mes
+                   and (not d.get("data_base") or p["data"] > d["data_base"]))
         itens.append({"chave_auto": f"divida:{d['id']}", "origem": "contrato", "descricao": d["nome"],
                       "valor": -d["mensal"], "dia": d["dia_vencimento"], "categoria": "Dívidas", "realizado": pago})
     # contas fixas (fora parcelas e dívidas, que já entraram acima)

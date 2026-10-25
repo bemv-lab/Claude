@@ -140,7 +140,7 @@ def _juros_efetivo(d) -> tuple[float, bool]:
     if d.get("taxa_implicita") is not None:
         return float(d["taxa_implicita"]), False
     if d["tipo"] in ("cartao", "banco"):
-        return JUROS_DESCONHECIDO_BANCO, True
+        return 0.0, True                 # juros não informados: não inventamos uma taxa
     if d["tipo"] == "familia":
         return 0.0, False
     return 0.0, True
@@ -175,7 +175,8 @@ def prioridade(estados: list[dict]) -> list[dict]:
         else:
             motivo = "Sem juros informados."
         e2 = dict(e, juros_considerado=j, juros_estimado=estimado, motivo_prioridade=motivo)
-        e2["_score"] = (e["urgencia"] or 0) * 100 + j * 5 - (e["saldo_atual"] or 0) / 1e8
+        # ordem de pagamento: urgência, depois as que têm plano de pagamento, depois do maior montante para o menor
+        e2["_score"] = ((e["urgencia"] or 0) >= 2, e["termino"] not in (None, "quitada"), e["saldo_atual"] or 0)
         ordem.append(e2)
     ordem.sort(key=lambda x: x["_score"], reverse=True)
     for i, e in enumerate(ordem, 1):

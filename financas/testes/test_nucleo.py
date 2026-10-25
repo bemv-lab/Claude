@@ -513,8 +513,9 @@ class TestPlanejamento(BaseBanco):
         self.assertLessEqual(x["juros_pagos"], 100000)                  # Lei 14.690: juros até 100% do original
         com = planejamento.plano_quitacao(self.con, 50000)
         x = next(d for d in com["dividas"] if d["nome"] == "Cartão X")
-        self.assertEqual(x["quitada_em"], somar_meses(hoje().strftime("%Y-%m"), 3))   # 8% a.m. estimado
-        self.assertEqual(com["dividas"][0]["nome"], "Cartão X")         # juros mais caros primeiro
+        self.assertIsNotNone(x["quitada_em"])                            # sem juros informados: não inventamos taxa
+        self.assertEqual(x["juros_pagos"], 0)
+        self.assertEqual(com["dividas"][-1]["nome"], "Cartão X")        # sem previsão de pagamento: por último
 
 
 class TestRevisao(TestPlanejamento):
