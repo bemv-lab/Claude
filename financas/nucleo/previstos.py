@@ -97,26 +97,6 @@ def automaticos(con, mes: str) -> list[dict]:
         itens.append({"chave_auto": f"conta:{r['chave']}", "origem": "conta_fixa", "descricao": nome_bonito(r["chave"]),
                       "valor": -r["valor_medio"], "dia": r["dia"], "categoria": r["categoria"], "forma": r["forma"],
                       "realizado": feito})
-    # dia a dia variável até o fim do mês
-    if mes >= atual:
-        y, m = map(int, mes.split("-"))
-        total_dias = calendar.monthrange(y, m)[1]
-        fracao = (total_dias - hoje().day + 1) / total_dias if mes == atual else 1.0
-        from .planejamento import _por_categoria, meses_referencia as _ref
-        ref = _ref(con)
-        # contas fixas (aluguel, energia...) têm previsto próprio ou já foram pagas: o dia a dia é o resto
-        tipico = {c: sum(x["tipico"] for x in _por_categoria(con, ref, "despesa", so_avulsos=True, cartao=c).values()
-                         if x["nome"] not in CONTAS_FIXAS) for c in (True, False)}
-        gasto = {c: _gasto_variavel(con, mes, c) for c in (True, False)}
-        # fora do cartão: o que ainda cabe no ritmo dos dias que faltam, sem passar do típico
-        resto_conta = min(max(0, tipico[False] - fixas[False]) * fracao, max(0, tipico[False] - fixas[False] - gasto[False]))
-        # no cartão: a fatura do mês ainda aberta recebe o que falta para chegar no típico
-        resto_cartao = 0 if fechada else max(0, tipico[True] - fixas[True] - gasto[True])
-        variavel = int(resto_conta + resto_cartao)
-        if variavel:
-            itens.append({"chave_auto": "variavel", "origem": "variavel",
-                          "descricao": "Dia a dia até o fim do mês (estimativa)" if mes == atual else "Dia a dia (estimativa)",
-                          "valor": -variavel, "dia": None, "categoria": None, "realizado": 0, "estimativa": True})
     return itens
 
 

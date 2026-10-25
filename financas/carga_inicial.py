@@ -175,6 +175,10 @@ def aplicar_previstos(con, aj: dict) -> int:
     from nucleo import previstos
     n = 0
     for p in aj.get("previstos", []):
+        if p.get("divida_nome"):          # ajuste de uma parcela de dívida, identificada pelo nome
+            r = con.execute("SELECT id FROM dividas WHERE nome = ?", (p["divida_nome"],)).fetchone()
+            if r:
+                p = dict(p, chave_auto=f"divida:{r['id']}")
         if p.get("chave_auto"):
             previstos.salvar(con, p)
             n += 1
