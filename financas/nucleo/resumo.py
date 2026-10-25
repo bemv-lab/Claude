@@ -1,6 +1,8 @@
 """Números da home: saldo do mês, quanto ainda dá para gastar, metas, alertas, fila de dúvidas."""
 from __future__ import annotations
 
+import re
+
 import calendar
 from statistics import median
 
@@ -49,6 +51,20 @@ def saude(entradas: int, saldo_previsto: int, orc: dict) -> dict:
         return {"nivel": "atencao", "titulo": "Atenção", "texto": f"Fecha no azul, mas {motivo}."}
     return {"nivel": "bom", "titulo": "Saudável",
             "texto": f"Deve sobrar {brl(saldo_previsto)} ({margem:.0%} do que entra). Bom mês para adiantar dívida."}
+
+
+def _alertas_atuais(con) -> list[dict]:
+    """Só o que vale para o mês atual e os próximos: alerta de mês passado sai da tela."""
+    atual = hoje().strftime("%Y-%m")
+    out = []
+    for a in alertas.listar(con, 60):
+        m = re.search(r"\d{4}-\d{2}", a.get("chave") or "")
+        if m and m.group(0) < atual:
+            continue
+        out.append(a)
+        if len(out) == 3:
+            break
+    return out
 
 
 def home(con, mes: str | None = None) -> dict:
@@ -110,7 +126,7 @@ def home(con, mes: str | None = None) -> dict:
         "parcelas_mes": agenda,
         "categorias": cats[:6],
         "beneficios": [dict(r) for r in flash],
-        "alertas": alertas.listar(con, 3),
+        "alertas": _alertas_atuais(con),
         "duvidas": duvidas, "n_duvidas": n_duvidas,
         "metas": metas,
         "parcelas_restante": sum(p["restante"] for p in parc),

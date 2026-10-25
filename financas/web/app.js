@@ -25,6 +25,7 @@ const ICONES = {
   lancamentos: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   duvidas: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   plano: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+  flash: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   encontros: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>',
   mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   dividas: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
@@ -37,7 +38,7 @@ const ICONES = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
-const NAV = [["inicio", "Início"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
 const NAV_CELULAR = ["inicio", "plano", "lancamentos", "encontros"];
 
 /* ------------------------------------------------------------------ infraestrutura */
@@ -205,17 +206,14 @@ TELAS.inicio = async (el) => {
   el.innerHTML = `<div class="pilha">
     <section class="painel-heroi">
       <div class="heroi-topo">
-        <div><span class="rotulo-claro">${passado ? `Resultado de ${esc(nome)}` : `Resultado previsto de ${esc(nome)}`} (entradas − saídas)</span>
-          <div class="valor-heroi">${brl(passado ? h.saldo : h.saldo_previsto, true)}</div>
-          <div class="heroi-sub">Entradas ${brl(E.previsto)} − saídas ${brl(X.previsto)} (já aconteceu + o que falta)</div>
-          <div class="heroi-sub">Fechamento das contas: saldo hoje ${brl(h.saldo_contas)} + o que vai entrar ${brl(E.a_receber)} − o que vai sair ${brl(X.a_pagar)} = <b class="num">${brl(h.fechamento, true)}</b></div>
-          <div class="heroi-sub">${passado ? "" : `Até agora <b class="num">${brl(h.saldo, true)}</b> · `}${h.saldo_mes_anterior ? `${varSaldo >= 0 ? "melhor" : "pior"} que o mês anterior em <b class="num">${brl(Math.abs(varSaldo))}</b>` : ""}</div></div>
-        <div class="saude ${sa.nivel}"><span class="rotulo-claro">Saúde do mês</span><b><i aria-hidden="true"></i>${esc(sa.titulo)}</b><small>${esc(sa.texto)}</small></div>
+        <div><span class="rotulo-claro">Resultado de ${esc(nome)}</span><div class="valor-heroi">${brl(h.saldo_previsto, true)}</div></div>
+        <span class="saude-chip ${sa.nivel}"><i aria-hidden="true"></i>${esc(sa.titulo)}</span>
       </div>
       <div class="fluxo">
-        ${fluxoHTML("Entradas do mês", E.recebido, E.a_receber, E.previsto, "entrada", "já entrou", "falta entrar")}
-        ${fluxoHTML("Saídas do mês", X.pago, X.a_pagar, X.previsto, "saida", "já saiu", "falta sair")}
+        ${fluxoHTML("Entradas", E.recebido, E.a_receber, E.previsto, "entrada", "recebido", "a receber")}
+        ${fluxoHTML("Saídas", X.pago, X.a_pagar, X.previsto, "saida", "pago", "a pagar")}
       </div>
+      <div class="fech"><span>Fechamento das contas</span><b class="num">${brl(h.fechamento, true)}</b></div>
     </section>
 
     <div class="kpis">
@@ -762,7 +760,8 @@ const FORMA_CLS = { "Cartão": "cartao", "Pix no crédito": "cartao", Pix: "pix"
 async function recorrentes(el) {
   const { itens } = await api("/api/recorrentes");
   const soma = (l) => l.reduce((s, i) => s + i.valor_medio, 0);
-  const ass = itens.filter((i) => i.assinatura), cartao = itens.filter((i) => FORMA_CLS[i.forma] === "cartao"), conta = itens.filter((i) => FORMA_CLS[i.forma] !== "cartao");
+  const semDivida = itens.filter((i) => !i.divida);
+  const ass = semDivida.filter((i) => i.assinatura), cartao = semDivida.filter((i) => FORMA_CLS[i.forma] === "cartao"), conta = semDivida.filter((i) => FORMA_CLS[i.forma] !== "cartao" && i.assinatura);
   const grupo = (titulo, lista, dica) => `<div class="cartao"><div class="cartao-cab"><h2>${titulo}</h2><span class="mudo num">${brl(soma(lista))}/mês</span></div>
     ${lista.length ? `<div class="lista">${lista.map((i) => `<div class="tx" style="cursor:default"><span class="desc">${esc(i.descricao)}</span>
       <span class="val num">${brl(i.valor_medio)}<small class="mudo" style="font-weight:400">/mês</small></span>
@@ -879,13 +878,16 @@ TELAS.encontros = async (el) => {
 
     <div class="cartao"><div class="cartao-cab"><h2>Encontros</h2><span class="mudo" style="font-size:13px">${d.encontros.length} registrado(s)</span></div>
       ${d.encontros.length ? d.encontros.map((e) => `<details class="encontro" ${e === d.encontros[0] ? "open" : ""}><summary><b>${dataBR(e.data)}</b> ${esc(e.titulo || "Encontro de alinhamento")} <small class="mudo">${e.acoes.length} compromisso(s)</small></summary>
-        ${e.notas ? `<p class="notas">${esc(e.notas)}</p>` : ""}${e.acoes.length ? `<div class="acoes">${e.acoes.map(acaoHTML).join("")}</div>` : ""}</details>`).join("")
+        ${e.notas ? `<p class="notas">${esc(e.notas)}</p>` : ""}
+        <div class="modal-acoes" style="justify-content:flex-start"><button class="btn" data-edit-enc="${e.id}">Editar encontro</button><button class="btn" data-acao-enc="${e.id}">+ Compromisso</button></div>${e.acoes.length ? `<div class="acoes">${e.acoes.map(acaoHTML).join("")}</div>` : ""}</details>`).join("")
         : `<p class="mudo">Registrem o primeiro encontro: data, o que conversaram e os compromissos até o próximo.</p>`}</div>
   </div>`;
   const ligar = (raiz) => $$("[data-registrar]", raiz).forEach((b) => b.addEventListener("click", () => registrarAcao(+b.dataset.registrar)));
   ligar(el);
   $("#novo-encontro", el).addEventListener("click", () => novoEncontro(d.ativas));
   $("#nova-acao", el).addEventListener("click", () => novaAcao());
+  $$("[data-edit-enc]", el).forEach((b) => b.addEventListener("click", () => editarEncontro(d.encontros.find((x) => x.id === +b.dataset.editEnc))));
+  $$("[data-acao-enc]", el).forEach((b) => b.addEventListener("click", () => novaAcao(+b.dataset.acaoEnc)));
   $("#f-analise", el).addEventListener("submit", async (e) => {
     e.preventDefault(); const r = await api(`/api/analise?${new URLSearchParams(form(e.target))}`);
     $("#res-analise", el).innerHTML = analiseHTML(r, varia); ligar($("#res-analise", el));
@@ -912,8 +914,20 @@ function camposAcao(i, a = {}) {
     <label class="campo">Quem<select name="responsavel">${["Casal", "Bárbara", "Lucas"].map((p) => `<option>${p}</option>`).join("")}</select></label></div>`;
 }
 
-function novaAcao() {
-  abrirModal(`<h3>Novo compromisso</h3>${camposAcao(0)}
+function editarEncontro(e) {
+  abrirModal(`<h3>Editar encontro</h3><div class="grade-form">
+    <label class="campo">Data<input type="date" id="enc-data" value="${esc(e.data)}"></label>
+    <label class="campo">Título<input id="enc-titulo" value="${esc(e.titulo || "")}"></label>
+    <label class="campo" style="grid-column:1/-1">O que conversaram<textarea id="enc-notas" rows="4">${esc(e.notas || "")}</textarea></label></div>
+    <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-edit-enc">Salvar</button></div>`, (m) =>
+    $("#ok-edit-enc", m).addEventListener("click", async () => {
+      await api(`/api/encontros/${e.id}`, { metodo: "PATCH", corpo: { data: $("#enc-data", m).value, titulo: $("#enc-titulo", m).value, notas: $("#enc-notas", m).value } });
+      $("#modal").close(); toast("Encontro salvo"); render();
+    }));
+}
+
+function novaAcao(encontroId = null) {
+  abrirModal(`<h3>Novo compromisso</h3>${encontroId ? `<input type="hidden" name="encontro_id" value="${encontroId}">` : ""}${camposAcao(0)}
     <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-acao">Salvar</button></div>`, (m) => {
     $("#ok-acao", m).addEventListener("click", async () => {
       const v = Object.fromEntries($$("[name]", m).map((x) => [x.name, x.value]));
@@ -953,6 +967,25 @@ function registrarAcao(id) {
       $("#modal").close(); toast("Registrado"); render();
     }));
 }
+
+/* ------------------------------------------------------------------ Flash (módulo separado) */
+TELAS.flash = async (el) => {
+  const f = await api("/api/flash");
+  if (!f.existe) { el.innerHTML = `<div class="cartao vazio"><h3>Sem extrato do Flash</h3><p>Importem o extrato do Flash na pasta flash.</p></div>`; return; }
+  const maxG = Math.max(1, ...f.gastos_mes.map((g) => -g.total));
+  el.innerHTML = `<div class="pilha">
+    <div class="cartao estat"><span class="rotulo">Saldo do Flash</span>
+      <span class="valor-grande num">${f.saldo === null ? "—" : brl(f.saldo)}</span>
+      <span class="mudo" style="font-size:13px">${f.saldo === null ? "Enviem o saldo inicial e a data dele." : `saldo de ${dataBR(f.data_inicial)} + compras depois dessa data`}</span></div>
+    <div class="grade g2">
+      <div class="cartao"><div class="cartao-cab"><h2>Gastos do mês</h2></div>
+        ${f.gastos_mes.length ? `<div class="barras">${f.gastos_mes.map((g) => `<div class="barra-linha"><span>${esc(g.nome)}</span><span class="num">${brl(g.total)}</span><div class="trilho"><i style="width:${(-g.total / maxG) * 100}%"></i></div></div>`).join("")}</div>` : `<p class="mudo">Nenhum gasto neste mês.</p>`}</div>
+      <div class="cartao"><div class="cartao-cab"><h2>Últimos lançamentos</h2></div>
+        <div class="lista">${f.itens.slice(0, 25).map((t) => `<div class="tx" style="cursor:default"><span class="desc">${esc(t.descricao)}</span><span class="val num ${t.valor > 0 ? "pos" : ""}">${brl(t.valor, true)}</span><span class="meta-tx">${dataBR(t.data)} · ${esc(t.categoria || "Sem categoria")}</span></div>`).join("")}</div></div>
+    </div>
+    <p class="nota">O Flash não entra no controle do mês: não soma em entradas, saídas, orçamento nem no plano.</p>
+  </div>`;
+};
 
 /* ------------------------------------------------------------------ Dívidas */
 const TIPOS_DIVIDA = { consignado: "Consignado", familia: "Família", cartao: "Cartão", banco: "Banco", outro: "Outro" };

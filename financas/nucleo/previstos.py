@@ -114,6 +114,8 @@ def do_mes(con, mes: str) -> dict:
     itens = []
     for a in automaticos(con, mes):
         x = aj.get(a["chave_auto"])
+        if x and x["status"] == "cancelado" and x["mes"] == "*":   # "parar de prever": sai da lista
+            continue
         a["ajuste_id"] = x["id"] if x else None
         a["ajuste_sempre"] = bool(x and x["mes"] == "*")
         if x and x["descricao"] and x["status"] != "cancelado":

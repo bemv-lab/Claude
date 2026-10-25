@@ -331,6 +331,30 @@ def r_marketplace(con, q, corpo):
     return {"itens": itens, "pendentes": sum(1 for i in itens if not i["produto"])}
 
 
+@rota("GET", "/api/flash")
+def r_flash(con, q, corpo):
+    """Módulo separado: o Flash não entra em nenhum total do controle."""
+    conta = con.execute("SELECT id FROM contas WHERE tipo = 'beneficio' ORDER BY id LIMIT 1").fetchone()
+    if not conta:
+        return {"existe": False}
+    cid = conta["id"]
+    ini = db.config(con, "flash_saldo_inicial", None)
+    data_ini = db.config(con, "flash_data_inicial", None)
+    saldo = None
+    if ini not in (None, "") and data_ini:
+        mov = con.execute("SELECT COALESCE(SUM(valor), 0) FROM transacoes WHERE conta_id = ? AND data > ?",
+                          (cid, data_ini)).fetchone()[0]
+        saldo = int(float(ini)) + mov
+    itens = db.linhas(con.execute("""SELECT t.id, t.data, t.descricao, t.valor, cat.nome AS categoria
+        FROM transacoes t LEFT JOIN categorias cat ON cat.id = t.categoria_id WHERE t.conta_id = ?
+        ORDER BY t.data DESC, t.id DESC LIMIT 200""", (cid,)))
+    mes = hoje().strftime("%Y-%m")
+    gastos = db.linhas(con.execute("""SELECT COALESCE(cat.nome, 'Sem categoria') AS nome, SUM(t.valor) AS total
+        FROM transacoes t LEFT JOIN categorias cat ON cat.id = t.categoria_id
+        WHERE t.conta_id = ? AND t.valor < 0 AND t.data LIKE ? GROUP BY 1 ORDER BY 2""", (cid, mes + "%")))
+    return {"existe": True, "saldo": saldo, "data_inicial": data_ini, "itens": itens, "gastos_mes": gastos}
+
+
 @rota("GET", "/api/meses")
 def r_meses(con, q, corpo):
     meses = [r[0] for r in con.execute("SELECT DISTINCT substr(data,1,7) FROM transacoes ORDER BY 1 DESC")]

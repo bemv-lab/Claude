@@ -417,6 +417,16 @@ textarea { resize: vertical; }
 .cartao { transition: box-shadow .2s; }
 .cartao h2 { letter-spacing: -.005em; }
 
+/* ---------- cabeçalho enxuto do Início */
+.saude-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 99px; font-size: 13.5px; font-weight: 600;
+  background: rgba(255,255,255,.12); color: #fff; height: fit-content; }
+.saude-chip i { width: 9px; height: 9px; border-radius: 50%; background: #4CC38A; }
+.saude-chip.atencao i { background: #F2A14A; }
+.saude-chip.critico i { background: #F58A7F; }
+.fech { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.14);
+  font-size: 14px; color: rgba(238,248,246,.85); position: relative; z-index: 1; }
+.fech b { font-size: 18px; color: #fff; }
+
 /* ---------- celular */
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
