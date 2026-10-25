@@ -15,6 +15,7 @@ O arquivo de ajustes (JSON) pode ter:
   "negociacoes":         [{"divida": "...", "data": "AAAA-MM-DD", "texto": "..."}]
   "lancamentos_estimados": [{"conta": "itau", "data": "AAAA-MM-DD", "descricao": "...", "valor": 112763,
                              "categoria": "Salário"}]     (ficam marcados como "estimado")
+  "rendas_fixas":        [{"descricao": "Salário", "padrao": "TEXTO DO EXTRATO", "dia": 15, "valor": 650000, "inicio": "AAAA-MM"}]
   "competencia":         [{"conta": "bb", "data": "AAAA-MM-DD", "valor": -290000, "mes": "AAAA-MM"}]
   "previstos":           [{"mes": "AAAA-MM", "ate": "AAAA-MM", "dia": 29, "descricao": "...", "valor": -290000}]
                           (com "chave_auto", ajusta um previsto automático; "mes": "*" vale para todos os meses)
@@ -146,6 +147,18 @@ def aplicar_estimados(con, aj: dict) -> int:
     return novos
 
 
+def aplicar_rendas(con, aj: dict) -> int:
+    """Entradas que se repetem (salários), com valor e dia editáveis depois pelo app."""
+    from nucleo import rendas
+    n = 0
+    for r in aj.get("rendas_fixas", []):
+        if not con.execute("SELECT 1 FROM rendas_fixas WHERE descricao = ? AND inicio = ? AND dia = ?",
+                           (r["descricao"], r["inicio"], r["dia"])).fetchone():
+            rendas.criar(con, r)
+            n += 1
+    return n
+
+
 def aplicar_competencias(con, aj: dict) -> int:
     """Lançamentos que contam em outro mês (ex.: salário de outubro pago em 28/09)."""
     n = 0
@@ -198,6 +211,7 @@ def main() -> int:
         alertas.gerar(con)
         r["duvidas"] = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao='duvida'").fetchone()[0]
     aplicar_competencias(con, aj)
+    aplicar_rendas(con, aj)
     aplicar_previstos(con, aj)
     if aj.get("orcamento") == "realista":
         from nucleo import alertas, planejamento

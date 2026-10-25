@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo import acoes, analises, categorizar, db, demo, dividas, planejamento, previstos, resumo  # noqa: E402
+from nucleo import acoes, analises, categorizar, db, demo, dividas, planejamento, previstos, rendas, resumo  # noqa: E402
 from nucleo.importacao import Lote, atualizar  # noqa: E402
 from nucleo.importadores import csv_, ofx  # noqa: E402
 from nucleo.util import chave_estabelecimento, detectar_parcela, hoje, parse_data, parse_valor, somar_meses  # noqa: E402
@@ -461,6 +461,7 @@ class TestPlanejamento(BaseBanco):
 
     def setUp(self):
         super().setUp()
+        rendas.criar(self.con, {"descricao": "Salário", "padrao": "SALARIO", "dia": 15, "valor": 900000, "inicio": "2026-01"})
         for k, (aluguel, restaurante) in enumerate([(290000, 10000), (290000, 30000), (580000, 20000)], 1):
             self.lancar(k, "Salário", 900000)
             self.lancar(k, "Aluguel", -aluguel)             # mês da mudança: dois aluguéis
@@ -583,3 +584,45 @@ class TestRevisao(TestPlanejamento):
         cat = self.con.execute("SELECT c.nome FROM transacoes t JOIN categorias c ON c.id = t.categoria_id "
                                "WHERE t.descricao = 'Netflix'").fetchone()[0]
         self.assertEqual(cat, "Assinaturas")
+
+
+class TestRendas(BaseBanco):
+    """Entradas fixas: ligadas ao extrato pelo texto e pelo dia; mudanças valem a partir de um mês."""
+
+    def entrada(self, data, valor, descricao, apelido="itau"):
+        n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
+        self.con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, categoria_id, tipo,
+                            classificacao, hash, mes_ref, criado_em)
+                            VALUES (?,?,?,?,?,?, 'normal', 'manual', ?, ?, '2026-01-01')""",
+                         (self.conta(apelido), data, descricao, descricao.upper(), valor,
+                          db.categoria_id(self.con, "Salário"), f"r{n}", data[:7]))
+        self.con.commit()
+
+    def test_liga_o_extrato_pelo_texto_e_pelo_dia(self):
+        rendas.criar(self.con, {"descricao": "Lucas · adiantamento", "padrao": "REMUNERACAO/SALARIO", "dia": 15,
+                                "valor": 112500, "inicio": "2026-07"})
+        rendas.criar(self.con, {"descricao": "Lucas · restante", "padrao": "REMUNERACAO/SALARIO", "dia": 30,
+                                "valor": 141500, "inicio": "2026-07"})
+        self.entrada("2026-08-14", 112763, "REMUNERACAO/SALARIO HP06")
+        self.entrada("2026-08-31", 123058, "REMUNERACAO/SALARIO HP01")
+        por_dia = {r["dia"]: r for r in rendas.do_mes(self.con, "2026-08")}
+        self.assertEqual(por_dia[15]["status"], "recebido")
+        self.assertEqual(por_dia[30]["status"], "parcial")          # mês passado, recebeu menos
+        self.assertEqual(por_dia[30]["recebido"], 123058)
+
+    def test_mes_futuro_mostra_o_que_falta(self):
+        mes = somar_meses(hoje().strftime("%Y-%m"), 1)
+        rendas.criar(self.con, {"descricao": "Salário", "padrao": "SALARIO", "dia": 15, "valor": 650000, "inicio": "2026-07"})
+        r = rendas.do_mes(self.con, mes)[0]
+        self.assertEqual((r["status"], r["falta"]), ("a_receber", 650000))
+
+    def test_mudanca_de_valor_vale_a_partir_do_mes(self):
+        rid = rendas.criar(self.con, {"descricao": "Salário", "padrao": "SALARIO", "dia": 15, "valor": 650000,
+                                      "inicio": "2026-07"})
+        rendas.alterar(self.con, rid, {"valor": 700000}, a_partir="2026-10")
+        self.assertEqual(rendas.valor_mes(self.con, "2026-09"), 650000)
+        self.assertEqual(rendas.valor_mes(self.con, "2026-10"), 700000)
+        ativa = rendas.ativas(self.con, "2026-11")[0]["id"]          # a linha que vale em novembro
+        rendas.encerrar(self.con, ativa, a_partir="2026-12")
+        self.assertEqual(rendas.valor_mes(self.con, "2026-12"), 0)
+        self.assertEqual(rendas.valor_mes(self.con, "2026-11"), 700000)

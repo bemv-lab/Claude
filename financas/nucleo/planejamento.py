@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from statistics import mean, median
 
-from . import analises, dividas
+from . import analises, dividas, rendas
 from .db import config_int, definir_config
 from .util import hoje, limites_mes, somar_meses
 
@@ -66,14 +66,16 @@ def _por_categoria(con, meses: list[str], tipo_cat: str, so_avulsos: bool,
 
 
 def renda_prevista(con, meses: list[str] | None = None) -> dict:
-    """Renda de um mês normal. Se vocês informaram a renda esperada em Ajustes, vale ela."""
+    """Renda de um mês normal: as entradas fixas (salários, editáveis) mais as outras entradas típicas
+    (renda extra, reembolsos), calculadas pelos meses de referência. Salário fica de fora do típico."""
     meses = meses or meses_referencia(con)
-    fixa = config_int(con, "renda_mensal_esperada")
     cats = _por_categoria(con, meses, "receita", so_avulsos=False)
-    calculada = sum(c["tipico"] for c in cats.values())
-    return {"valor": fixa or calculada, "informada": bool(fixa), "calculada": calculada,
-            "fontes": sorted(({"nome": c["nome"], "tipico": c["tipico"], "meses": c["meses"]} for c in cats.values()),
-                             key=lambda x: -x["tipico"])}
+    outras = sum(c["tipico"] for c in cats.values() if c["nome"] != "Salário")
+    fixas = [{"nome": f["descricao"], "tipico": f["valor"], "meses": []} for f in rendas.ativas(con, _mes_atual())]
+    outras_fontes = [{"nome": c["nome"], "tipico": c["tipico"], "meses": c["meses"]}
+                     for c in cats.values() if c["nome"] != "Salário" and c["tipico"]]
+    return {"valor": sum(f["tipico"] for f in fixas) + outras, "informada": False, "outras": outras,
+            "fontes": sorted(fixas + outras_fontes, key=lambda x: -x["tipico"])}
 
 
 def _dividas_fixas_no_mes(painel: dict, mes: str) -> list[dict]:
@@ -106,9 +108,10 @@ def projecao(con, meses: int = 3) -> dict:
         fixas = _dividas_fixas_no_mes(painel, m)
         total_dividas = sum(d["valor"] for d in fixas)
         man = manuais[m]
-        resultado = renda["valor"] + man["entradas"] - dia_a_dia - parcelas - total_dividas - man["saidas"]
+        renda_m = rendas.valor_mes(con, m) + renda["outras"]
+        resultado = renda_m + man["entradas"] - dia_a_dia - parcelas - total_dividas - man["saidas"]
         acumulado += resultado
-        linhas.append({"mes": m, "renda": renda["valor"], "dia_a_dia": dia_a_dia, "parcelas": parcelas,
+        linhas.append({"mes": m, "renda": renda_m, "dia_a_dia": dia_a_dia, "parcelas": parcelas,
                        "previstos_entradas": man["entradas"], "previstos_saidas": man["saidas"],
                        "previstos_itens": man["itens"],
                        "dividas": total_dividas, "dividas_itens": fixas, "resultado": resultado,
@@ -298,3 +301,7 @@ def plano(con, extra_mensal: int | None = None, meses: int = 3, bola_de_neve: bo
             "quitacao": plano_quitacao(con, extra, bola_de_neve),
             "sem_extra": {k: v for k, v in plano_quitacao(con, 0, bola_de_neve).items() if k != "serie"},
             "extra_sugerido": sugerido, "margem": MARGEM_PROJECAO}
+
+
+def _mes_atual() -> str:
+    return hoje().strftime("%Y-%m")

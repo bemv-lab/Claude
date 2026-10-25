@@ -234,3 +234,19 @@ Fontes: OFX da conta Inter (jul–out), Excel do BB (jul–out), CSV do Flash (9
 - **Previsto com categoria se resolve sozinho** quando o extrato traz o gasto daquela categoria no mês.
 - **Saúde do mês**: "no vermelho" só quando falta mais de 2% do que entra; perto de zero é "atenção".
 
+## Controle só com extratos e faturas (correção de 25/10/2026, pedido do casal)
+
+- **As planilhas de controle saíram da base.** Elas ficam fora da pasta de entrada, em `dados/planilhas-antigas/`
+  (gitignored). Nada vem delas: nem totais, nem orçado, nem regras aprendidas.
+- **Fontes**: extratos do Inter (conta), do BB, do Itaú (PDF) e do Flash, mais as faturas do cartão Inter de
+  setembro e outubro. Dívidas e regras de classificação que vocês responderam continuam, porque são informações
+  de vocês, não da planilha.
+- **Entradas fixas** (salários) são cadastradas em `rendas_fixas`: nome, texto do extrato, dia, valor e mês de
+  início. Editáveis no app (Início > Entradas fixas). Mudança de valor ou dia vale a partir do mês escolhido; o
+  trecho anterior fica como estava. Cada entrada se liga ao extrato pelo texto e pelo dia mais próximo.
+  Salários iniciais: Bárbara R$ 6.500 dia 15; Lucas R$ 1.125 dia 15 (adiantamento) e R$ 1.415 dia 30. Valores
+  aproximados, informados por vocês.
+- **Lançamentos estimados** (que não vinham de extrato) foram retirados, exceto os dois do Flash confirmados por vocês.
+- **Limites**: o cartão de julho e agosto não tem fatura, então essas duas faturas não entram. Os cartões BB, Nubank
+  e C6 também não têm fatura, então as compras neles não aparecem.
+

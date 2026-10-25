@@ -13,7 +13,7 @@ from __future__ import annotations
 import calendar
 from statistics import median
 
-from . import analises, dividas
+from . import analises, dividas, rendas
 from .db import categoria_id, linhas
 from .util import agora_iso, hoje, somar_meses
 
@@ -53,44 +53,20 @@ def _realizado_chave(con, chave: str, mes: str, sinal: int) -> int:
     return _realizado(con, "chave", chave, mes, sinal)
 
 
-def _renda_recorrente(con, ref_meses: list[str]) -> list[dict]:
-    """Entradas da categoria de receita com a mesma chave em pelo menos 2 dos meses de referência."""
-    por_chave: dict[str, dict] = {}
-    for i, m in enumerate(ref_meses):
-        for r in con.execute(f"""
-            SELECT t.chave, MIN(t.descricao) AS descricao, SUM(t.valor) AS total, MIN(t.data) AS primeira,
-                   cat.nome AS categoria, cat.id AS categoria_id
-            FROM transacoes t JOIN contas c ON c.id = t.conta_id JOIN categorias cat ON cat.id = t.categoria_id
-            WHERE {analises.FILTRO_REAL} AND cat.tipo = 'receita' AND t.valor > 0 AND COALESCE(t.chave,'') != ''
-              AND t.mes_ref = ? GROUP BY t.chave""", (m,)):
-            c = por_chave.setdefault(r["chave"], {"chave": r["chave"], "descricao": r["descricao"],
-                                                  "categoria": r["categoria"], "categoria_id": r["categoria_id"],
-                                                  "totais": [], "dias": []})
-            c["totais"].append(r["total"])
-            c["dias"].append(int(r["primeira"][8:10]))
-    return [dict(c, valor=int(median(c["totais"])), dia=int(median(c["dias"])))
-            for c in por_chave.values() if len(c["totais"]) >= 2]
-
-
 def nome_bonito(chave: str) -> str:
     """'PADARIA DO JOAO' -> 'Padaria do Joao'."""
     pequenas = {"de", "da", "do", "das", "dos", "e"}
     return " ".join(w.lower() if w.lower() in pequenas else w.capitalize() for w in chave.split())
 
 
-def _nome_renda(c: dict) -> str:
-    return f"{c['categoria']} · {nome_bonito(c['chave'])}"
-
-
 def automaticos(con, mes: str) -> list[dict]:
-    from .planejamento import meses_referencia, projecao
-    ref = meses_referencia(con)
+    from .planejamento import projecao
     itens = []
-    # renda
-    for c in _renda_recorrente(con, ref):
-        itens.append({"chave_auto": f"renda:{c['chave']}", "origem": "renda", "descricao": _nome_renda(c),
-                      "valor": c["valor"], "dia": c["dia"], "categoria": c["categoria"],
-                      "realizado": _realizado_chave(con, c["chave"], mes, +1)})
+    # entradas fixas (editáveis em Início > Entradas fixas)
+    for f in rendas.do_mes(con, mes):
+        itens.append({"chave_auto": f"renda:{f['id']}", "origem": "renda", "descricao": f["descricao"],
+                      "valor": f["valor"], "dia": f["dia"], "categoria": "Salário", "realizado": f["recebido"],
+                      "renda_status": f["status"]})
     # contratos de dívida
     painel = dividas.painel(con)
     for d in painel["dividas"]:
@@ -164,6 +140,9 @@ def do_mes(con, mes: str) -> dict:
             a["status"] = "cancelado"
         elif x and x["status"] == "realizado":
             a["status"] = "realizado"
+        elif a.get("renda_status"):
+            st = a["renda_status"]
+            a["status"] = "realizado" if st == "recebido" else "previsto" if st == "a_receber" else st
         else:
             if x:
                 a["valor"] = x["valor"]

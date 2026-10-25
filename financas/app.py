@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from nucleo import (acoes, alertas, analises, backup, categorizar, db, demo, dividas, importacao, planejamento,
-                    previstos, resumo)
+                    previstos, rendas, resumo)
 from nucleo.util import agora_iso, hoje, normalizar, parse_valor
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -490,6 +490,40 @@ def r_orcamento_aplicar(con, q, corpo):
     total = planejamento.aplicar_orcamento(con, itens)
     alertas.gerar(con)
     return {"ok": True, "orcamento_mensal": total}
+
+
+# ---------------------------------------------------------------- entradas fixas (salários)
+
+def _renda_corpo(corpo):
+    d = {k: corpo[k] for k in ("descricao", "padrao", "observacao") if k in corpo}
+    if "dia" in corpo:
+        d["dia"] = _int(corpo["dia"], "dia")
+    if "valor" in corpo:
+        d["valor"] = _centavos(corpo["valor"])
+    return d
+
+
+@rota("POST", "/api/rendas")
+def r_renda_nova(con, q, corpo):
+    try:
+        return {"id": rendas.criar(con, dict(_renda_corpo(corpo), inicio=corpo.get("inicio")))}
+    except ValueError as e:
+        raise Erro(str(e))
+
+
+@rota("PATCH", r"/api/rendas/(\d+)")
+def r_renda(con, q, corpo, rid):
+    try:
+        rendas.alterar(con, int(rid), _renda_corpo(corpo), corpo.get("a_partir") or None)
+    except ValueError as e:
+        raise Erro(str(e))
+    return {"ok": True}
+
+
+@rota("POST", r"/api/rendas/(\d+)/encerrar")
+def r_renda_encerrar(con, q, corpo, rid):
+    rendas.encerrar(con, int(rid), corpo.get("a_partir") or None)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- previstos (provisões)

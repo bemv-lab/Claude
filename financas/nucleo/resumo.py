@@ -4,7 +4,7 @@ from __future__ import annotations
 import calendar
 from statistics import median
 
-from . import alertas, analises, dividas, previstos
+from . import alertas, analises, dividas, previstos, rendas
 from .db import config_int, linhas
 from .util import brl, dias_restantes_mes, hoje, nome_mes, somar_meses
 
@@ -103,6 +103,7 @@ def home(con, mes: str | None = None) -> dict:
         "saude": saude(entradas_prev, saldo_prev, orc) if mes >= hoje().strftime("%Y-%m") else
                  saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),
         "previstos": prev["itens"],
+        "rendas": rendas.do_mes(con, mes),
         "serie": serie,
         "parcelas_mes": agenda,
         "categorias": cats[:6],

@@ -116,7 +116,7 @@ async function render() {
 
 /* ------------------------------------------------------------------ Início */
 const mesAtual = () => (S.hoje || new Date().toISOString()).slice(0, 7);
-const ORIGEM = { renda: "renda", contrato: "contrato", conta_fixa: "conta fixa", variavel: "estimativa", manual: "lançado por vocês" };
+const ORIGEM = { renda: "entrada fixa", contrato: "contrato", conta_fixa: "conta fixa", variavel: "estimativa", manual: "lançado por vocês" };
 const pct = (v) => `${Math.round(v * 100)}%`;
 
 function fluxoHTML(rotulo, feito, falta, total, cls, nomeFeito, nomeFalta) {
@@ -132,6 +132,8 @@ function previstoHTML(i) {
   const entrada = i.valor > 0;
   const st = i.status === "cancelado" ? `<span class="tag">não vai acontecer${i.ajuste_sempre ? " (sempre)" : ""}</span>`
     : i.status === "realizado" ? `<span class="tag ok">✓ ${entrada ? "recebido" : "pago"}</span>`
+    : i.status === "parcial" ? `<span class="tag duv">entrou parcial</span>`
+    : i.status === "nao_entrou" ? `<span class="tag duv">não entrou</span>`
     : i.realizado ? `<span class="tag duv">falta ${brl(Math.abs(i.falta))}</span>` : `<span class="tag duv">${entrada ? "a receber" : "a pagar"}</span>`;
   return `<div class="previsto ${i.status === "cancelado" ? "riscado" : ""}">
     <span class="sinal ${entrada ? "entrada" : "saida"}" aria-hidden="true">${entrada ? "↓" : "↑"}</span>
@@ -139,6 +141,43 @@ function previstoHTML(i) {
       <small>${i.dia ? `dia ${i.dia} · ` : ""}${ORIGEM[i.origem] || ""}${i.forma ? ` · ${esc(i.forma)}` : ""}${i.repete ? ` · todo mês${i.ate && i.ate !== "9999-12" ? ` até ${nomeMesCurto(i.ate)}` : ""}` : ""}${i.ajustado ? " · ajustado" : ""}${i.observacao ? ` · <span title="${esc(i.observacao)}">ℹ︎ obs.</span>` : ""}</small></div>
     <div class="previsto-val"><b class="num">${brl(i.valor, true)}</b>${st}</div>
     <button class="btn-texto" data-prev="${esc(i.chave_auto || "m" + i.id)}">Ajustar</button></div>`;
+}
+
+const ESTADO_RENDA = { recebido: ["recebido", "ok"], a_receber: ["a receber", "duv"], parcial: ["entrou parcial", "duv"], nao_entrou: ["não entrou", "duv"] };
+function rendaHTML(r) {
+  const [txt, cls] = ESTADO_RENDA[r.status] || ["", ""];
+  const quanto = r.status === "recebido" ? brl(r.recebido) : r.status === "a_receber" ? `falta ${brl(r.falta)}` : r.status === "parcial" ? `${brl(r.recebido)} de ${brl(r.valor)}` : "";
+  return `<div class="previsto">
+    <span class="sinal entrada" aria-hidden="true">↓</span>
+    <div class="previsto-txt"><b>${esc(r.descricao)}</b>
+      <small>todo dia ${r.dia}${r.pessoa ? ` · ${esc(r.pessoa)}` : ""}${r.observacao ? ` · <span title="${esc(r.observacao)}">ℹ︎ obs.</span>` : ""}</small></div>
+    <div class="previsto-val"><b class="num">${brl(r.valor, true)}</b><span class="tag ${cls}">${txt}${quanto ? " · " + quanto : ""}</span></div>
+    <button class="btn-texto" data-renda="${r.id}">Editar</button></div>`;
+}
+
+function editarRenda(r = {}) {
+  const novo = !r.id;
+  abrirModal(`<h3>${novo ? "Nova entrada fixa" : "Editar entrada fixa"}</h3>
+    <p class="mudo" style="margin:-6px 0 0">Mudança de valor ou de dia vale a partir do mês escolhido; os meses anteriores ficam como estavam.</p>
+    <form id="f-renda" class="grade-form">
+      <label class="campo">Nome<input name="descricao" value="${esc(r.descricao || "")}" placeholder="Ex.: Salário Lucas"></label>
+      <label class="campo">Texto no extrato <small>como aparece no banco</small><input name="padrao" value="${esc(r.padrao || "")}" placeholder="Ex.: REMUNERACAO/SALARIO"></label>
+      <label class="campo">Dia do mês<input type="number" name="dia" min="1" max="31" value="${esc(r.dia ?? "")}"></label>
+      <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" value="${paraInput(r.valor)}"></label>
+      <label class="campo">Vale a partir de<input type="month" name="a_partir" value="${esc(S.mes)}"></label>
+    </form>
+    <div class="modal-acoes">${novo ? "" : `<button class="btn" id="enc-renda" style="margin-right:auto">Encerrar a partir de</button>`}<button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-renda">Salvar</button></div>`, (m) => {
+    $("#ok-renda", m).addEventListener("click", async () => {
+      const v = form($("#f-renda", m));
+      if (novo) await api("/api/rendas", { metodo: "POST", corpo: { ...v, inicio: v.a_partir } });
+      else await api(`/api/rendas/${r.id}`, { metodo: "PATCH", corpo: v });
+      $("#modal").close(); toast("Entrada salva"); render();
+    });
+    $("#enc-renda", m)?.addEventListener("click", async () => {
+      await api(`/api/rendas/${r.id}/encerrar`, { metodo: "POST", corpo: { a_partir: $("[name=a_partir]", m).value } });
+      $("#modal").close(); toast("Entrada encerrada a partir do mês escolhido"); render();
+    });
+  });
 }
 
 TELAS.inicio = async (el) => {
@@ -157,9 +196,10 @@ TELAS.inicio = async (el) => {
   const nome = nomeMes(S.mes);
   const usado = o.limite ? Math.min(1.2, o.gasto / o.limite) : 0;
   const varSaldo = h.saldo - h.saldo_mes_anterior;
-  const ativos = h.previstos.filter((i) => i.status === "previsto");
-  const feitos = h.previstos.filter((i) => i.status === "realizado");
-  const cancel = h.previstos.filter((i) => i.status === "cancelado");
+  const fora = h.previstos.filter((i) => i.origem !== "renda");          // entradas fixas têm card próprio
+  const ativos = fora.filter((i) => i.status === "previsto");
+  const feitos = fora.filter((i) => i.status === "realizado");
+  const cancel = fora.filter((i) => i.status === "cancelado");
   h.categorias.forEach((c) => { c.ref = c.orcamento || c.media; c.refNome = c.orcamento ? "orçado" : "média"; });
   const maxCat = Math.max(1, ...h.categorias.map((c) => Math.max(c.total, c.ref || 0)));
   el.innerHTML = `<div class="pilha">
@@ -187,6 +227,11 @@ TELAS.inicio = async (el) => {
         <small>${o.restante < 0 ? `passou ${brl(-o.restante)} do orçamento` : o.dias_restantes ? `${brl(o.por_dia)} por dia · ${o.dias_restantes} dias` : "do orçamento do mês"}</small><span class="kpi-acao">Orçamento</span></a>
     </div>
 
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Entradas fixas</h2><button class="btn" data-nova-renda>+ Nova entrada</button></div>
+      <div class="previstos">${h.rendas.map(rendaHTML).join("") || `<p class="mudo">Nenhuma entrada fixa cadastrada.</p>`}</div>
+      <p class="nota">Salários e rendas que se repetem todo mês. Valor e dia são editáveis; a mudança vale a partir do mês escolhido. O que entra no extrato é ligado sozinho pelo texto do banco.</p>
+    </div>
     <div class="grade g2">
       <div class="cartao">
         <div class="cartao-cab"><h2>Previstos de ${esc(nome)}</h2><button class="btn" data-novo-prev>+ Lançar previsto</button></div>
@@ -249,6 +294,8 @@ TELAS.inicio = async (el) => {
   const porChave = Object.fromEntries(h.previstos.map((i) => [i.chave_auto || "m" + i.id, i]));
   $$("[data-prev]", el).forEach((b) => b.addEventListener("click", () => editarPrevisto(porChave[b.dataset.prev], render)));
   $("[data-novo-prev]", el).addEventListener("click", () => novoPrevisto({ mes: S.mes }, render));
+  $("[data-nova-renda]", el).addEventListener("click", () => editarRenda({}));
+  $$("[data-renda]", el).forEach((b) => b.addEventListener("click", () => editarRenda(h.rendas.find((x) => x.id === +b.dataset.renda))));
   $$("[data-ajustar]", el).forEach((b) => b.addEventListener("click", () => {
     const tipo = b.dataset.ajustar;
     if (tipo === "previstos") return novoPrevisto({ mes: S.mes }, render);

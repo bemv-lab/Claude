@@ -156,6 +156,18 @@ CREATE TABLE IF NOT EXISTS metas (
   prioridade INTEGER DEFAULT 100, ativa INTEGER DEFAULT 1, criado_em TEXT
 );
 CREATE TABLE IF NOT EXISTS config (chave TEXT PRIMARY KEY, valor TEXT);
+CREATE TABLE IF NOT EXISTS rendas_fixas (      -- entradas que se repetem (salários): editáveis, valem a partir de um mês
+  id INTEGER PRIMARY KEY,
+  descricao TEXT NOT NULL,
+  padrao TEXT NOT NULL,                  -- texto que aparece no extrato, para ligar o que entrou
+  dia INTEGER NOT NULL,
+  valor INTEGER NOT NULL,                -- centavos
+  inicio TEXT NOT NULL,                  -- AAAA-MM
+  fim TEXT,                              -- AAAA-MM; vazio = sem fim
+  pessoa_id INTEGER REFERENCES pessoas(id),
+  observacao TEXT,
+  criado_em TEXT
+);
 CREATE TABLE IF NOT EXISTS previstos (         -- provisões: o que vocês esperam receber ou pagar
   id INTEGER PRIMARY KEY,
   mes TEXT NOT NULL,                     -- AAAA-MM ('*' = vale para todos os meses, só em ajustes de automáticos)
