@@ -26,6 +26,7 @@ const ICONES = {
   duvidas: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
   plano: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
   flash: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  manual: '<path d="M4 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z"/><path d="M20 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z"/>',
   encontros: '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>',
   mais: '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>',
   dividas: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
@@ -38,7 +39,7 @@ const ICONES = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
-const NAV = [["inicio", "Início"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"]];
+const NAV = [["inicio", "Início"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"], ["manual", "Manual"]];
 const NAV_CELULAR = ["inicio", "plano", "lancamentos", "encontros"];
 
 /* ------------------------------------------------------------------ infraestrutura */
@@ -1007,6 +1008,109 @@ TELAS.flash = async (el) => {
     await api("/api/flash/recarga", { metodo: "POST", corpo: { valor: v.valor, data: v.data } }); toast("Recarga registrada"); TELAS.flash(el); });
 };
 
+/* ------------------------------------------------------------------ Manual de uso */
+const MANUAL = [
+  ["Para começar", `
+    <p>O sistema roda no computador de vocês. Nada vai para a internet.</p>
+    <ol>
+      <li>Abram o terminal na pasta <code>financas</code> e rodem <code>python app.py</code> (no Windows, <code>py app.py</code>).</li>
+      <li>O navegador abre em <b>http://localhost:8765</b>. Se não abrir sozinho, digitem esse endereço.</li>
+      <li>Para usar pelo celular na mesma rede Wi-Fi: <code>python app.py --rede</code>. Aparecem um endereço e um PIN.</li>
+      <li>Os dados ficam em <code>financas/dados/financas.db</code>. Façam backup em Ajustes > Backup.</li>
+    </ol>`],
+  ["Rotina sugerida", `
+    <dl>
+      <dt>Toda semana</dt><dd>Baixem os extratos do Inter, BB e Itaú, coloquem em <code>entrada/&lt;conta&gt;/</code> (ou arrastem na tela Importar) e toquem em <b>Atualizar</b>. Depois resolvam a fila de <b>Dúvidas</b>.</dd>
+      <dt>Quando o Flash recarregar</dt><dd>Registrem a recarga na tela <b>Flash</b>.</dd>
+      <dt>No fim do mês</dt><dd>Importem a fatura do cartão Inter, confiram o <b>Início</b> e registrem o encontro de alinhamento em <b>Ações</b>.</dd>
+      <dt>Quando algo mudar</dt><dd>Salário diferente: <b>Início > Entradas fixas > Editar</b>. Conta nova ou fora da rotina: <b>+ Lançar previsto</b>. Dívida nova ou paga: tela <b>Dívidas</b>.</dd>
+    </dl>`],
+  ["Como o sistema conta o mês", `
+    <dl>
+      <dt>Regime de caixa</dt><dd>Cada lançamento conta no mês em que o dinheiro sai ou entra. O cartão conta no mês em que a fatura é paga: compra feita depois do fechamento (dia 13 no Inter) vai para a fatura seguinte.</dd>
+      <dt>Conta no mês de</dt><dd>Quando um pagamento é de outro mês (ex.: aluguel de outubro pago em 29/09), mudem o mês dele em Lançamentos > tocar no lançamento > <b>Conta no mês de</b>.</dd>
+      <dt>Flash</dt><dd>Fica fora de tudo: não entra em entradas, saídas, orçamento nem plano.</dd>
+      <dt>Transferências entre vocês e pagamento de fatura</dt><dd>Não contam como gasto nem renda. O gasto do cartão aparece pelas compras da fatura.</dd>
+    </dl>`],
+  ["Início", `
+    <dl>
+      <dt>Resultado do mês</dt><dd>Entradas do mês (recebido + a receber) menos saídas do mês (pago + a pagar). Mostra se o mês, sozinho, se paga.</dd>
+      <dt>Saúde do mês</dt><dd>Leitura do resultado: <b>Saudável</b> (sobra 10% ou mais do que entra), <b>Fecha no zero</b> (perto de zero), <b>Saídas maiores que entradas</b> (falta mais de 2% do que entra).</dd>
+      <dt>Barras de entradas e saídas</dt><dd>A parte cheia é o que já aconteceu; a parte vazia é o que ainda falta no mês.</dd>
+      <dt>Fechamento das contas</dt><dd>Saldo das contas hoje + o que vai entrar − o que vai sair. É quanto deve sobrar nas contas no fim do mês. O saldo de hoje é informado em <b>Ajustes</b>.</dd>
+      <dt>Quadros Entradas, Saídas, Provisionado e Ainda podem gastar</dt><dd>Resumo do mês. <b>Ajustar</b> abre a lista do que está previsto para mudar um valor. <b>Provisionado</b> é o que falta receber menos o que falta pagar. <b>Ainda podem gastar</b> é o orçamento do mês menos o que já foi gasto.</dd>
+      <dt>Entradas fixas</dt><dd>Salários e rendas que se repetem. <b>Editar</b> tem: <i>Nome</i>; <i>Texto no extrato</i> (como o banco escreve, para o sistema achar o crédito sozinho); <i>Dia do mês</i>; <i>Valor</i>; <i>Vale a partir de</i> (o mês em que a mudança começa, os anteriores ficam como estavam). <b>Encerrar a partir de</b> para de prever aquela entrada. Estado: recebido, a receber, entrou parcial ou não entrou.</dd>
+      <dt>Previstos do mês</dt><dd>O que ainda vai sair ou entrar: parcelas de dívida, contas que se repetem e o que vocês lançaram. Em cada linha, <b>Ajustar</b> permite: usar outro valor neste mês, marcar como já resolvido, dizer que não vai acontecer neste mês ou parar de prever de vez.</dd>
+      <dt>+ Lançar previsto</dt><dd>Para algo fora da rotina. Campos: <i>Saída ou Entrada</i>; <i>Descrição</i>; <i>Valor</i>; <i>Mês</i>; <i>Dia</i> (opcional); <i>Repetir</i> (só no mês, todo mês até um mês, todo mês sem fim); <i>Categoria</i> (opcional; com categoria, o previsto se resolve sozinho quando o extrato traz o gasto); <i>Somar na projeção do Plano</i> (marquem se é fora do gasto normal); <i>Observação</i>.</dd>
+      <dt>Orçamento do mês</dt><dd>Soma do orçado de cada categoria (incluindo o que é pago com o Flash). A marca na barra mostra quanto do mês já passou.</dd>
+      <dt>Gráfico mês a mês</dt><dd>Entradas e saídas de cada mês. Toquem numa barra para ver os valores.</dd>
+      <dt>O que merece atenção</dt><dd>Alertas do mês atual e dos próximos. O X dispensa o alerta.</dd>
+    </dl>`],
+  ["Plano", `
+    <dl>
+      <dt>Próximos meses (3, 6, 12)</dt><dd>Projeção: entradas fixas e outras entradas típicas, menos o gasto do dia a dia, as parcelas de cartão já feitas, as dívidas com parcela e os previstos fora da rotina.</dd>
+      <dt>Previstos fora da rotina</dt><dd>13º, férias, IPVA, viagem… Entram na projeção.</dd>
+      <dt>Plano de quitação</dt><dd><i>Quanto separar por mês</i>: valor extra além das parcelas. <i>Bola de neve</i>: quando uma dívida acaba, a parcela dela reforça o extra. Mostra quando ficam livres e quanto pagam de juros.</dd>
+      <dt>Orçamento realista</dt><dd>Gasto típico de cada categoria nos últimos meses e uma sugestão de orçado. <i>Quanto querem liberar por mês</i> mostra onde cortar (no máximo 30% por categoria, sem mexer em moradia, contas, saúde, educação e negócio). <b>Usar como orçado do mês</b> grava os valores.</dd>
+    </dl>`],
+  ["Ações (encontros de alinhamento)", `
+    <dl>
+      <dt>+ Novo encontro</dt><dd><i>Data</i>, <i>Título</i>, <i>O que conversaram</i>. Em <i>Como foram os compromissos</i>, digam se cada compromisso anterior foi cumprido. Em <i>Compromissos até o próximo encontro</i>, criem as ações novas.</dd>
+      <dt>Campos de um compromisso</dt><dd><i>Compromisso</i> (ex.: "não comprar roupas"); <i>Acompanhar a categoria</i> (opcional: o sistema soma os gastos dela sozinho); <i>Limite no período</i> (0 = não gastar nada; vazio = sem limite); <i>De</i> e <i>Até</i>; <i>Quem</i>.</dd>
+      <dt>Editar encontro e + Compromisso</dt><dd>Em cada encontro já registrado: mudar data, título e notas, ou acrescentar um compromisso.</dd>
+      <dt>Registrar como está indo</dt><dd>Anota a situação do compromisso; Cumprida, Em parte ou Não cumprida encerram o compromisso.</dd>
+      <dt>Análise entre períodos</dt><dd>Compara entradas, saídas e categorias de dois períodos quaisquer. O padrão é do último encontro até hoje contra o mesmo número de dias antes.</dd>
+    </dl>`],
+  ["Lançamentos", `
+    <dl>
+      <dt>Lista e filtros</dt><dd>Lançamentos do mês escolhido no topo, com busca e filtros por conta, categoria, pessoa e pessoal/negócio.</dd>
+      <dt>Tocar num lançamento</dt><dd><i>O que foi comprado</i> (em marketplace; vale para todas as parcelas); <i>Categoria</i>; <i>Quem</i>; <i>Pessoal ou negócio</i>; <i>Conta no mês de</i>; <i>Observação</i>; <i>Aplicar aos próximos parecidos</i> (vira regra).</dd>
+      <dt>Recorrentes</dt><dd>Assinaturas e cobranças que se repetem, separadas em cartão e Pix/boleto/débito, com a forma de pagamento.</dd>
+      <dt>Parcelados</dt><dd>Parcelas por mês da fatura. Toquem numa barra para ver as parcelas daquele mês. "Compras em andamento" mostra quantas parcelas já foram pagas e quanto falta.</dd>
+    </dl>`],
+  ["Flash", `
+    <dl>
+      <dt>Nova recarga</dt><dd>Valor e data de cada recarga do cartão. Entra no saldo do Flash.</dd>
+      <dt>Saldo agora e Data do saldo</dt><dd>Só para corrigir, se o saldo não bater com o aplicativo do Flash. As compras e recargas depois dessa data são somadas a ele.</dd>
+      <dt>Por dia e por semana</dt><dd>Saldo atual dividido pelos dias que faltam no mês, e o valor de 7 dias.</dd>
+      <dt>Gastos do mês e últimos lançamentos</dt><dd>Para onde foi o benefício. Não entra no controle do mês.</dd>
+    </dl>`],
+  ["Dúvidas", `
+    <dl>
+      <dt>Fila de dúvidas</dt><dd>Lançamentos que o sistema não soube classificar. Um toque na categoria classifica e ensina a regra; os parecidos vão juntos.</dd>
+      <dt>O que foi comprado?</dt><dd>Compras de Amazon, Mercado Livre, Shopee e outros marketplaces sem descrição do produto.</dd>
+    </dl>`],
+  ["Dívidas", `
+    <dl>
+      <dt>Ordem de pagamento</dt><dd>Primeiro as que têm plano de pagamento, depois do maior para o menor saldo; as sem previsão ficam por último.</dd>
+      <dt>Campos de uma dívida (Editar)</dt><dd><i>Nome</i>, <i>Credor</i>, <i>Tipo</i>, <i>Saldo devedor</i> e a data dele, <i>Parcela</i>, <i>Parcelas restantes</i>, <i>Dia de vencimento</i>, <i>Mês final</i>, <i>Juros ao mês</i> (vazio = não informado), <i>Forma de pagamento</i>, <i>Texto no extrato</i> (para achar o pagamento sozinho), <i>Situação</i> e <i>Observação</i>.</dd>
+      <dt>Registrar pagamento e Anotar negociação</dt><dd>Para pagamentos que não aparecem no extrato e para guardar propostas e acordos.</dd>
+      <dt>Simulações</dt><dd>Pagar no cartão e antecipar parcelas. Os juros do rotativo só valem se a fatura não for paga inteira.</dd>
+    </dl>`],
+  ["Importar", `
+    <dl>
+      <dt>Arquivos aceitos</dt><dd>OFX, CSV e Excel dos bancos, PDF do Itaú e a fatura do cartão Inter. Arrastem na tela ou coloquem em <code>entrada/&lt;conta&gt;/</code>.</dd>
+      <dt>Repetidos</dt><dd>Lançamento que já existe não entra de novo.</dd>
+      <dt>Arquivo desconhecido</dt><dd>O sistema pede para mapear as colunas (data, descrição, valor) uma vez e lembra para os próximos.</dd>
+    </dl>`],
+  ["Ajustes", `
+    <dl>
+      <dt>Saldo das contas hoje</dt><dd>Soma do que tem hoje no Inter, BB e Itaú. Usado no fechamento das contas do Início.</dd>
+      <dt>Outros campos</dt><dd><i>Guardar por mês</i>, <i>Limite combinado no cartão</i>, <i>Juros do rotativo</i> (só simulações), <i>Nomes de vocês nos extratos</i> (para achar transferências entre vocês).</dd>
+      <dt>Categorias e orçado</dt><dd>Toquem numa categoria para mudar o orçado do mês.</dd>
+      <dt>Regras aprendidas</dt><dd>Cada classificação vira regra. <b>+ Regra</b> cria uma à mão; <i>apagar</i> remove.</dd>
+      <dt>Contas, quem usa o cartão, metas, alertas, backup e modo demo</dt><dd>Cadastros e preferências. O modo demo usa dados fictícios sem mexer nos reais.</dd>
+    </dl>`],
+];
+
+TELAS.manual = async (el) => {
+  el.innerHTML = `<div class="pilha manual">
+    <div><h2 style="font-size:22px">Manual de uso</h2><p class="mudo" style="margin:4px 0 0">Como usar cada tela e o que significa cada campo.</p></div>
+    ${MANUAL.map(([titulo, corpo], i) => `<details class="cartao" ${i < 2 ? "open" : ""}><summary><h2>${titulo}</h2></summary><div class="manual-corpo">${corpo}</div></details>`).join("")}
+    <p class="nota">Orientação educativa, não é consultoria financeira.</p>
+  </div>`;
+};
+
 /* ------------------------------------------------------------------ Dívidas */
 const TIPOS_DIVIDA = { consignado: "Consignado", familia: "Família", cartao: "Cartão", banco: "Banco", outro: "Outro" };
 const STATUS_DIVIDA = { ativa: ["Ativa", "neutro"], negociando: ["Em negociação", "atencao"], acordo: ["Acordo fechado", "bom"], quitada: ["Quitada", "bom"] };
@@ -1256,6 +1360,7 @@ TELAS.ajustes = async (el) => {
     <h2 style="font-size:22px">Ajustes</h2>
     <div class="cartao"><div class="cartao-cab"><h2>Orçamento do mês</h2></div>
       <form id="f-cfg" class="grade-form">
+        <label class="campo">Saldo das contas hoje <small>Inter + BB + Itaú, somados</small><input name="saldo_contas_atual" value="${paraInput(+cfg.saldo_contas_atual || 0)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Renda mensal esperada <small>vazio = média dos últimos meses</small><input name="renda_mensal_esperada" value="${paraInput(+cfg.renda_mensal_esperada || null)}" inputmode="decimal" placeholder="automático"></label>
         <label class="campo">Guardar por mês<input name="meta_poupanca_mensal" value="${paraInput(+cfg.meta_poupanca_mensal || null)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Limite combinado no cartão/mês<input name="limite_fatura_mensal" value="${paraInput(+cfg.limite_fatura_mensal || null)}" inputmode="decimal" placeholder="sem limite"></label>

@@ -427,6 +427,18 @@ textarea { resize: vertical; }
   font-size: 14px; color: rgba(238,248,246,.85); position: relative; z-index: 1; }
 .fech b { font-size: 18px; color: #fff; }
 
+/* ---------- manual */
+.manual details.cartao > summary { cursor: pointer; list-style: none; }
+.manual details.cartao > summary::-webkit-details-marker { display: none; }
+.manual details.cartao > summary h2::after { content: "+"; margin-left: auto; color: var(--mudo); font-weight: 400; }
+.manual details[open].cartao > summary h2::after { content: "−"; }
+.manual-corpo { margin-top: 14px; font-size: 14.5px; line-height: 1.6; }
+.manual-corpo dl { margin: 0; display: grid; gap: 12px; }
+.manual-corpo dt { font-weight: 600; }
+.manual-corpo dd { margin: 2px 0 0; color: var(--texto-2); }
+.manual-corpo code { background: var(--sup-2); border: 1px solid var(--linha); border-radius: 6px; padding: 1px 6px; font-size: 13px; }
+.manual-corpo ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; }
+
 /* ---------- celular */
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }

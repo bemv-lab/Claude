@@ -731,8 +731,9 @@ def r_meta(con, q, corpo, mid):
 
 
 CONFIG_EDITAVEL = {"renda_mensal_esperada", "orcamento_mensal", "meta_poupanca_mensal", "limite_fatura_mensal",
-                   "juros_rotativo_mensal", "pasta_backup", "nomes_casal", "meses_reserva"}
-CONFIG_DINHEIRO = {"renda_mensal_esperada", "orcamento_mensal", "meta_poupanca_mensal", "limite_fatura_mensal"}
+                   "juros_rotativo_mensal", "pasta_backup", "nomes_casal", "meses_reserva", "saldo_contas_atual"}
+CONFIG_DINHEIRO = {"renda_mensal_esperada", "orcamento_mensal", "meta_poupanca_mensal", "limite_fatura_mensal",
+                   "saldo_contas_atual"}
 
 
 @rota("GET", "/api/config")
@@ -746,7 +747,7 @@ def r_config_salvar(con, q, corpo):
         if k not in CONFIG_EDITAVEL:
             continue
         if k in CONFIG_DINHEIRO:
-            v = _centavos(v) or 0
+            v = _centavos(v) or 0              # aceita negativo (ex.: conta no cheque especial)
         elif k == "nomes_casal":
             v = json.dumps([normalizar(x) for x in (v if isinstance(v, list) else str(v).split(",")) if x.strip()])
         db.definir_config(con, k, v)
