@@ -62,7 +62,7 @@ export async function arquivarProduto(fd: FormData) {
 export async function salvarConfig(fd: FormData) {
   await exigir();
   const up = db().prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
-  for (const k of ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao', 'meta_mes']) if (fd.has(k)) up.run(k, num(fd, k));
+  for (const k of ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao', 'meta_mes', 'reserva_pct', 'reserva_dias', 'prazo_cartao']) if (fd.has(k)) up.run(k, num(fd, k));
   pronto('/taxas', '/precificacao', '/', '/campanhas');
 }
 

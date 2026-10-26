@@ -4,7 +4,7 @@ import {precificar, precoParaMargem, avaliarAnuncio, dre, taxaMedia, lerNumero, 
 import {lerExportMeta} from '../lib/csv';
 import {mapearPedido, localBR, type PedidoShopify} from '../lib/shopify';
 import {mapearInsights} from '../lib/meta';
-import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, type Entrada} from '../lib/financeiro';
+import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, caixaCartpanda, type Entrada} from '../lib/financeiro';
 import {recorrencias, lerTaxas} from '../lib/dados';
 
 const cfg: Config = {das_pct: 4, plataforma_pct: 2.5, meta_imposto_pct: 13.83, cpa_alvo_padrao: 55};
@@ -121,5 +121,10 @@ perto(liquido('cartao', 6, 239.9), 191.68, 0.006);
 perto(liquido('cartao', 5, 223.11), 181.61, 0.006);
 perto(liquido('pix', 1, 239.9), 237.52, 0.006);
 perto(liquido('pix', 1, 339.8), 336.44, 0.006);
+perto(liquido('cartao', 1, 239.9), 225.53, 0.006);
+perto(liquido('pix', 1, 829.6), 821.39, 0.006);
+// Reserva de 5%: pedido 52321200 (R$ 215,91 em 6x) entrou R$ 161,71 + R$ 10,80 de reserva.
+const cx = caixaCartpanda([mp[0].pedido], tx, '2026-10-26', {reserva_pct: 5, reserva_dias: 90, prazo_cartao: 2});
+perto(cx.retida, 10.8); perto(cx.aLiberar, 161.71 - 0.35, 0.006); // os R$ 0,35 saem numa linha "Taxa" à parte
 
 console.log('Todos os testes passaram.');

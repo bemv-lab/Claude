@@ -1,15 +1,16 @@
 // Leituras do banco usadas pelas telas e pelo conector MCP.
 import {db} from './db';
 import {precificar, avaliarAnuncio, type Config, type Forma, type Produto, type Lancamento} from './calc';
-import {resumo, type Entrada, type Taxa, NOME_FORMA} from './financeiro';
+import {resumo, caixaCartpanda, type Entrada, type Taxa, NOME_FORMA} from './financeiro';
 import type {Pedido, Item} from './shopify';
 import type {AdDia} from './meta';
 
-export function lerConfig(): Config & {meta_mes: number; gateway_exemplo: number} {
+export function lerConfig(): Config & {meta_mes: number; gateway_exemplo: number; reserva_pct: number; reserva_dias: number; prazo_cartao: number} {
   const rows = db().prepare('SELECT chave, valor FROM config').all() as {chave: string; valor: number}[];
   const c = Object.fromEntries(rows.map((r) => [r.chave, r.valor]));
   return {das_pct: c.das_pct ?? 0, plataforma_pct: c.plataforma_pct ?? 0, meta_imposto_pct: c.meta_imposto_pct ?? 0, cpa_alvo_padrao: c.cpa_alvo_padrao ?? 0,
-    meta_mes: c.meta_mes ?? 0, gateway_exemplo: c.gateway_exemplo ?? 0};
+    meta_mes: c.meta_mes ?? 0, gateway_exemplo: c.gateway_exemplo ?? 0,
+    reserva_pct: c.reserva_pct ?? 5, reserva_dias: c.reserva_dias ?? 90, prazo_cartao: c.prazo_cartao ?? 2};
 }
 
 // O SQLite do Node devolve objetos sem protótipo; as telas precisam de objetos simples.
@@ -75,6 +76,14 @@ export function recorrencias(base: Lancamento[], ini: string, fim: string) {
     }
   }
   return out;
+}
+
+/** Caixa na Cartpanda (reserva e cartão a liberar), a partir dos pedidos pagos que ainda podem estar presos. */
+export function caixa() {
+  const cfg = lerConfig(), h = hoje();
+  const desde = desloca(h, -Math.max(cfg.reserva_dias, cfg.prazo_cartao) - 1);
+  const pagos = simples<Pedido>(db().prepare("SELECT * FROM pedidos WHERE status = 'pago' AND dia_pago >= ?").all(desde));
+  return caixaCartpanda(pagos, lerTaxas(), h, cfg);
 }
 
 const desloca = (dia: string, n: number) => new Date(new Date(`${dia}T12:00:00Z`).getTime() + n * 86400_000).toISOString().slice(0, 10);

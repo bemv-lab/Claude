@@ -22,7 +22,12 @@ export default function Taxas() {
           <div className="cartao">
             <div><h2>Taxas por venda</h2><p className="nota">Percentual cobrado em cada venda paga</p></div>
             <label htmlFor="plataforma_pct">Checkout Cartpanda por venda (%)<input id="plataforma_pct" name="plataforma_pct" type="number" step="0.01" defaultValue={cfg.plataforma_pct} /></label>
-            <p className="nota">Gateway (Pix, boleto e cartão por parcela) fica na tabela abaixo.</p>
+            <div className="campos">
+              <label htmlFor="reserva_pct">Reserva retida (%)<input id="reserva_pct" name="reserva_pct" type="number" step="0.1" defaultValue={cfg.reserva_pct} /></label>
+              <label htmlFor="reserva_dias">Reserva volta em (dias)<input id="reserva_dias" name="reserva_dias" type="number" step="1" defaultValue={cfg.reserva_dias} /></label>
+              <label htmlFor="prazo_cartao">Cartão libera em (dias)<input id="prazo_cartao" name="prazo_cartao" type="number" step="1" defaultValue={cfg.prazo_cartao} /></label>
+            </div>
+            <p className="nota">Gateway (Pix, boleto e cartão por parcela) fica na tabela abaixo. A reserva não é custo: é dinheiro que volta depois.</p>
           </div>
           <div className="cartao">
             <div><h2>Impostos</h2><p className="nota">Simples Nacional e repasse da Meta</p></div>
@@ -58,7 +63,7 @@ export default function Taxas() {
             </table></div>
             <div className="acoes"><button type="submit">Salvar taxas</button></div>
           </form>
-          <p className="nota">Conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (5x 18,60%, 6x 20,10%), Pix 0,99% e R$ 0,35 de processamento por pedido. Falta provar 1x e 7x a 12x (aqui em 20,10% por cautela). O Único Drop deixa 7x+ sem acréscimo e não conta os R$ 0,35.</p>
+          <p className="nota">Conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (5x 18,60%, 6x 20,10%), Pix 0,99% e R$ 0,35 de processamento por pedido. 1x = 5,99% também conferido. Falta provar 7x a 12x (aqui em 20,10% por cautela). O Único Drop deixa 7x+ sem acréscimo e não conta os R$ 0,35.</p>
         </div>
         <div className="cartao">
           <div><h2>Como os clientes pagam de verdade</h2><p className="nota">Pedidos pagos dos últimos 90 dias. É esse mix que a precificação usa.</p></div>

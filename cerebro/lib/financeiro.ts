@@ -244,3 +244,22 @@ export function dreMes(e: Entrada, mes: string) {
   return {mes, receitas, outrasReceitas: cat('outras_receitas'), totalReceitas, despesas, totalDespesas, lucro,
     margem: totalReceitas ? (lucro / totalReceitas) * 100 : 0, roi: r.ads.total ? (lucro / r.ads.total) * 100 : null, semCusto: r.semCusto, resumo: r};
 }
+
+/** Dinheiro preso na Cartpanda: reserva de garantia (5% por 90 dias) e cartão ainda a liberar (D+2). */
+export function caixaCartpanda(pagos: Pedido[], taxas: Taxa[], hoje: string, c: {reserva_pct: number; reserva_dias: number; prazo_cartao: number}) {
+  const soma = (d: string, n: number) => new Date(new Date(`${d}T12:00:00Z`).getTime() + n * 86400_000).toISOString().slice(0, 10);
+  let retida = 0, libera30 = 0, aLiberar = 0;
+  const porMes = new Map<string, number>();
+  for (const p of pagos) {
+    if (!p.dia_pago) continue;
+    const reserva = Math.round(p.total * c.reserva_pct) / 100;
+    const volta = soma(p.dia_pago, c.reserva_dias);
+    if (volta > hoje) {
+      retida += reserva;
+      if (volta <= soma(hoje, 30)) libera30 += reserva;
+      porMes.set(volta.slice(0, 7), (porMes.get(volta.slice(0, 7)) ?? 0) + reserva);
+    }
+    if (p.forma === 'cartao' && soma(p.dia_pago, c.prazo_cartao) > hoje) aLiberar += p.total - taxaDoPedido(p, taxas) - reserva;
+  }
+  return {retida, libera30, aLiberar, porMes: [...porMes.entries()].sort()};
+}

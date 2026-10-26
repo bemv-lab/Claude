@@ -3,7 +3,7 @@ import Casca from '@/components/Casca';
 import Sincronizar from '@/components/Sincronizar';
 import {CabecalhoFin, Linha, rotuloPeriodo} from '@/components/Fin';
 import {GraficoDiario, Faisca, Anel, BarraPartes} from '@/components/graficos';
-import {desloca, entrada, lerConfig, mesAtual, periodo, resumoMes} from '@/lib/dados';
+import {caixa, desloca, entrada, lerConfig, mesAtual, periodo, resumoMes} from '@/lib/dados';
 import {resumo, serieDiaria, destaques, ranking, NOME_FORMA} from '@/lib/financeiro';
 import {fmtBRL, fmtNum, fmtPct} from '@/lib/calc';
 
@@ -26,6 +26,7 @@ export default async function DashboardFin({searchParams}: {searchParams: Promis
   const mes = resumoMes(mesAtual());
   const metaPct = cfg.meta_mes ? (mes.pagos.v / cfg.meta_mes) * 100 : 0;
   const semImpostos = r.lucro + r.imposto + r.impostoMeta;
+  const cx = caixa();
   const qs = per.chave === 'outra' ? `de=${per.ini}&ate=${per.fim}` : `p=${per.chave}`;
   const formas = (['cartao', 'pix', 'boleto'] as const).map((f) => ({f, ...(r.porForma[f] ?? {pago: {n: 0, v: 0}, pendente: {n: 0, v: 0}, cancelado: {n: 0, v: 0}})}));
 
@@ -134,10 +135,21 @@ export default async function DashboardFin({searchParams}: {searchParams: Promis
             <div><small>ROAS</small><b>{r.roas === null ? '–' : `${fmtNum(r.roas)}x`}</b></div>
           </div>
         </div>
+        <div className="coluna">
+        <div className="cartao">
+          <div><h2>Dinheiro preso na Cartpanda</h2><p className="nota">Hoje, independente do período escolhido</p></div>
+          <div className="res">
+            <Linha r={`Reserva retida (${fmtPct(cfg.reserva_pct)} por ${cfg.reserva_dias} dias)`} v={fmtBRL(cx.retida)} />
+            <Linha sub r="volta nos próximos 30 dias" v={fmtBRL(cx.libera30)} />
+            <Linha r={`Cartão a liberar (D+${cfg.prazo_cartao})`} v={fmtBRL(cx.aLiberar)} />
+          </div>
+          <p className="nota">Não é custo: entra no caixa depois. Antecipar custa 1,5% ao dia na Cartpanda.</p>
+        </div>
         <div className="cartao">
           <div className="topo"><div><h2>Despesas lançadas</h2><p className="nota">Fixas, financeiras e outras do período</p></div><Link className="nota" href="/financeiro/despesas">lançar</Link></div>
           <div className="grande">{fmtBRL(r.adicionais)}</div>
           <p className="nota">{r.adicionais ? 'Entram no lucro quando a opção "Incluir despesas lançadas" está marcada, e sempre no DRE.' : 'Nenhuma despesa no período.'}</p>
+        </div>
         </div>
       </div>
     </Casca>

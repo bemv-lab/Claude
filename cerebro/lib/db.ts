@@ -89,14 +89,14 @@ function migrarV2(d: DatabaseSync) {
   ALTER TABLE lancamentos ADD COLUMN recorrente INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE produtos ADD COLUMN imagem TEXT NOT NULL DEFAULT '';
   CREATE UNIQUE INDEX IF NOT EXISTS produtos_shopify ON produtos(shopify_id);
-  INSERT OR IGNORE INTO config (chave, valor) VALUES ('meta_mes', 50000), ('gateway_exemplo', 1);
+  INSERT OR IGNORE INTO config (chave, valor) VALUES ('meta_mes', 50000), ('gateway_exemplo', 1), ('reserva_pct', 5), ('reserva_dias', 90), ('prazo_cartao', 2);
   PRAGMA user_version = 2;
   COMMIT;
   `);
   // Taxas da Cartpanda Pay conferidas no extrato da Cartpanda (pagamento de 26/10/2026):
   // cartão = 5,99% + acréscimo da parcela (5x = 18,60%, 6x = 20,10%, como o Único Drop calcula), Pix 0,99%,
   // e R$ 0,35 de processamento por pedido (R$ 4,90 em 14 pedidos), que o Único Drop não conta.
-  // 1x = 5,99% e 7x a 12x = 20,10% (cautela) ainda sem prova no extrato: ficam marcadas para conferir.
+  // 1x = 5,99% também conferido (pedido 52310804). 7x a 12x = 20,10% (cautela) ainda sem prova: ficam marcadas para conferir.
   const t = d.prepare('INSERT OR IGNORE INTO taxas_gateway (forma, parcelas, pct, fixo) VALUES (?, ?, ?, ?)');
   t.run('pix', 1, 0.99, 0.35);
   t.run('boleto', 1, 0, 3.85);
@@ -106,7 +106,8 @@ function migrarV2(d: DatabaseSync) {
   for (const texto of [
     'Conferência com o Único Drop (26/10/2026): o Cérebro reproduz a receita de outubro (R$ 24.603,15: cartão 9.196,74, Pix 15.166,51, boleto 239,90), o checkout 2,5% (R$ 615,08), a conversão do Pix dia a dia e o lucro de 26/10 (R$ 7,71) quando usa as mesmas configurações.',
     'No Único Drop, "Imposto % sobre faturamento" e "Imposto sobre Facebook/Meta Ads" estão em 0%: o lucro de lá não desconta DAS nem o imposto da Meta (13,83%). Em outubro isso infla o lucro em ~R$ 1.500.',
-    'Taxa do cartão conferida no extrato da Cartpanda (26/10): 5,99% + acréscimo da parcela, como o Único Drop faz (R$ 239,90 em 6x caiu R$ 191,68 = 20,10%; R$ 223,11 em 5x caiu R$ 181,61 = 18,60%). Pix 0,99%. Há R$ 0,35 de processamento por pedido que o Único Drop não conta. Falta provar 1x e 7x a 12x (lá 7x+ estão sem acréscimo).',
+    'Taxa do cartão conferida no extrato da Cartpanda (26/10): 5,99% + acréscimo da parcela, como o Único Drop faz (R$ 239,90 em 6x caiu R$ 191,68 = 20,10%; R$ 223,11 em 5x caiu R$ 181,61 = 18,60%). Pix 0,99%. Há R$ 0,35 de processamento por pedido que o Único Drop não conta. 1x = 5,99% conferido. Falta provar 7x a 12x (lá estão sem acréscimo).',
+    'Reserva da Cartpanda: 5% de cada pedido pago fica retido por 90 dias (garantia). Pix libera no dia, cartão em D+2. Em 26/10 a reserva era R$ 1.294,46 e batia com 5% dos pedidos pagos. Conversão do Pix de outubro na Cartpanda: 86,15% (igual ao Cérebro; o Único Drop mostra 86,36%).',
     'Cartpanda serve para conferir as contas do Único Drop e dar ideias; a referência das telas do Cérebro continua sendo o Único Drop (pedido da Bárbara, 26/10).',
     'Antecipação na Cartpanda: 1,5% ao dia por dia antecipado (dia 1 × 1,5%, dia 2 × 3%...). Saque antecipado de R$ 930,76 custava R$ 16,39 em 26/10.',
     'Conta de anúncios a considerar: só a C01 - Lucas Oliveira (RK), id 735313220351102. As contas C01 a C05 da Gabrielle não tiveram gasto em outubro.',
