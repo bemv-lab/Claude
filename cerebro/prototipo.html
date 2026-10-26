@@ -1,0 +1,292 @@
+<title>Cérebro Rocco</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: trilho de navegação à esquerda, palco central com um módulo por vez, números grandes e leves. */
+:root{
+  --bg:#f7f4ee; --surface:#fffdf9; --sunk:#f2ebdd; --line:#e4ded3;
+  --ink:#302e29; --muted:#7a766d; --accent:#b85f42; --accent-soft:#f3e1d8;
+  --good:#4f6a4a; --good-soft:#e3eadc; --warn:#9a6a12; --warn-soft:#f5e9cf; --bad:#a3402f; --bad-soft:#f6ddd6;
+  --sans:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#161513; --surface:#1e1c19; --sunk:#25221e; --line:#33302b;
+  --ink:#f2ebdd; --muted:#a29c90; --accent:#d98a6c; --accent-soft:#3a2720;
+  --good:#9db58f; --good-soft:#243022; --warn:#e0b45c; --warn-soft:#3a2f17; --bad:#e58a76; --bad-soft:#3c221d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#161513; --surface:#1e1c19; --sunk:#25221e; --line:#33302b;
+  --ink:#f2ebdd; --muted:#a29c90; --accent:#d98a6c; --accent-soft:#3a2720;
+  --good:#9db58f; --good-soft:#243022; --warn:#e0b45c; --warn-soft:#3a2f17; --bad:#e58a76; --bad-soft:#3c221d; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100%}
+nav{border-right:1px solid var(--line);padding:28px 16px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
+.marca{font-weight:700;letter-spacing:-.02em;font-size:18px;padding:0 10px 22px;display:flex;align-items:center;gap:10px}
+.marca i{width:22px;height:22px;border-radius:50%;background:var(--accent);display:inline-block;box-shadow:inset -6px -6px 0 rgba(0,0,0,.12)}
+.marca small{display:block;font-weight:400;font-size:12px;color:var(--muted);letter-spacing:0}
+.grupo{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:16px 10px 6px}
+nav a{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:10px;color:var(--ink);text-decoration:none;font-size:14px}
+nav a:hover{background:var(--sunk)}
+nav a[aria-current="page"]{background:var(--ink);color:var(--bg)}
+nav a.off{color:var(--muted);pointer-events:none}
+nav a.off span{font-size:10px;border:1px solid var(--line);border-radius:99px;padding:1px 7px}
+main{padding-block:36px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));min-width:0}
+.palco{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+.topo{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.olho{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-size:clamp(28px,4vw,40px);font-weight:400;letter-spacing:-.03em;line-height:1.1;margin:6px 0 0;text-wrap:balance}
+h1 b{font-weight:700}
+h2{font-size:15px;font-weight:500;margin:0;letter-spacing:-.01em}
+.exemplo{font-family:var(--mono);font-size:11px;color:var(--warn);background:var(--warn-soft);padding:4px 10px;border-radius:99px;white-space:nowrap}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:var(--surface);padding:20px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.kpi .rot{font-size:12px;color:var(--muted)}
+.kpi .val{font-size:30px;font-weight:300;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.kpi .var{font-family:var(--mono);font-size:12px}
+.sobe{color:var(--good)} .desce{color:var(--bad)}
+.duas{display:grid;grid-template-columns:1.4fr 1fr;gap:20px}
+.cartao{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:22px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.alerta{border-color:var(--accent);background:linear-gradient(var(--accent-soft),var(--surface) 70%)}
+.alerta p{margin:0;max-width:62ch}
+.alerta .num{font-size:44px;font-weight:300;letter-spacing:-.04em;color:var(--accent);line-height:1}
+.feed{display:flex;flex-direction:column}
+.feed div{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:14px}
+.feed div:first-child{border-top:0;padding-top:0}
+.ponto{width:8px;height:8px;border-radius:50%;margin-top:7px;background:var(--muted)}
+.ponto.g{background:var(--good)} .ponto.w{background:var(--warn)} .ponto.b{background:var(--bad)} .ponto.a{background:var(--accent)}
+.feed small{color:var(--muted);font-family:var(--mono);font-size:11px;display:block}
+svg text{fill:var(--muted);font-family:var(--mono);font-size:10px}
+/* Precificação */
+.calc{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+.campos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+input{font:inherit;font-family:var(--mono);font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;width:100%}
+input:focus-visible,a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mix{display:grid;grid-template-columns:1.2fr .8fr .8fr;gap:8px 12px;align-items:center;font-size:13px}
+.mix .cab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.res{display:flex;flex-direction:column;gap:0}
+.linha{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.linha:first-child{border-top:0}
+.linha span:last-child{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.linha.forte{font-weight:500}
+.destaque{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.destaque div{background:var(--sunk);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:2px}
+.destaque b{font-size:26px;font-weight:300;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.destaque small{font-size:12px;color:var(--muted)}
+.nota{font-size:12px;color:var(--muted);margin:0}
+/* Campanhas */
+.esteira{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.col h3{font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 2px;display:flex;justify-content:space-between}
+.ad{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.ad b{font-weight:500}
+.met{display:flex;gap:10px;font-family:var(--mono);font-size:11px;color:var(--muted);flex-wrap:wrap}
+.chip{align-self:flex-start;font-size:11px;padding:3px 9px;border-radius:99px;font-weight:500}
+.chip.g{background:var(--good-soft);color:var(--good)} .chip.w{background:var(--warn-soft);color:var(--warn)} .chip.b{background:var(--bad-soft);color:var(--bad)}
+.regras{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.regras div{border-top:2px solid var(--ink);padding-top:10px;font-size:13px}
+.regras b{display:block;font-weight:500;margin-bottom:4px}
+/* Memória */
+.mem{display:flex;flex-direction:column}
+.mem article{display:grid;grid-template-columns:110px 1fr auto;gap:16px;padding:16px 0;border-top:1px solid var(--line);align-items:baseline}
+.mem article:first-child{border-top:0}
+.mem time{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.mem p{margin:0;font-size:14px}
+.tag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:2px 9px;white-space:nowrap}
+.pergunta{display:flex;gap:10px}
+.pergunta input{font-family:var(--sans);flex:1}
+button{font:inherit;font-size:14px;border:0;border-radius:10px;padding:9px 16px;background:var(--ink);color:var(--bg);cursor:pointer}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  nav{position:static;height:auto;flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line);padding:14px max(16px,env(safe-area-inset-right,0px)) 14px max(16px,env(safe-area-inset-left,0px))}
+  .marca{width:100%;padding-bottom:8px}.grupo,nav a.off{display:none}
+  .kpis{grid-template-columns:1fr 1fr}.duas,.calc,.regras{grid-template-columns:1fr}.esteira{grid-template-columns:1fr 1fr}
+}
+@media (max-width:520px){.esteira,.campos{grid-template-columns:1fr}.mem article{grid-template-columns:1fr}.kpi .val{font-size:24px}}
+@media (prefers-reduced-motion:no-preference){section:not([hidden]){animation:entra .35s ease}@keyframes entra{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}}
+</style>
+
+<div class="app">
+<nav aria-label="Módulos">
+  <div class="marca"><i></i><div>Cérebro Rocco<small>Rocco Kids · protótipo</small></div></div>
+  <a href="#inicio">Início</a>
+  <div class="grupo">Dinheiro</div>
+  <a href="#preco">Precificação</a>
+  <a class="off">DRE e lançamentos <span>fase 1</span></a>
+  <a class="off">Taxas e planos <span>fase 1</span></a>
+  <div class="grupo">Crescimento</div>
+  <a href="#campanhas">Campanhas</a>
+  <a class="off">Produto e mineração <span>fase 3</span></a>
+  <a class="off">Criativos e copies <span>fase 3</span></a>
+  <div class="grupo">Operação</div>
+  <a class="off">Pedidos ML e Shopee <span>fase 4</span></a>
+  <a class="off">Atendimento no direct <span>fase 5</span></a>
+  <div class="grupo">Inteligência</div>
+  <a href="#memoria">Memória e agente</a>
+</nav>
+
+<main><div class="palco">
+
+<section id="v-inicio">
+  <div class="palco">
+  <div class="topo"><div><div class="olho">Segunda, 26 de outubro</div><h1>Bom dia, Bárbara. <b>Seu lucro real</b> está aqui.</h1></div><span class="exemplo">números de exemplo</span></div>
+  <div class="kpis">
+    <div class="kpi"><span class="rot">Faturamento · 7 dias</span><span class="val">R$ 18.420</span><span class="var sobe">+12% vs semana ant.</span></div>
+    <div class="kpi"><span class="rot">Ticket médio</span><span class="val">R$ 214</span><span class="var sobe">+R$ 9</span></div>
+    <div class="kpi"><span class="rot">Lucro líquido real</span><span class="val">R$ 3.106</span><span class="var desce">−R$ 382 de imposto Meta</span></div>
+    <div class="kpi"><span class="rot">ROAS real / break-even</span><span class="val">2,94 / 2,38</span><span class="var sobe">acima do ponto</span></div>
+  </div>
+  <div class="duas">
+    <div class="cartao alerta">
+      <div class="olho">O que o Único Drop não mostra</div>
+      <div class="num">+13,8%</div>
+      <p>Desde janeiro de 2026 a Meta repassa PIS/Cofins e ISS. O Gerenciador mostra o gasto <b>sem</b> esses impostos, então todo painel que puxa o gasto de lá subestima o custo de mídia. No Simples Nacional esse valor não vira crédito: é custo. O Cérebro lê o valor da fatura, não o do Gerenciador.</p>
+      <svg viewBox="0 0 400 90" role="img" aria-label="Gasto do Gerenciador contra gasto real faturado, últimos 7 dias">
+        <line x1="0" y1="80" x2="400" y2="80" stroke="var(--line)"/>
+        <polyline fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3 3" points="0,60 66,55 133,52 200,48 266,50 333,44 400,40"/>
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2" points="0,52 66,46 133,42 200,37 266,39 333,32 400,27"/>
+        <circle cx="400" cy="27" r="3.5" fill="var(--accent)"/>
+        <text x="0" y="12">faturado (real)</text><text x="300" y="72">Gerenciador</text>
+      </svg>
+    </div>
+    <div class="cartao">
+      <h2>O agente viu hoje</h2>
+      <div class="feed">
+        <div><span class="ponto b"></span><span>Criativo “Pasta · rosto real 03” gastou 1× o CPA máximo (R$ 82) sem venda. Sugiro pausar.<small>campanhas · aguardando seu OK</small></span></div>
+        <div><span class="ponto g"></span><span>“Feltro A · abertura calma” bateu 3 vendas abaixo do CPA alvo. Pronto para validação.<small>esteira de testes</small></span></div>
+        <div><span class="ponto w"></span><span>Faltam 38 pedidos para o gatilho que reavalia o plano da Cartpanda.<small>taxas e planos</small></span></div>
+        <div><span class="ponto a"></span><span>DAS de outubro estimado em R$ 2.947, vence em 20/11.<small>contabilidade</small></span></div>
+      </div>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section id="v-preco" hidden>
+  <div class="palco">
+  <div class="topo"><div><div class="olho">Dinheiro</div><h1>Precificação <b>sem esquecer nada</b></h1></div><span class="exemplo">taxas de exemplo · troque pelas reais</span></div>
+  <div class="calc">
+    <div class="cartao">
+      <h2>Produto: Pasta de Descobertas</h2>
+      <div class="campos">
+        <label>Preço de venda (R$)<input id="p" type="number" value="197" step="1"></label>
+        <label>Custo do produto (R$)<input id="c" type="number" value="58" step="0.5"></label>
+        <label>Frete que a loja paga (R$)<input id="f" type="number" value="12" step="0.5"></label>
+        <label>Embalagem e brinde (R$)<input id="e" type="number" value="6" step="0.5"></label>
+        <label>DAS · Simples (%)<input id="das" type="number" value="4" step="0.1"></label>
+        <label>Plataforma por venda (%)<input id="plat" type="number" value="2.5" step="0.1"></label>
+        <label>Imposto Meta sobre mídia (%)<input id="meta" type="number" value="13.83" step="0.01"></label>
+        <label>CPA alvo no Gerenciador (R$)<input id="cpa" type="number" value="55" step="1"></label>
+      </div>
+      <h2>Como o cliente paga</h2>
+      <div class="mix">
+        <span class="cab">Forma</span><span class="cab">% dos pedidos</span><span class="cab">taxa %</span>
+        <span>Pix</span><input id="m0" type="number" value="35"><input id="t0" type="number" value="0.99" step="0.01">
+        <span>Cartão à vista</span><input id="m1" type="number" value="15"><input id="t1" type="number" value="4.99" step="0.01">
+        <span>2 a 6× sem juros</span><input id="m2" type="number" value="25"><input id="t2" type="number" value="9.5" step="0.01">
+        <span>7 a 10× sem juros</span><input id="m3" type="number" value="25"><input id="t3" type="number" value="14.5" step="0.01">
+      </div>
+      <p class="nota" id="aviso-mix"></p>
+    </div>
+    <div class="cartao">
+      <div class="destaque">
+        <div><small>Margem de contribuição</small><b id="o-mc">–</b><small id="o-mcp"></small></div>
+        <div><small>Lucro por pedido no CPA alvo</small><b id="o-luc">–</b><small id="o-lucp"></small></div>
+        <div><small>CPA máximo no Gerenciador</small><b id="o-cpamax">–</b><small>acima disso, prejuízo</small></div>
+        <div><small>ROAS de break-even</small><b id="o-roas">–</b><small>no Gerenciador</small></div>
+      </div>
+      <div class="res" id="o-linhas"></div>
+      <p class="nota">A taxa de pagamento é a média ponderada pelo que os clientes escolhem de fato. Oferecer 10× pesa só nos pedidos que usam 10×. O Cérebro vai recalcular esse mix toda semana com os pedidos reais.</p>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section id="v-campanhas" hidden>
+  <div class="palco">
+  <div class="topo"><div><div class="olho">Crescimento · Meta Ads</div><h1>Sua <b>esteira de testes</b></h1></div><span class="exemplo">criativos de exemplo</span></div>
+  <div class="regras">
+    <div><b>Teste</b>Gasto até 1× CPA máximo (R$ <span class="r-cpa">–</span>). Sem venda, pausa.</div>
+    <div><b>Validação</b>3 vendas com CPA abaixo do alvo e ROAS acima de <span class="r-roas">–</span>.</div>
+    <div><b>Escala</b>+20% de orçamento a cada 48 h enquanto o ROAS real segurar.</div>
+  </div>
+  <div class="esteira">
+    <div class="col"><h3>Teste <span>3</span></h3>
+      <div class="ad"><b>Pasta · rosto real 03</b><div class="met"><span>R$ 82</span><span>0 vendas</span><span>CTR 0,9%</span></div><span class="chip b">pausar</span></div>
+      <div class="ad"><b>Feltro B · pergunta</b><div class="met"><span>R$ 31</span><span>1 venda</span><span>CTR 1,8%</span></div><span class="chip w">aguardar</span></div>
+      <div class="ad"><b>Carrossel · peças</b><div class="met"><span>R$ 18</span><span>0 vendas</span><span>CTR 1,2%</span></div><span class="chip w">aguardar</span></div>
+    </div>
+    <div class="col"><h3>Validação <span>1</span></h3>
+      <div class="ad"><b>Feltro A · abertura calma</b><div class="met"><span>R$ 141</span><span>3 vendas</span><span>CPA R$ 47</span></div><span class="chip g">promover</span></div>
+    </div>
+    <div class="col"><h3>Escala <span>1</span></h3>
+      <div class="ad"><b>Real C · unboxing</b><div class="met"><span>R$ 640</span><span>14 vendas</span><span>ROAS 2,6</span></div><span class="chip g">+20% amanhã</span></div>
+    </div>
+    <div class="col"><h3>Pausados <span>4</span></h3>
+      <div class="ad"><b>Estático · preço</b><div class="met"><span>R$ 70</span><span>0 vendas</span></div><span class="chip b">aprendizado salvo</span></div>
+    </div>
+  </div>
+  <p class="nota">As regras saem da calculadora: se o custo ou a taxa mudar, o CPA máximo e o ROAS de break-even mudam junto. O agente só sugere; pausar, ativar ou mudar orçamento na Meta exige o seu OK.</p>
+  </div>
+</section>
+
+<section id="v-memoria" hidden>
+  <div class="palco">
+  <div class="topo"><div><div class="olho">Inteligência</div><h1>A memória que <b>os chats soltos não têm</b></h1></div><span class="exemplo">registros de exemplo</span></div>
+  <div class="cartao">
+    <div class="pergunta"><input id="q" placeholder="Pergunte à Rocco: por que pausamos o estático de preço?" aria-label="Pergunta ao agente"><button type="button" id="enviar">Perguntar</button></div>
+    <p class="nota" id="resposta">No sistema real, a resposta vem dos registros abaixo e dos números do dia, sem você repetir o contexto.</p>
+  </div>
+  <div class="cartao mem">
+    <article><time>26/10/2026</time><p>Imposto Meta: usar o valor da fatura (+13,83% no pós-pago). Simples Nacional não credita PIS/Cofins.</p><span class="tag">financeiro</span></article>
+    <article><time>15/10/2026</time><p>Vídeos: pausas cortadas, legenda abaixo do pescoço, sem cartão final. Feltro A é a versão principal.</p><span class="tag">criativos</span></article>
+    <article><time>15/10/2026</time><p>Produto nunca passa pelo feltro (CDC art. 37). Fala sempre com o adulto (CONANDA 163).</p><span class="tag">regra fixa</span></article>
+    <article><time>exemplo</time><p>Estático de preço pausado: R$ 70 gastos, CTR 0,6%, nenhuma venda. Hipótese: preço na primeira tela afasta antes do valor.</p><span class="tag">aprendizado</span></article>
+  </div>
+  </div>
+</section>
+
+</div></main>
+</div>
+
+<script>
+const brl=v=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const pct=v=>(v*100).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
+const n=id=>parseFloat(document.getElementById(id).value)||0;
+function calcula(){
+  const P=n('p'),C=n('c'),F=n('f'),E=n('e'),das=n('das')/100,plat=n('plat')/100,meta=n('meta')/100,cpa=n('cpa');
+  let somaMix=0,taxa=0;
+  for(let i=0;i<4;i++){const m=n('m'+i)/100;somaMix+=m;taxa+=m*n('t'+i)/100}
+  if(somaMix>0)taxa/=somaMix;
+  document.getElementById('aviso-mix').textContent=Math.abs(somaMix-1)>0.001?`O mix soma ${Math.round(somaMix*100)}%. A taxa foi normalizada para 100%.`:`Taxa média de pagamento: ${pct(taxa)}`;
+  const vDas=P*das,vTaxa=P*taxa,vPlat=P*plat;
+  const mc=P-C-F-E-vDas-vTaxa-vPlat;
+  const cpaReal=cpa*(1+meta),cpaMax=mc/(1+meta),roasBE=cpaMax>0?P/cpaMax:Infinity,luc=mc-cpaReal;
+  const set=(id,t)=>document.getElementById(id).textContent=t;
+  set('o-mc',brl(mc));set('o-mcp',pct(P?mc/P:0)+' do preço');
+  set('o-luc',brl(luc));set('o-lucp',`mídia real ${brl(cpaReal)} com imposto Meta`);
+  set('o-cpamax',brl(cpaMax));set('o-roas',isFinite(roasBE)?roasBE.toLocaleString('pt-BR',{maximumFractionDigits:2}):'sem margem');
+  document.getElementById('o-lucp').className=luc<0?'desce':'';
+  const linhas=[['Preço de venda',P],['Custo do produto',-C],['Frete',-F],['Embalagem e brinde',-E],['DAS',-vDas],['Taxa de pagamento (média)',-vTaxa],['Plataforma',-vPlat],['Margem de contribuição',mc,1],['Mídia no CPA alvo',-cpa],['Imposto Meta sobre a mídia',-(cpaReal-cpa)],['Lucro por pedido',luc,1]];
+  document.getElementById('o-linhas').innerHTML=linhas.map(([r,v,f])=>`<div class="linha${f?' forte':''}"><span>${r}</span><span>${brl(v)}</span></div>`).join('');
+  document.querySelectorAll('.r-cpa').forEach(e=>e.textContent=cpaMax.toLocaleString('pt-BR',{maximumFractionDigits:0}));
+  document.querySelectorAll('.r-roas').forEach(e=>e.textContent=isFinite(roasBE)?roasBE.toLocaleString('pt-BR',{maximumFractionDigits:2}):'–');
+}
+document.querySelectorAll('#v-preco input').forEach(i=>i.addEventListener('input',calcula));
+calcula();
+const views=['inicio','preco','campanhas','memoria'];
+function abre(v){
+  if(!views.includes(v))v='inicio';
+  views.forEach(x=>document.getElementById('v-'+x).hidden=x!==v);
+  document.querySelectorAll('nav a[href]').forEach(a=>{if(a.getAttribute('href')==='#'+v)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+}
+document.querySelectorAll('nav a[href]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();abre(a.getAttribute('href').slice(1));scrollTo(0,0)}));
+abre(location.hash.slice(1));
+document.getElementById('enviar').addEventListener('click',()=>{
+  document.getElementById('resposta').textContent='Pausamos em 12/10: R$ 70 gastos, CTR 0,6% e nenhuma venda. A hipótese registrada foi que mostrar o preço na primeira tela afastava antes de mostrar o valor. (Resposta de exemplo do protótipo.)';
+});
+</script>
