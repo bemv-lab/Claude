@@ -16,6 +16,7 @@ import secrets
 import socket
 import sys
 import threading
+import urllib.request
 import webbrowser
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -980,6 +981,14 @@ def ip_local():
         return "IP-do-computador"
 
 
+def ja_rodando(porta: int) -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{porta}/api/config", timeout=2) as r:
+            return r.status == 200 and "orcamento_mensal" in json.loads(r.read())
+    except (OSError, ValueError):
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser(description="Parceiro de Prosperidade (servidor local)")
     ap.add_argument("--porta", type=int, default=8765)
@@ -995,8 +1004,17 @@ def main():
     importacao.preparar_pastas(con, db.ENTRADA_REAL)
     con.close()
     host = "0.0.0.0" if a.rede else "127.0.0.1"
-    srv = ThreadingHTTPServer((host, a.porta), Handler)
     url = f"http://localhost:{a.porta}"
+    try:
+        srv = ThreadingHTTPServer((host, a.porta), Handler)
+    except OSError:
+        # porta ocupada: se for o próprio sistema (ícone clicado de novo), só abre o navegador
+        if ja_rodando(a.porta):
+            print(f"\n  O sistema já está aberto em {url}")
+            if not a.sem_navegador:
+                webbrowser.open(url)
+            return
+        sys.exit(f"\n  A porta {a.porta} está ocupada por outro programa. Tente: python app.py --porta 8766")
     print(f"\n  Parceiro de Prosperidade rodando em {url}  (modo {ESTADO['modo']})")
     if a.rede:
         ESTADO["pin"] = a.pin or f"{secrets.randbelow(10 ** 6):06d}"

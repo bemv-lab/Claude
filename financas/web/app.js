@@ -1013,8 +1013,9 @@ const MANUAL = [
   ["Para começar", `
     <p>O sistema roda no computador de vocês. Nada vai para a internet.</p>
     <ol>
-      <li>Abram o terminal na pasta <code>financas</code> e rodem <code>python app.py</code> (no Windows, <code>py app.py</code>).</li>
-      <li>O navegador abre em <b>http://localhost:8765</b>. Se não abrir sozinho, digitem esse endereço.</li>
+      <li>Dois cliques no ícone <b>Prosperidade</b> da área de trabalho. O sistema abre no navegador, em <b>http://localhost:8765</b>. Clicar de novo com ele aberto só abre o navegador.</li>
+      <li>Sem o ícone: na pasta <code>financas</code>, rodem <code>python instalar_atalho.py</code> uma vez (no Windows, dois cliques no arquivo). Ou abram direto com <code>python app.py</code> (no Windows, <code>py app.py</code>).</li>
+      <li>No Windows, o sistema fica numa janela preta minimizada na barra de tarefas. Fechar essa janela desliga o sistema; o que já foi salvo continua salvo. No Mac, ele roda em segundo plano até desligarem o computador.</li>
       <li>Para usar pelo celular na mesma rede Wi-Fi: <code>python app.py --rede</code>. Aparecem um endereço e um PIN.</li>
       <li>Os dados ficam em <code>financas/dados/financas.db</code>. Façam backup em Ajustes > Backup.</li>
     </ol>`],

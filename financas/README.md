@@ -17,6 +17,10 @@ python app.py --rede     # libera para o celular no mesmo Wi-Fi; mostra o endere
 
 No Windows, use `py app.py` se `python` não funcionar.
 
+**Ícone na área de trabalho (uma vez):** `python instalar_atalho.py` (no Windows, dois cliques no arquivo).
+Cria o ícone Prosperidade (Windows: área de trabalho e menu Iniciar; Mac: `Prosperidade.app` na mesa).
+Se mudarem a pasta `financas` de lugar, rodem de novo. Com o sistema já aberto, o ícone só abre o navegador.
+
 Outros comandos:
 
 ```bash
