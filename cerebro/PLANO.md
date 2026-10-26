@@ -58,7 +58,8 @@ Feito: pedidos da Shopify (com forma, parcelas, bandeira, cupom, UF e UTM, sem d
 Conferido com o Único Drop (prints de 26/10): receita de outubro por forma, checkout 2,5%, conversão do Pix dia a dia e lucro de 26/10 (com as configurações dele).
 
 Pendências do módulo:
-- Relatórios da Cartpanda para conferir as taxas reais (o Único Drop soma 5,99% + tabela de parcelas; 7x a 12x parecem não configuradas).
+- Taxas conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (o Único Drop está certo nisso), Pix 0,99%, R$ 0,35 de processamento por pedido (o Único Drop não conta). Falta provar 1x e 7x a 12x.
+- Gateway de outubro: Cérebro R$ 1.715 × Único Drop R$ 1.145. Hipótese: o reprocessamento do Único Drop (pedidos até 18/10) usou cartão 5,99% fixo, sem o acréscimo. A "Visão geral" da Cartpanda (valor líquido R$ 23.378,82, 98 vendas) ainda não fecha com nenhum dos dois: pedir a exportação de Financeiro > Transações de outubro para conferir pedido a pedido.
 - Custo de cada produto (só o Livro Sensorial Fazenda, R$ 90,99, foi deduzido do Único Drop).
 - Chaves da Shopify e da Meta no servidor (conta de anúncios: C01 - Lucas Oliveira (RK)).
 - Próximo módulo sugerido: Clientes VIP e Matriz RFM (os prints já chegaram; o Cérebro já guarda o id do cliente da Shopify).

@@ -93,19 +93,22 @@ function migrarV2(d: DatabaseSync) {
   PRAGMA user_version = 2;
   COMMIT;
   `);
-  // Taxas da Cartpanda Pay como estão no Único Drop (26/10/2026): Pix 0,99%, boleto R$ 3,50 e a tabela por parcela,
-  // lida aqui como taxa TOTAL de cada parcela (1x = 5,99%). O Único Drop soma 5,99% + tabela; falta confirmar com a Cartpanda.
-  // 7x a 12x estão em 5,99% no Único Drop (parecem não configuradas): ficam marcadas para conferir.
+  // Taxas da Cartpanda Pay conferidas no extrato da Cartpanda (pagamento de 26/10/2026):
+  // cartão = 5,99% + acréscimo da parcela (5x = 18,60%, 6x = 20,10%, como o Único Drop calcula), Pix 0,99%,
+  // e R$ 0,35 de processamento por pedido (R$ 4,90 em 14 pedidos), que o Único Drop não conta.
+  // 1x = 5,99% e 7x a 12x = 20,10% (cautela) ainda sem prova no extrato: ficam marcadas para conferir.
   const t = d.prepare('INSERT OR IGNORE INTO taxas_gateway (forma, parcelas, pct, fixo) VALUES (?, ?, ?, ?)');
-  t.run('pix', 1, 0.99, 0);
-  t.run('boleto', 1, 0, 3.5);
-  const tabela = [5.99, 7.24, 9.34, 11.16, 12.61, 14.11, 5.99, 5.99, 5.99, 5.99, 5.99, 5.99];
-  tabela.forEach((pct, i) => t.run('cartao', i + 1, pct, 0));
+  t.run('pix', 1, 0.99, 0.35);
+  t.run('boleto', 1, 0, 3.85);
+  const acrescimo = [0, 7.24, 9.34, 11.16, 12.61, 14.11, 14.11, 14.11, 14.11, 14.11, 14.11, 14.11];
+  acrescimo.forEach((a, i) => t.run('cartao', i + 1, +(5.99 + a).toFixed(2), 0.35));
   const mem = d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')");
   for (const texto of [
     'Conferência com o Único Drop (26/10/2026): o Cérebro reproduz a receita de outubro (R$ 24.603,15: cartão 9.196,74, Pix 15.166,51, boleto 239,90), o checkout 2,5% (R$ 615,08), a conversão do Pix dia a dia e o lucro de 26/10 (R$ 7,71) quando usa as mesmas configurações.',
     'No Único Drop, "Imposto % sobre faturamento" e "Imposto sobre Facebook/Meta Ads" estão em 0%: o lucro de lá não desconta DAS nem o imposto da Meta (13,83%). Em outubro isso infla o lucro em ~R$ 1.500.',
-    'Taxa do cartão: o Único Drop soma 5,99% + a tabela de parcelas (6x = 20,10%). A tabela tem 1x = 5,99%, então parece ser a taxa total; o Cérebro usa a tabela como total. 7x a 12x estão em 5,99% lá (parecem não configuradas). Conferir com o relatório da Cartpanda.',
+    'Taxa do cartão conferida no extrato da Cartpanda (26/10): 5,99% + acréscimo da parcela, como o Único Drop faz (R$ 239,90 em 6x caiu R$ 191,68 = 20,10%; R$ 223,11 em 5x caiu R$ 181,61 = 18,60%). Pix 0,99%. Há R$ 0,35 de processamento por pedido que o Único Drop não conta. Falta provar 1x e 7x a 12x (lá 7x+ estão sem acréscimo).',
+    'Cartpanda serve para conferir as contas do Único Drop e dar ideias; a referência das telas do Cérebro continua sendo o Único Drop (pedido da Bárbara, 26/10).',
+    'Antecipação na Cartpanda: 1,5% ao dia por dia antecipado (dia 1 × 1,5%, dia 2 × 3%...). Saque antecipado de R$ 930,76 custava R$ 16,39 em 26/10.',
     'Conta de anúncios a considerar: só a C01 - Lucas Oliveira (RK), id 735313220351102. As contas C01 a C05 da Gabrielle não tiveram gasto em outubro.',
   ]) mem.run(texto);
 }

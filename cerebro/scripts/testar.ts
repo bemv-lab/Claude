@@ -5,7 +5,7 @@ import {lerExportMeta} from '../lib/csv';
 import {mapearPedido, localBR, type PedidoShopify} from '../lib/shopify';
 import {mapearInsights} from '../lib/meta';
 import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, type Entrada} from '../lib/financeiro';
-import {recorrencias} from '../lib/dados';
+import {recorrencias, lerTaxas} from '../lib/dados';
 
 const cfg: Config = {das_pct: 4, plataforma_pct: 2.5, meta_imposto_pct: 13.83, cpa_alvo_padrao: 55};
 const formas: Forma[] = [
@@ -112,5 +112,14 @@ perto(rk.reduce((s2, p) => s2 + p.marketing, 0), 208.95 * 1.1383, 0.05);
 assert.ok(rk.find((p) => p.produto === '222')!.marketing < 1, 'anúncio AD1 trouxe só o produto 111');
 const rec = recorrencias([{id: 9, data: '2026-01-31', categoria: 'assinaturas', descricao: 'Shopify', valor_centavos: 100, pedidos: 0, origem: '', recorrente: 1}], '2026-02-01', '2026-04-30');
 assert.deepEqual(rec.map((r) => r.data), ['2026-02-28', '2026-03-31', '2026-04-30']);
+
+// Taxas iniciais contra o extrato da Cartpanda de 26/10/2026 (valor do pedido → valor líquido, sem os R$ 0,35 de processamento).
+const tx = lerTaxas();
+const liquido = (forma: 'cartao' | 'pix', parcelas: number, total: number) =>
+  total - (taxaDoPedido({...mp[0].pedido, forma, parcelas, total}, tx) - 0.35);
+perto(liquido('cartao', 6, 239.9), 191.68, 0.006);
+perto(liquido('cartao', 5, 223.11), 181.61, 0.006);
+perto(liquido('pix', 1, 239.9), 237.52, 0.006);
+perto(liquido('pix', 1, 339.8), 336.44, 0.006);
 
 console.log('Todos os testes passaram.');

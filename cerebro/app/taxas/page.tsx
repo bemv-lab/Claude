@@ -58,7 +58,7 @@ export default function Taxas() {
             </table></div>
             <div className="acoes"><button type="submit">Salvar taxas</button></div>
           </form>
-          <p className="nota">Copiadas do Único Drop (26/10): Pix 0,99%, boleto R$ 3,50 e a tabela de parcelas como taxa total de cada parcela. Duas coisas a confirmar com a Cartpanda: (1) o Único Drop soma 5,99% + a tabela (6x = 20,10%); aqui 6x = 14,11%; (2) 7x a 12x estão em 5,99% lá, o que parece não configurado, e vocês vendem em até 10x.</p>
+          <p className="nota">Conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (5x 18,60%, 6x 20,10%), Pix 0,99% e R$ 0,35 de processamento por pedido. Falta provar 1x e 7x a 12x (aqui em 20,10% por cautela). O Único Drop deixa 7x+ sem acréscimo e não conta os R$ 0,35.</p>
         </div>
         <div className="cartao">
           <div><h2>Como os clientes pagam de verdade</h2><p className="nota">Pedidos pagos dos últimos 90 dias. É esse mix que a precificação usa.</p></div>

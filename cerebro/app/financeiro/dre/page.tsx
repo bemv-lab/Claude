@@ -62,7 +62,7 @@ export default async function Dre({searchParams}: {searchParams: Promise<{mes?: 
           <div className="cartao alerta">
             <h2>Diferença para o Único Drop</h2>
             <p>No Único Drop, o DAS e o imposto da Meta estão em 0%. Só por isso, o lucro de lá aparece <b>{fmtBRL(impostos)}</b> maior neste mês do que o que sobra de verdade.</p>
-            <p className="nota">A taxa do cartão também difere: lá ele soma 5,99% à tabela de parcelas. Confirmar com o relatório da Cartpanda.</p>
+            <p className="nota">O gateway também pode diferir um pouco: aqui entram os R$ 0,35 de processamento por pedido da Cartpanda, que o Único Drop não conta.</p>
             {d.semCusto > 0 && <p className="desce">{d.semCusto} produto(s) vendido(s) sem custo cadastrado. <Link href="/precificacao">Cadastrar custo</Link></p>}
           </div>
         </div>
