@@ -40,8 +40,8 @@ export async function sair() {
 export async function salvarProduto(fd: FormData) {
   await exigir();
   const id = Number(fd.get('id'));
-  db().prepare(`UPDATE produtos SET nome = ?, preco = ?, custo = ?, frete = ?, embalagem = ?, outros = ?, cpa_alvo = ?, exemplo = 0, atualizado_em = datetime('now') WHERE id = ?`)
-    .run(txt(fd, 'nome') || 'Sem nome', num(fd, 'preco'), num(fd, 'custo'), num(fd, 'frete'), num(fd, 'embalagem'), num(fd, 'outros'), num(fd, 'cpa_alvo'), id);
+  db().prepare(`UPDATE produtos SET nome = ?, preco = ?, custo = ?, custo_usd = ?, frete = ?, embalagem = ?, outros = ?, cpa_alvo = ?, exemplo = 0, atualizado_em = datetime('now') WHERE id = ?`)
+    .run(txt(fd, 'nome') || 'Sem nome', num(fd, 'preco'), num(fd, 'custo'), num(fd, 'custo_usd'), num(fd, 'frete'), num(fd, 'embalagem'), num(fd, 'outros'), num(fd, 'cpa_alvo'), id);
   pronto('/precificacao', '/', '/campanhas');
 }
 
@@ -62,39 +62,26 @@ export async function arquivarProduto(fd: FormData) {
 export async function salvarConfig(fd: FormData) {
   await exigir();
   const up = db().prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
-  for (const k of ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao', 'meta_mes', 'reserva_pct', 'reserva_dias', 'prazo_cartao']) if (fd.has(k)) up.run(k, num(fd, k));
-  pronto('/taxas', '/precificacao', '/', '/campanhas');
+  const chaves = ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao', 'meta_mes', 'reserva_pct', 'reserva_dias', 'prazo_cartao',
+    'pix_pct', 'boleto_fixo', 'parcelas_sem_juros', 'taxa_repasse', 'cotacao_dolar', 'custo_capital_mensal', 'rbt12',
+    'cartao_pj_limite', 'cartao_pj_fechamento', 'cartao_pj_vencimento'];
+  for (const k of chaves) if (fd.has(k)) up.run(k, num(fd, k));
+  pronto('/taxas', '/precificacao', '/', '/campanhas', '/financeiro', '/financeiro/custos', '/financeiro/banco');
 }
 
-export async function salvarTaxas(fd: FormData) {
+/** Tabela de taxa por prazo de recebimento e de juros por parcela (a Cartpanda pode mudar). */
+export async function salvarTabelasTaxas(fd: FormData) {
   await exigir();
-  const up = db().prepare('UPDATE taxas_gateway SET pct = ?, fixo = ? WHERE forma = ? AND parcelas = ?');
+  const d = db();
+  const prazo = d.prepare('UPDATE cartao_prazos SET pct = ? WHERE dias = ?');
+  const juros = d.prepare('UPDATE juros_parcela SET pct = ? WHERE parcelas = ?');
   for (const k of fd.keys()) {
-    const m = k.match(/^pct_(\w+)_(\d+)$/);
-    if (m) up.run(num(fd, k), num(fd, `fixo_${m[1]}_${m[2]}`), m[1], Number(m[2]));
+    const m = k.match(/^(prazo|juros)_(\d+)$/);
+    if (!m) continue;
+    (m[1] === 'prazo' ? prazo : juros).run(num(fd, k), Number(m[2]));
   }
-  db().prepare("UPDATE config SET valor = 0 WHERE chave = 'gateway_exemplo'").run();
-  pronto('/taxas', '/precificacao', '/financeiro', '/');
-}
-
-export async function salvarFormas(fd: FormData) {
-  await exigir();
-  const up = db().prepare('UPDATE formas_pagamento SET nome = ?, taxa_pct = ?, mix_pct = ? WHERE id = ?');
-  for (const id of fd.getAll('id').map(Number)) up.run(txt(fd, `nome_${id}`) || 'Sem nome', num(fd, `taxa_${id}`), num(fd, `mix_${id}`), id);
-  db().prepare("UPDATE config SET valor = 0 WHERE chave = 'taxas_exemplo'").run();
-  pronto('/taxas', '/precificacao', '/', '/campanhas');
-}
-
-export async function novaForma() {
-  await exigir();
-  db().prepare("INSERT INTO formas_pagamento (nome, ordem) VALUES ('Nova forma', 99)").run();
-  pronto('/taxas');
-}
-
-export async function apagarForma(fd: FormData) {
-  await exigir();
-  db().prepare('DELETE FROM formas_pagamento WHERE id = ?').run(Number(fd.get('apagar')));
-  pronto('/taxas', '/precificacao');
+  d.prepare("UPDATE config SET valor = 0 WHERE chave = 'gateway_exemplo'").run();
+  pronto('/taxas', '/precificacao', '/financeiro', '/financeiro/custos', '/');
 }
 
 export async function salvarPlano(fd: FormData) {
@@ -216,15 +203,53 @@ export async function importarExtrato(_: unknown, fd: FormData) {
 
 export async function classificarMov(fd: FormData) {
   await exigir();
-  const {CATEGORIAS_BANCO, reclassificar} = await import('@/lib/banco');
+  const {CATEGORIAS_BANCO, reclassificar, numeroPedido} = await import('@/lib/banco');
   const categoria = txt(fd, 'categoria');
   if (!(categoria in CATEGORIAS_BANCO)) return;
   const d = db();
-  d.prepare("UPDATE banco SET categoria = ?, regra = 'manual' WHERE conta = ? AND fitid = ?").run(categoria, txt(fd, 'conta'), txt(fd, 'fitid'));
+  d.prepare("UPDATE banco SET categoria = ?, regra = 'manual', pedido_numero = ?, produto_ext = ? WHERE conta = ? AND fitid = ?")
+    .run(categoria, numeroPedido(txt(fd, 'pedido')), txt(fd, 'produto'), txt(fd, 'conta'), txt(fd, 'fitid'));
   const padrao = txt(fd, 'padrao').toLowerCase();
   if (fd.get('regra') && padrao.length >= 3) {
     d.prepare('INSERT INTO banco_regras (padrao, categoria, prioridade) VALUES (?, ?, 50) ON CONFLICT(padrao) DO UPDATE SET categoria = excluded.categoria').run(padrao, categoria);
     reclassificar();
   }
-  pronto('/financeiro/banco', '/financeiro/dre', '/financeiro');
+  pronto('/financeiro/banco', '/financeiro/dre', '/financeiro', '/financeiro/custos', '/');
+}
+
+/** Importa compras de cartões e outras contas por CSV (conta, data, descricao, valor, categoria, pedido). */
+export async function importarCartoes(_: unknown, fd: FormData) {
+  await exigir();
+  const arq = fd.get('arquivo');
+  if (!(arq instanceof File) || arq.size === 0) return {erro: 'Escolha o arquivo CSV.'};
+  if (arq.size > 5_000_000) return {erro: 'Arquivo grande demais (máximo 5 MB).'};
+  const {importarCsv} = await import('@/lib/banco');
+  try {
+    const r = importarCsv(await arq.text());
+    pronto('/financeiro/banco', '/financeiro/dre', '/financeiro', '/');
+    return {ok: `${r.n} movimentos (${r.contas.join(', ')}) de ${r.de.split('-').reverse().join('/')} a ${r.ate.split('-').reverse().join('/')} importados (sem duplicar).`};
+  } catch (e) {
+    return {erro: (e as Error).message};
+  }
+}
+
+/** Lançamento avulso de compra no cartão (ou do cartão pessoal). */
+export async function novoMovimento(fd: FormData) {
+  await exigir();
+  const {adicionarMovimento, CONTAS_MANUAIS} = await import('@/lib/banco');
+  const conta = txt(fd, 'conta'), data = txt(fd, 'data'), valor = num(fd, 'valor');
+  if (!(conta in CONTAS_MANUAIS) || !/^\d{4}-\d{2}-\d{2}$/.test(data) || !valor || !txt(fd, 'descricao')) return;
+  adicionarMovimento({conta, data, descricao: txt(fd, 'descricao'), valor, categoria: txt(fd, 'categoria'), pedido: txt(fd, 'pedido')});
+  pronto('/financeiro/banco', '/financeiro/dre', '/financeiro', '/');
+}
+
+/** Aplica todas as sugestões de vínculo entre compra de fornecedor e pedido. */
+export async function aplicarSugestoes(fd: FormData) {
+  await exigir();
+  const up = db().prepare("UPDATE banco SET pedido_numero = ? WHERE conta = ? AND fitid = ? AND pedido_numero = ''");
+  for (const v of fd.getAll('sugestao').map(String)) {
+    const [conta, fitid, pedido] = v.split('\u0001');
+    if (conta && fitid && pedido) up.run(pedido, conta, fitid);
+  }
+  pronto('/financeiro/banco');
 }

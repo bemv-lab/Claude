@@ -1,6 +1,6 @@
 // Pedidos da Shopify (checkout Cartpanda) para o Cérebro.
 // Guarda só o que o financeiro usa: nada de CPF, nome, e-mail, endereço ou dados de cartão.
-import {db} from './db';
+import {db, aplicarCustosIniciais} from './db';
 
 export type PedidoShopify = {
   id: string; name: string; createdAt: string; cancelledAt: string | null; displayFinancialStatus: string;
@@ -8,7 +8,7 @@ export type PedidoShopify = {
   currentTotalPriceSet: Dinheiro; totalPriceSet?: Dinheiro; subtotalPriceSet?: Dinheiro; totalShippingPriceSet?: Dinheiro; totalDiscountsSet?: Dinheiro; totalRefundedSet?: Dinheiro;
   customer?: {id: string} | null; discountCodes: string[]; shippingAddress: {provinceCode: string | null} | null;
   customAttributes: {key: string; value: string | null}[];
-  lineItems: {nodes: {name: string; quantity: number; product: {id: string} | null; originalUnitPriceSet: Dinheiro}[]};
+  lineItems: {nodes: {title?: string; name: string; quantity: number; product: {id: string} | null; originalUnitPriceSet: Dinheiro}[]};
   transactions: {kind: string; status: string; processedAt: string | null; amountSet?: Dinheiro}[];
 };
 type Dinheiro = {shopMoney: {amount: string}};
@@ -58,7 +58,8 @@ export function mapearPedido(n: PedidoShopify): {pedido: Pedido; itens: Item[]} 
     },
     itens: n.lineItems.nodes.map((l) => ({
       pedido_id: id, produto_ext: l.product ? idCurto(l.product.id) : `sem-produto:${l.name}`,
-      nome: l.name, quantidade: l.quantity, preco: valor(l.originalUnitPriceSet),
+      // `title` é o nome do produto; `name` junta a variante ("Livro de Tecido - vaca").
+      nome: l.title || l.name, quantidade: l.quantity, preco: valor(l.originalUnitPriceSet),
     })),
   };
 }
@@ -87,6 +88,7 @@ export function gravarPedidos(lista: {pedido: Pedido; itens: Item[]}[]) {
     d.exec('ROLLBACK');
     throw e;
   }
+  aplicarCustosIniciais(d); // produtos novos que já têm custo conhecido (tela Produtos do Único Drop)
   return lista.length;
 }
 
@@ -96,7 +98,7 @@ const CONSULTA = `query($q: String, $after: String) { orders(first: 100, after: 
     currentTotalPriceSet { shopMoney { amount } } totalPriceSet { shopMoney { amount } } subtotalPriceSet { shopMoney { amount } } totalShippingPriceSet { shopMoney { amount } }
     totalDiscountsSet { shopMoney { amount } } totalRefundedSet { shopMoney { amount } } discountCodes shippingAddress { provinceCode } customer { id }
     customAttributes { key value }
-    lineItems(first: 30) { nodes { name quantity product { id } originalUnitPriceSet { shopMoney { amount } } } }
+    lineItems(first: 30) { nodes { title name quantity product { id } originalUnitPriceSet { shopMoney { amount } } } }
     transactions(first: 10) { kind status processedAt amountSet { shopMoney { amount } } } } } }`;
 
 /** Busca na Shopify os pedidos alterados desde a última sincronização (na primeira vez, 60 dias). */

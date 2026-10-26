@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import {PERIODOS} from '@/lib/dados';
 
-const ABAS = [['', 'Financeiro'], ['detalhado', 'Detalhado'], ['ranking', 'Ranking'], ['conversao', 'Conversão'], ['dre', 'DRE'], ['despesas', 'Despesas'], ['banco', 'Conta PJ']] as const;
+const ABAS = [['', 'Financeiro'], ['detalhado', 'Detalhado'], ['ranking', 'Ranking'], ['conversao', 'Conversão'], ['dre', 'DRE'], ['despesas', 'Despesas'], ['banco', 'Conta PJ'], ['custos', 'Custos']] as const;
 
 /** Cabeçalho do módulo financeiro: abas + título + filtro de período (quando houver). */
 export function CabecalhoFin({aba, titulo, sub, per, extra, base}: {
@@ -12,7 +12,7 @@ export function CabecalhoFin({aba, titulo, sub, per, extra, base}: {
   return (
     <>
       <nav className="abas" aria-label="Relatórios financeiros">
-        {ABAS.map(([k, n]) => <Link key={k} href={`/financeiro${k ? `/${k}` : ''}${['dre', 'despesas', 'conversao', 'banco'].includes(k) ? '' : q}`} aria-current={k === aba ? 'page' : undefined}>{n}</Link>)}
+        {ABAS.map(([k, n]) => <Link key={k} href={`/financeiro${k ? `/${k}` : ''}${['dre', 'despesas', 'conversao', 'banco', 'custos'].includes(k) ? '' : q}`} aria-current={k === aba ? 'page' : undefined}>{n}</Link>)}
       </nav>
       <div className="topo">
         <div><div className="olho">Dinheiro</div><h1>{titulo}</h1><p className="nota" style={{marginTop: 6}}>{sub}</p></div>

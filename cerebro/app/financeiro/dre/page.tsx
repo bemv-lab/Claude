@@ -58,11 +58,12 @@ export default async function Dre({searchParams}: {searchParams: Promise<{mes?: 
             <div><small className="nota">Lucro líquido</small><div className={`grande ${d.lucro < 0 ? 'desce' : ''}`}>{fmtBRL(d.lucro)}</div></div>
             <Barra r="Margem de lucro" v={d.lucro} base={d.totalReceitas} cls="sobe" />
             <div className="dre-linha"><div><span>ROI (lucro ÷ anúncios)</span><span className="sobe">{d.roi === null ? '–' : fmtPct(d.roi)}</span></div></div>
+            {d.pontual > 0 && <div className="dre-linha"><div><span>Lucro sem despesas pontuais<br /><small className="nota">tira regularização do MEI e enquadramento ({fmtBRL(d.pontual)})</small></span><span className="sobe">{fmtBRL(d.lucroRecorrente)}</span></div></div>}
           </div>
           <div className="cartao alerta">
             <h2>Diferença para o Único Drop</h2>
             <p>No Único Drop, o DAS e o imposto da Meta estão em 0%. Só por isso, o lucro de lá aparece <b>{fmtBRL(impostos)}</b> maior neste mês do que o que sobra de verdade.</p>
-            <p className="nota">O gateway também pode diferir um pouco: aqui entram os R$ 0,35 de processamento por pedido da Cartpanda, que o Único Drop não conta.</p>
+            <p className="nota">As taxas do cartão por parcela são as da Cartpanda (cartão 5,99% mais os juros que a loja assume). O Único Drop pode recalcular períodos antigos com outra taxa: compare pedido a pedido.</p>
             {d.semCusto > 0 && <p className="desce">{d.semCusto} produto(s) vendido(s) sem custo cadastrado. <Link href="/precificacao">Cadastrar custo</Link></p>}
           </div>
         </div>

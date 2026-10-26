@@ -58,10 +58,10 @@ Feito: pedidos da Shopify (com forma, parcelas, bandeira, cupom, UF e UTM, sem d
 Conferido com o Único Drop (prints de 26/10): receita de outubro por forma, checkout 2,5%, conversão do Pix dia a dia e lucro de 26/10 (com as configurações dele).
 
 Pendências do módulo:
-- Taxas conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (o Único Drop está certo nisso), Pix 0,99%, R$ 0,35 de processamento por pedido (o Único Drop não conta). 1x = 5,99% também conferido (Transações da Cartpanda). Falta provar 7x a 12x.
-- Reserva da Cartpanda (5% por 90 dias) e cartão a liberar (D+2) entram no card "Dinheiro preso na Cartpanda"; batem com o Extrato de 26/10 (cartão a liberar R$ 929,01 + R$ 1,75 de processamento = R$ 930,76).
+- Taxas da Cartpanda Pay (central de ajuda de 30/09 + extrato de 26/10): cartão D+2 5,99%, Pix 0,99%, boleto R$ 3,50, mais os juros da parcela só quando a loja assume (hoje até 6x). **Não existe taxa fixa por pedido**: as taxas dos 13 pedidos do pagamento de 26/10 somam exatamente R$ 215,37 e o saldo pendente de R$ 930,76 bate centavo por centavo. (Uma versão anterior deste plano falava em R$ 0,35 por pedido: era engano e foi removida.) Os R$ 4,90 de "taxa de processamento" são cobrados por repasse; falta confirmar se em todo repasse.
+- Reserva da Cartpanda (5% por 90 dias) e cartão a liberar (D+2) entram no card "Caixa"; batem com o Extrato de 26/10 (cartão a liberar R$ 930,76).
 - Conversão do Pix de outubro: Cérebro 86,15% = Cartpanda 86,15% (o Único Drop mostra 86,36%, contando um pedido a mais em 14/10).
-- Gateway de outubro: Cérebro R$ 1.715 × Único Drop R$ 1.145. Hipótese: o reprocessamento do Único Drop (pedidos até 18/10) usou cartão 5,99% fixo, sem o acréscimo. A "Visão geral" da Cartpanda (valor líquido R$ 23.378,82, 98 vendas) ainda não fecha com nenhum dos dois: pedir a exportação de Financeiro > Transações de outubro para conferir pedido a pedido.
+- Gateway de outubro: Cérebro R$ 1.614,88 × Único Drop R$ 1.145,01. Causa provável, vista na tela dele: o reprocessamento de 20/10 (pedidos de 01/06 a 18/10) usou cartão 5,99% fixo, sem os juros das parcelas; só nos pedidos até 18/10 são ~R$ 510 de juros que ele não conta. A "Visão geral" da Cartpanda (valor líquido R$ 23.378,82, 98 vendas) ainda não fecha com nenhum dos dois: pedir a exportação de Financeiro > Transações de outubro para conferir pedido a pedido.
 - Custo de cada produto (só o Livro Sensorial Fazenda, R$ 90,99, foi deduzido do Único Drop).
 - Chaves da Shopify e da Meta no servidor (conta de anúncios: C01 - Lucas Oliveira (RK)).
 - Próximo módulo sugerido: Clientes VIP e Matriz RFM (os prints já chegaram; o Cérebro já guarda o id do cliente da Shopify).
@@ -78,3 +78,17 @@ Em aberto (Bárbara):
 - Retiradas da Bárbara (R$ 1.620,56): pró-labore (despesa) ou distribuição de lucro (fora do resultado)?
 - Fornecedor pago (R$ 5.192,62) × custo calculado (R$ 8.553,06) em outubro: parte paga por outra conta ou pela Maree?
 - Por onde são pagos os anúncios da Meta (não saem da conta PJ)? Se for cartão de sócio, lançar como despesa paga por fora e combinar o reembolso.
+
+## Estado (26/10/2026, noite): correções da Bárbara, cartões e radar de custos
+
+Correções que ela trouxe e já estão no sistema:
+- O DAS de R$ 829,47 são guias do MEI em atraso desde fevereiro, e os R$ 1.499,00 ao RRT são o enquadramento de MEI para ME: ambos são despesa **pontual** (linha própria no DRE, fora do "lucro recorrente"). A estimativa de 4% de DAS continua valendo para o mês como ME, mas pelo faturamento anualizado a alíquota efetiva do Simples (Anexo I) fica perto de 5,4%: confirmar com o RRT. Atenção: o limite do MEI é R$ 81 mil por ano; perguntar ao RRT o efeito retroativo de ter passado dele.
+- Os R$ 1.620,56 enviados à Bárbara são reembolso de despesas pagas no cartão pessoal (Meta, Shopify): fora do resultado; o sistema mantém o saldo "a empresa deve à Bárbara".
+- "Maree" é ShopeePay e "Pix Marketplace" é Mercado Livre: ambos são compras de fornecedor. Os R$ 800 em CDB são a garantia do limite do cartão PJ.
+
+Novo:
+- Cartão PJ do Inter: importação de CSV ou OFX, fatura aberta (fecha dia 3, vence dia 10), limite disponível; cartão pessoal e Meta como contas à parte; compras de fornecedor se vinculam a pedido ou produto, com sugestão automática pelo valor do custo; detector de possível pagamento em duplicidade (R$ 65,09 em 14/10 no cartão e por boleto).
+- Aba Custos: taxa de pagamento por semana, juros que a loja assume (R$ 910 em 30 dias) com simulação de "sem juros até Nx" e pedidos a mais para se pagar, prazo de recebimento D+2/D+5/D+14, Pix contra cartão, DAS pelo Anexo I e custos fixos. O Início e o conector MCP mostram os avisos.
+- Custos dos produtos copiados da tela Produtos do Único Drop (9 de 15), com custo em dólar e cotação configurável.
+
+Em aberto com a Bárbara: boleto do Mercado Pago de R$ 65,09; o que são Ebanx, Ebury e Vindi (R$ 719,22); cotação do dólar do Único Drop; custo dos 6 produtos em branco; fatura do Shopify; exportação de Financeiro > Transações da Cartpanda; detalhe de outro repasse (os R$ 4,90 se repetem?).

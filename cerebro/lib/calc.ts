@@ -5,6 +5,7 @@ export type Config = {
   plataforma_pct: number; // taxa da plataforma de vendas por pedido
   meta_imposto_pct: number; // PIS/Cofins + ISS que a Meta soma ao gasto do Gerenciador
   cpa_alvo_padrao: number;
+  cotacao_dolar?: number; // R$ por US$, para produtos com custo em dólar
 };
 
 export type Forma = {id: number; nome: string; taxa_pct: number; mix_pct: number};
@@ -14,6 +15,7 @@ export type Produto = {
   nome: string;
   preco: number;
   custo: number;
+  custo_usd?: number; // custo em dólar (produto importado); vale no lugar de `custo` quando há cotação
   frete: number;
   embalagem: number;
   outros: number;
@@ -31,13 +33,19 @@ export function taxaMedia(formas: Forma[]) {
   return {taxa, somaMix};
 }
 
+/** Custo unitário em reais: o custo em dólar vale quando há cotação; sem cotação, o produto fica sem custo. */
+export function custoProduto(p: {custo: number; custo_usd?: number}, cotacao = 0) {
+  return p.custo_usd && p.custo_usd > 0 ? p.custo_usd * cotacao : p.custo;
+}
+
 export function precificar(p: Produto, cfg: Config, formas: Forma[]) {
   const {taxa} = taxaMedia(formas);
   const meta = cfg.meta_imposto_pct / 100;
+  const custo = custoProduto(p, cfg.cotacao_dolar);
   const das = (p.preco * cfg.das_pct) / 100;
   const pagamento = (p.preco * taxa) / 100;
   const plataforma = (p.preco * cfg.plataforma_pct) / 100;
-  const mc = p.preco - p.custo - p.frete - p.embalagem - p.outros - das - pagamento - plataforma;
+  const mc = p.preco - custo - p.frete - p.embalagem - p.outros - das - pagamento - plataforma;
   const cpaAlvo = p.cpa_alvo || cfg.cpa_alvo_padrao;
   // O Gerenciador mostra o gasto sem imposto; a fatura cobra gasto × (1 + meta).
   const cpaMax = mc > 0 ? mc / (1 + meta) : 0;
@@ -46,7 +54,7 @@ export function precificar(p: Produto, cfg: Config, formas: Forma[]) {
   const lucro = mc - midiaReal;
   const linhas: [string, number][] = [
     ['Preço de venda', p.preco],
-    ['Custo do produto', -p.custo],
+    ['Custo do produto', -custo],
     ['Frete pago pela loja', -p.frete],
     ['Embalagem e brinde', -p.embalagem],
     ['Outros custos por pedido', -p.outros],
@@ -73,7 +81,7 @@ export function precificar(p: Produto, cfg: Config, formas: Forma[]) {
 export function precoParaMargem(p: Produto, cfg: Config, formas: Forma[], margemAlvoPct: number) {
   const {taxa} = taxaMedia(formas);
   const varPct = (cfg.das_pct + taxa + cfg.plataforma_pct + margemAlvoPct) / 100;
-  const fixos = p.custo + p.frete + p.embalagem + p.outros + (p.cpa_alvo || cfg.cpa_alvo_padrao) * (1 + cfg.meta_imposto_pct / 100);
+  const fixos = custoProduto(p, cfg.cotacao_dolar) + p.frete + p.embalagem + p.outros + (p.cpa_alvo || cfg.cpa_alvo_padrao) * (1 + cfg.meta_imposto_pct / 100);
   return varPct < 1 ? fixos / (1 - varPct) : Infinity;
 }
 
@@ -117,6 +125,7 @@ export const CATEGORIAS = {
   pessoal: {nome: 'Pró-labore e pessoal', grupo: 'fixas'},
   outras_fixas: {nome: 'Outras despesas fixas', grupo: 'fixas'},
   financeiras: {nome: 'Tarifas e juros', grupo: 'financeiras'},
+  regularizacao: {nome: 'Regularização e enquadramento (pontual)', grupo: 'pontual'},
 } as const;
 export type Categoria = keyof typeof CATEGORIAS;
 export const ehCategoria = (c: string): c is Categoria => c in CATEGORIAS;
@@ -124,7 +133,7 @@ export const ehCategoria = (c: string): c is Categoria => c in CATEGORIAS;
 export type Lancamento = {id: number; data: string; categoria: string; descricao: string; valor_centavos: number; pedidos: number; origem: string; pago?: number; recorrente?: number};
 
 export function dre(lancs: Lancamento[]) {
-  const g: Record<string, number> = {receita: 0, outras: 0, deducoes: 0, cmv: 0, variaveis: 0, marketing: 0, fixas: 0, financeiras: 0};
+  const g: Record<string, number> = {receita: 0, outras: 0, deducoes: 0, cmv: 0, variaveis: 0, marketing: 0, fixas: 0, financeiras: 0, pontual: 0};
   const porCategoria: Record<string, number> = {};
   let pedidos = 0;
   for (const l of lancs) {
@@ -137,7 +146,7 @@ export function dre(lancs: Lancamento[]) {
   const receitaLiquida = g.receita - g.deducoes;
   const lucroBruto = receitaLiquida - g.cmv;
   const margemContribuicao = lucroBruto - g.variaveis - g.marketing;
-  const resultado = margemContribuicao - g.fixas - g.financeiras + g.outras;
+  const resultado = margemContribuicao - g.fixas - g.financeiras - g.pontual + g.outras;
   const midiaTotal = (porCategoria.midia ?? 0) + (porCategoria.imposto_midia ?? 0);
   return {
     grupos: g,

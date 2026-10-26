@@ -4,7 +4,7 @@ import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {db} from '../lib/db';
-import {alertas, entrada, lerConfig, lerFormas, lerMemoria, lerPlanos, lerProdutos, mesAtual, periodo, resumoMes, ultimaImportacao, hoje} from '../lib/dados';
+import {alertas, avisosDeCustos, entrada, faturaCartaoPJ, lerConfig, lerFormas, lerMemoria, lerPlanos, lerProdutos, mesAtual, periodo, radar30, resumoMes, saldoComSocio, saldosBanco, ultimaImportacao, hoje} from '../lib/dados';
 import {dreMes, resumo, ranking} from '../lib/financeiro';
 import {CATEGORIAS, ehCategoria, fmtBRL, fmtNum, fmtPct, precificar, taxaMedia, type Produto} from '../lib/calc';
 
@@ -50,14 +50,38 @@ srv.registerTool('contexto_rocco', {
   return texto([
     `# Cérebro Rocco · ${hoje()}`,
     `## Taxas`,
-    `DAS ${fmtPct(cfg.das_pct)} · checkout ${fmtPct(cfg.plataforma_pct)} · imposto Meta ${fmtPct(cfg.meta_imposto_pct)} sobre o gasto do Gerenciador · taxa média de pagamento ${fmtPct(taxa)}${cfg.gateway_exemplo ? ' (taxas de cartão por parcela ainda a conferir)' : ''}`,
+    `DAS ${fmtPct(cfg.das_pct)} · checkout ${fmtPct(cfg.plataforma_pct)} · imposto Meta ${fmtPct(cfg.meta_imposto_pct)} sobre o gasto do Gerenciador · taxa média de pagamento ${fmtPct(taxa)}`,
+    `Cartão cai em D+${cfg.prazo_cartao}; a loja assume os juros de parcelamento até ${cfg.parcelas_sem_juros}x; Pix ${fmtPct(cfg.pix_pct)}; boleto ${fmtBRL(cfg.boleto_fixo)}; sem taxa fixa por pedido.`,
     formas.map((f) => `- ${f.nome}: taxa ${fmtPct(f.taxa_pct)}, ${fmtPct(f.mix_pct)} dos pedidos`).join('\n'),
     `## Produtos`, blocoProdutos() || '(nenhum)',
     `## Mês ${mes}`, blocoMes(mes),
+    `## Caixa`, (() => {
+      const fat = faturaCartaoPJ(), socio = saldoComSocio();
+      return [...saldosBanco().map((b) => `Saldo na conta PJ: ${fmtBRL(b.saldo)} em ${b.em}`),
+        `Cartão PJ: fatura aberta ${fmtBRL(fat.total)} (vence ${fat.vencimento}), limite disponível ${fmtBRL(fat.disponivel)} de ${fmtBRL(fat.limite)}`,
+        `A empresa deve à Bárbara ${fmtBRL(socio.aReembolsar)} (pago no cartão pessoal ${fmtBRL(socio.pago)}, reembolsado ${fmtBRL(socio.reembolsado)})`].join('\n');
+    })(),
     `## Planos e gatilhos`, lerPlanos().map((p) => `- ${p.servico} · ${p.plano}: R$ ${p.custo_mensal}/mês, ${fmtPct(p.taxa_pct)}, reavaliar em ${p.gatilho_pedidos} pedidos/mês → ${p.proximo}. ${p.obs}`).join('\n') || '(nenhum)',
     `## Alertas`, alertas(mes).map((a) => `- [${a.onde}] ${a.texto}`).join('\n') || '(nenhum)',
     `## Memória recente`, lerMemoria('', 20).map((m) => `- ${m.criado_em.slice(0, 10)} [${m.area}] ${m.texto}`).join('\n'),
   ].join('\n\n'));
+});
+
+srv.registerTool('custos', {
+  description: 'Radar de custos dos últimos 30 dias: taxa de pagamento, juros de parcelamento que a loja assume (e quanto custaria assumir menos), prazo de recebimento do cartão (D+2, D+5, D+14), Pix contra cartão, DAS efetivo estimado e o que o sistema questiona.',
+  inputSchema: {},
+}, async () => {
+  const x = radar30();
+  return texto([
+    `Últimos 30 dias (${x.ini} a ${x.fim}): receita ${fmtBRL(x.r.receita)}, ${x.r.pagos.n} pedidos pagos`,
+    `Taxa de pagamento (gateway + checkout): ${fmtPct(x.taxaTotalPct)} da receita. Tendência: 4 últimas semanas ${fmtPct(x.tendencia.recente)}, 4 anteriores ${fmtPct(x.tendencia.anterior)}`,
+    `Juros assumidos por oferecer sem juros até ${x.cfg.parcelas_sem_juros}x: ${fmtBRL(x.juros.valor)} (${fmtPct(x.juros.pctReceita)} da receita). Cada pedido extra rende ~${fmtBRL(x.margemExtra)}.`,
+    'Custo de assumir os juros até Nx (por mês): ' + x.simulacao.map((s2) => `${s2.ate}x ${fmtBRL(s2.custo)}${s2.atual ? ' (hoje)' : ''}`).join(' · '),
+    'Prazo de recebimento: ' + x.prazos.map((p2) => `D+${p2.dias} ${fmtPct(p2.pct)}${p2.atual ? ' (hoje)' : `, economiza ${fmtBRL(p2.economia)}/mês, ${fmtBRL(p2.capital)} parados, líquido ${fmtBRL(p2.liquido)}`}`).join(' | '),
+    `Cartão custa ${fmtPct(x.pix.pctCartao)} contra ${fmtPct(x.pix.pctPix)} do Pix; cada pedido que migra economiza ${fmtBRL(x.pix.economiaPorPedido)}; desconto no Pix de até ${fmtPct(x.pix.descontoMax)} ainda compensa.`,
+    `DAS: sistema usa ${fmtPct(x.das.configurado)}; pelo Anexo I (${fmtBRL(x.das.rbt)}${x.das.anualizado ? ', 30 dias anualizados' : ''}) a alíquota efetiva seria ~${fmtPct(x.das.efetiva)}.`,
+    '## O que o sistema questiona', ...(avisosDeCustos(x).map((a2) => `- [${a2.onde}] ${a2.texto}`)),
+  ].join('\n'));
 });
 
 srv.registerTool('buscar_memoria', {

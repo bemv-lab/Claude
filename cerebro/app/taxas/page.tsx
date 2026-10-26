@@ -1,44 +1,64 @@
+import Link from 'next/link';
 import Casca from '@/components/Casca';
-import {lerConfig, lerFormas, lerPlanos, lerTaxas, mesAtual, planoCartpanda, resumoMes} from '@/lib/dados';
+import {lerConfig, lerFormas, lerJuros, lerPlanos, lerPrazos, lerTaxas, mesAtual, planoCartpanda, radar30, resumoMes} from '@/lib/dados';
 import {fmtBRL, fmtPct, taxaMedia} from '@/lib/calc';
-import {apagarPlano, salvarConfig, salvarPlano, salvarTaxas} from '@/app/acoes';
+import {apagarPlano, salvarConfig, salvarPlano, salvarTabelasTaxas} from '@/app/acoes';
 
 export const dynamic = 'force-dynamic';
 
 export default function Taxas() {
   const cfg = lerConfig(), formas = lerFormas(), planos = lerPlanos(), taxas = lerTaxas(), pc = planoCartpanda();
-  const {taxa, somaMix} = taxaMedia(formas);
+  const prazos = lerPrazos(), juros = lerJuros(), rad = radar30();
+  const {taxa} = taxaMedia(formas);
   const pedidos = resumoMes(mesAtual()).pagos.n;
+  const cartao = taxas.filter((t) => t.forma === 'cartao');
+  const parcelas = Object.keys(juros).map(Number).sort((a, b) => a - b);
+
   return (
     <Casca>
       <div className="topo"><div><div className="olho">Dinheiro</div><h1>Taxas, impostos e <b>planos</b></h1></div>
-</div>
+        <Link className="botao leve" href="/financeiro/custos">Ver onde dá para pagar menos</Link></div>
 
       <div className="cartao alerta">
         <p>Esses valores entram em todo cálculo de lucro, margem, CPA máximo e preço. No Único Drop, o imposto sobre o faturamento e o imposto sobre a Meta estão em 0%: por isso o lucro de lá aparece maior.</p>
       </div>
+
       <form action={salvarConfig}>
         <div className="grade3">
           <div className="cartao">
-            <div><h2>Taxas por venda</h2><p className="nota">Percentual cobrado em cada venda paga</p></div>
-            <label htmlFor="plataforma_pct">Checkout Cartpanda por venda (%)<input id="plataforma_pct" name="plataforma_pct" type="number" step="0.01" defaultValue={cfg.plataforma_pct} /></label>
+            <div><h2>Impostos e custo do dinheiro</h2><p className="nota">Simples Nacional, Meta e dólar</p></div>
+            <label htmlFor="das_pct">DAS: % sobre o faturamento<input id="das_pct" name="das_pct" type="number" step="0.01" defaultValue={cfg.das_pct} /></label>
+            <label htmlFor="rbt12">Faturamento dos últimos 12 meses (R$, do contador)<input id="rbt12" name="rbt12" type="number" step="1" defaultValue={cfg.rbt12} /></label>
+            <label htmlFor="meta_imposto_pct">Imposto sobre Meta Ads (%)<input id="meta_imposto_pct" name="meta_imposto_pct" type="number" step="0.01" defaultValue={cfg.meta_imposto_pct} /></label>
+            <label htmlFor="cotacao_dolar">Cotação do dólar (R$) para custos em US$<input id="cotacao_dolar" name="cotacao_dolar" type="number" step="0.01" defaultValue={cfg.cotacao_dolar} /></label>
+            <label htmlFor="custo_capital_mensal">Custo do dinheiro (% ao mês)<input id="custo_capital_mensal" name="custo_capital_mensal" type="number" step="0.1" defaultValue={cfg.custo_capital_mensal} /></label>
+            <p className="nota">Meta: 13,83% no pós-pago, confirmado na fatura (R$ 3.000 viraram R$ 3.415,30). DAS: com {fmtBRL(rad.das.rbt)} de faturamento {rad.das.anualizado ? '(últimos 30 dias × 12, estimado)' : 'em 12 meses'}, o Simples (Anexo I) cai na {rad.das.faixa}ª faixa, alíquota efetiva de cerca de {fmtPct(rad.das.efetiva)}. Confirme com o contador e use aqui.</p>
+          </div>
+          <div className="cartao">
+            <div><h2>Cartpanda Pay</h2><p className="nota">Como vocês recebem e quem paga os juros</p></div>
             <div className="campos">
+              <label htmlFor="prazo_cartao">Cartão cai em
+                <select id="prazo_cartao" name="prazo_cartao" defaultValue={String(cfg.prazo_cartao)}>{prazos.map((p) => <option key={p.dias} value={p.dias}>D+{p.dias} ({fmtPct(p.pct)})</option>)}</select></label>
+              <label htmlFor="parcelas_sem_juros">Loja assume os juros até
+                <select id="parcelas_sem_juros" name="parcelas_sem_juros" defaultValue={String(cfg.parcelas_sem_juros)}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => <option key={n} value={n}>{n}x</option>)}</select></label>
+              <label htmlFor="pix_pct">Pix (%)<input id="pix_pct" name="pix_pct" type="number" step="0.01" defaultValue={cfg.pix_pct} /></label>
+              <label htmlFor="boleto_fixo">Boleto (R$ por boleto)<input id="boleto_fixo" name="boleto_fixo" type="number" step="0.01" defaultValue={cfg.boleto_fixo} /></label>
+              <label htmlFor="plataforma_pct">Checkout (% da venda)<input id="plataforma_pct" name="plataforma_pct" type="number" step="0.01" defaultValue={cfg.plataforma_pct} /></label>
+              <label htmlFor="taxa_repasse">Taxa por repasse (R$)<input id="taxa_repasse" name="taxa_repasse" type="number" step="0.01" defaultValue={cfg.taxa_repasse} /></label>
               <label htmlFor="reserva_pct">Reserva retida (%)<input id="reserva_pct" name="reserva_pct" type="number" step="0.1" defaultValue={cfg.reserva_pct} /></label>
               <label htmlFor="reserva_dias">Reserva volta em (dias)<input id="reserva_dias" name="reserva_dias" type="number" step="1" defaultValue={cfg.reserva_dias} /></label>
-              <label htmlFor="prazo_cartao">Cartão libera em (dias)<input id="prazo_cartao" name="prazo_cartao" type="number" step="1" defaultValue={cfg.prazo_cartao} /></label>
             </div>
-            <p className="nota">Gateway (Pix, boleto e cartão por parcela) fica na tabela abaixo. A reserva não é custo: é dinheiro que volta depois.</p>
+            <p className="nota">Não existe taxa fixa por pedido: as taxas dos 13 pedidos do pagamento de 26/10 somam exatamente R$ 215,37 só com os percentuais. Os R$ 4,90 de “taxa de processamento” são cobrados por repasse (a confirmar). A reserva não é custo: volta depois.</p>
           </div>
           <div className="cartao">
-            <div><h2>Impostos</h2><p className="nota">Simples Nacional e repasse da Meta</p></div>
-            <label htmlFor="das_pct">DAS: % sobre o faturamento<input id="das_pct" name="das_pct" type="number" step="0.01" defaultValue={cfg.das_pct} /></label>
-            <label htmlFor="meta_imposto_pct">Imposto sobre Meta Ads (%)<input id="meta_imposto_pct" name="meta_imposto_pct" type="number" step="0.01" defaultValue={cfg.meta_imposto_pct} /></label>
-            <p className="nota">Meta: 13,83% no pós-pago (PIS/Cofins 9,25% + ISS 2,9% sobre o bruto). A alíquota efetiva do DAS sobe com a receita dos últimos 12 meses: confira com o contador todo mês.</p>
-          </div>
-          <div className="cartao">
-            <div><h2>Metas</h2><p className="nota">Usadas no dashboard e na precificação</p></div>
+            <div><h2>Metas e cartão PJ</h2><p className="nota">Dashboard, precificação e fatura</p></div>
             <label htmlFor="meta_mes">Meta de faturamento do mês (R$)<input id="meta_mes" name="meta_mes" type="number" step="100" defaultValue={cfg.meta_mes} /></label>
             <label htmlFor="cpa_alvo_padrao">CPA alvo padrão (R$)<input id="cpa_alvo_padrao" name="cpa_alvo_padrao" type="number" step="0.01" defaultValue={cfg.cpa_alvo_padrao} /></label>
+            <div className="campos">
+              <label htmlFor="cartao_pj_limite">Limite do cartão PJ (R$)<input id="cartao_pj_limite" name="cartao_pj_limite" type="number" step="1" defaultValue={cfg.cartao_pj_limite} /></label>
+              <label htmlFor="cartao_pj_fechamento">Fecha no dia<input id="cartao_pj_fechamento" name="cartao_pj_fechamento" type="number" min="1" max="28" step="1" defaultValue={cfg.cartao_pj_fechamento} /></label>
+              <label htmlFor="cartao_pj_vencimento">Vence no dia<input id="cartao_pj_vencimento" name="cartao_pj_vencimento" type="number" min="1" max="28" step="1" defaultValue={cfg.cartao_pj_vencimento} /></label>
+            </div>
           </div>
         </div>
         <div className="acoes"><button type="submit">Salvar alterações</button></div>
@@ -46,24 +66,25 @@ export default function Taxas() {
 
       <div className="meio">
         <div className="cartao">
-          <div className="topo"><div><h2>Gateway Cartpanda Pay</h2><p className="nota">Taxa por forma de pagamento e por número de parcelas</p></div>{cfg.gateway_exemplo ? <span className="selo">conferir parcelas</span> : null}</div>
-          <form action={salvarTaxas}>
+          <div><h2>Tabelas da Cartpanda Pay</h2><p className="nota">Central de ajuda, atualizada em 30/09/2026. Edite se a Cartpanda mudar.</p></div>
+          <form action={salvarTabelasTaxas}>
             <div className="tabela"><table>
-              <thead><tr><th>Forma</th><th className="n">% do pedido</th><th className="n">R$ fixo</th></tr></thead>
-              <tbody>{taxas.map((t) => {
-                const k = `${t.forma}_${t.parcelas}`;
+              <thead><tr><th>Cartão cai em</th><th className="n">Taxa (%)</th></tr></thead>
+              <tbody>{prazos.map((p) => <tr key={p.dias}><td>D+{p.dias}</td><td><input name={`prazo_${p.dias}`} type="number" step="0.01" defaultValue={p.pct} aria-label={`Taxa D+${p.dias}`} style={{minWidth: 96}} /></td></tr>)}</tbody>
+            </table></div>
+            <div className="tabela"><table>
+              <thead><tr><th>Parcelas</th><th className="n">Juros (%)</th><th className="n">Taxa total para a loja</th><th>Quem paga os juros</th></tr></thead>
+              <tbody>{parcelas.map((n) => {
+                const t = cartao.find((x) => x.parcelas === n);
+                const loja = n <= cfg.parcelas_sem_juros;
                 return (
-                  <tr key={k}>
-                    <td>{t.forma === 'cartao' ? `Cartão ${t.parcelas}x` : t.forma === 'pix' ? 'Pix' : 'Boleto'}</td>
-                    <td><input name={`pct_${k}`} type="number" step="0.01" defaultValue={t.pct} aria-label={`Percentual ${k}`} /></td>
-                    <td><input name={`fixo_${k}`} type="number" step="0.01" defaultValue={t.fixo} aria-label={`Valor fixo ${k}`} /></td>
-                  </tr>
+                  <tr key={n}><td>{n}x</td><td><input name={`juros_${n}`} type="number" step="0.01" defaultValue={juros[n]} aria-label={`Juros de ${n}x`} style={{minWidth: 96}} /></td>
+                    <td className="n">{fmtPct(t?.pct ?? 0)}</td><td>{loja ? <span className="chip w">a loja</span> : <span className="chip g">o cliente</span>}</td></tr>
                 );
               })}</tbody>
             </table></div>
-            <div className="acoes"><button type="submit">Salvar taxas</button></div>
+            <div className="acoes"><button type="submit">Salvar tabelas</button></div>
           </form>
-          <p className="nota">Conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (5x 18,60%, 6x 20,10%), Pix 0,99% e R$ 0,35 de processamento por pedido. 1x = 5,99% também conferido. De 7x a 12x a loja paga só 5,99%: a Cartpanda está com parcelas sem juros até 6x, e acima disso o cliente paga os juros. O Único Drop não conta os R$ 0,35.</p>
         </div>
         <div className="cartao">
           <div><h2>Como os clientes pagam de verdade</h2><p className="nota">Pedidos pagos dos últimos 90 dias. É esse mix que a precificação usa.</p></div>

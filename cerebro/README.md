@@ -14,9 +14,10 @@ Calculado pedido a pedido, a partir da Shopify (checkout Cartpanda) e da Meta, e
 | Conversão | dia a dia, por forma de pagamento |
 | DRE | mês pela data de pagamento, com as despesas lançadas e a diferença para o Único Drop |
 | Despesas | lançamentos pagos por fora da conta PJ, com status e repetição mensal |
-| Conta PJ | extrato OFX do banco: saldo, fluxo de caixa por categoria, repasses da Cartpanda, fornecedor e checkout conferidos; despesas pagas pela conta entram sozinhas no DRE |
+| Conta PJ | extrato OFX do banco, fatura do cartão PJ, cartão pessoal e saldo com a Bárbara; repasses da Cartpanda e fornecedor conferidos; compras vinculadas a pedidos; despesas pagas entram sozinhas no DRE |
+| Custos | taxa de pagamento semana a semana, juros de parcelamento que a loja assume e simulação de "sem juros até Nx", prazo de recebimento D+2/5/14, Pix contra cartão, DAS pelo Anexo I e custos fixos; o sistema questiona e mostra o número |
 
-Diferenças para o Único Drop: desconta o DAS e o imposto da Meta (lá estão em 0%); marketing por produto pela UTM; despesas mensais automáticas; o Claude lê tudo pelo conector.
+Diferenças para o Único Drop: desconta o DAS e o imposto da Meta (lá estão em 0%); conta os juros de parcelamento que a loja assume em todos os pedidos (ele reprocessou até 18/10 com cartão 5,99% fixo); marketing por produto pela UTM; despesas mensais automáticas; extrato do banco e cartões; radar de custos; o Claude lê tudo pelo conector.
 Conferido com os prints de 26/10/2026: receita de outubro, checkout, conversão do Pix e o lucro do dia batem (`npm run conferir <pasta com JSON da Shopify>`).
 
 Dados: `npm run sincronizar` (ou o botão Sincronizar). Precisa de `SHOPIFY_LOJA`, `SHOPIFY_TOKEN`, `META_TOKEN` e `META_CONTA` no `.env` (ver `.env.exemplo`). No servidor, rode a cada hora:
@@ -25,6 +26,8 @@ Dados: `npm run sincronizar` (ou o botão Sincronizar). Precisa de `SHOPIFY_LOJA
 Como gerar as chaves:
 - Shopify: Configurações > Apps e canais de vendas > Desenvolver apps > Criar app > permissão `read_orders` > instalar > copiar o token do Admin API.
 - Meta: Gerenciador de Negócios > Usuários do sistema > gerar token com `ads_read` para a conta C01 - Lucas Oliveira (RK).
+
+Cartões e outras contas: `modelos/compras-cartao.csv` mostra o formato (conta `cartao-pj` ou `cartao-pessoal`, valor negativo é gasto, categoria e pedido são opcionais). Compras iguais no mesmo dia continuam distintas e importar duas vezes não duplica.
 
 ## O que já funciona (v0.1)
 
@@ -36,7 +39,7 @@ Como gerar as chaves:
 | Campanhas | importa o CSV do Gerenciador e classifica cada anúncio em teste, validação, escala ou pausar, com regras tiradas da precificação |
 | Memória | decisões e aprendizados com data, área e autor |
 
-Conector MCP `rocco-cerebro` (8 ferramentas): `contexto_rocco`, `financeiro`, `dre`, `precificar`, `buscar_memoria`, `registrar_memoria`, `lancar`, `avaliar_campanhas`.
+Conector MCP `rocco-cerebro` (9 ferramentas): `contexto_rocco`, `financeiro`, `custos`, `dre`, `precificar`, `buscar_memoria`, `registrar_memoria`, `lancar`, `avaliar_campanhas`.
 
 Tecnologia: Next.js 15 + SQLite embutido no Node 22 (um arquivo, `dados/cerebro.db`; backup é copiar o arquivo). Para duas pessoas e milhares de lançamentos, SQLite sobra; se um dia precisar, a troca por Postgres fica só em `lib/db.ts`.
 

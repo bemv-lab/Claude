@@ -5,7 +5,7 @@ import {precificar, precoParaMargem, fmtBRL, fmtNum, fmtPct, type Config, type F
 import {salvarProduto, arquivarProduto} from '@/app/acoes';
 
 const CAMPOS: [keyof Produto, string][] = [
-  ['preco', 'Preço de venda (R$)'], ['custo', 'Custo do produto (R$)'], ['frete', 'Frete pago pela loja (R$)'],
+  ['preco', 'Preço de venda (R$)'], ['custo', 'Custo do produto (R$)'], ['custo_usd', 'Custo em US$ (se importado)'], ['frete', 'Frete pago pela loja (R$)'],
   ['embalagem', 'Embalagem e brinde (R$)'], ['outros', 'Outros por pedido (R$)'], ['cpa_alvo', 'CPA alvo no Gerenciador (R$)'],
 ];
 
@@ -25,9 +25,10 @@ export default function Calculadora({produto, cfg, formas}: {produto: Produto; c
           <label htmlFor="nome">Produto<input id="nome" name="nome" value={p.nome} onChange={(e) => set('nome', e.target.value)} /></label>
           <div className="campos">
             {CAMPOS.map(([k, rot]) => (
-              <label key={k} htmlFor={k}>{rot}<input id={k} name={k} type="number" step="0.01" value={p[k] as number} onChange={(e) => set(k, e.target.value)} /></label>
+              <label key={k} htmlFor={k}>{rot}<input id={k} name={k} type="number" step="0.01" value={(p[k] as number) ?? 0} onChange={(e) => set(k, e.target.value)} /></label>
             ))}
           </div>
+          {(p.custo_usd ?? 0) > 0 ? <p className="nota">Custo em dólar: {cfg.cotacao_dolar ? `US$ ${p.custo_usd} × ${cfg.cotacao_dolar.toLocaleString('pt-BR')} = ${fmtBRL((p.custo_usd ?? 0) * cfg.cotacao_dolar)}` : 'informe a cotação do dólar em Taxas e planos para o custo valer'}.</p> : null}
           {p.exemplo ? <p className="selo" style={{alignSelf: 'flex-start'}}>valores de exemplo: confira e salve</p> : null}
           <div className="acoes">
             <button type="submit" disabled={!mudou && !p.exemplo}>Salvar</button>

@@ -1,12 +1,19 @@
 // Testes das regras de dinheiro: npm run testar
 import assert from 'node:assert/strict';
-import {precificar, precoParaMargem, avaliarAnuncio, dre, taxaMedia, lerNumero, type Produto, type Config, type Forma} from '../lib/calc';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {precificar, precoParaMargem, avaliarAnuncio, dre, taxaMedia, lerNumero, custoProduto, type Produto, type Config, type Forma} from '../lib/calc';
 import {lerExportMeta} from '../lib/csv';
-import {mapearPedido, localBR, type PedidoShopify} from '../lib/shopify';
+import {mapearPedido, localBR, type PedidoShopify, type Pedido} from '../lib/shopify';
 import {mapearInsights} from '../lib/meta';
-import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, caixaCartpanda, compararPlanos, type Entrada} from '../lib/financeiro';
-import {lerOfx, classificar, lancamentosDoBanco, REGRAS_INICIAIS} from '../lib/banco';
+import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, caixaCartpanda, compararPlanos, montarTaxas, jurosAbsorvidos, simularSemJuros, compararPrazos, pixVsCartao, dasAnexoI, radarCustos, taxaEfetivaSemanal, type Entrada} from '../lib/financeiro';
+import {lerOfx, classificar, lancamentosDoBanco, lerCsvMovimentos, importarCsv, importarOfx, faturaCartao, saldoSocio, sugerirVinculos, possiveisDuplicidades, numeroPedido, REGRAS_INICIAIS, type MovBanco} from '../lib/banco';
+import {db, aplicarCustosIniciais} from '../lib/db';
 import {recorrencias, lerTaxas} from '../lib/dados';
+
+// Os testes usam um banco temporário: nunca tocam nos dados de verdade.
+process.env.CEREBRO_DB = join(mkdtempSync(join(tmpdir(), 'cerebro-')), 'teste.db');
 
 const cfg: Config = {das_pct: 4, plataforma_pct: 2.5, meta_imposto_pct: 13.83, cpa_alvo_padrao: 55};
 const formas: Forma[] = [
@@ -114,28 +121,68 @@ assert.ok(rk.find((p) => p.produto === '222')!.marketing < 1, 'anúncio AD1 trou
 const rec = recorrencias([{id: 9, data: '2026-01-31', categoria: 'assinaturas', descricao: 'Shopify', valor_centavos: 100, pedidos: 0, origem: '', recorrente: 1}], '2026-02-01', '2026-04-30');
 assert.deepEqual(rec.map((r) => r.data), ['2026-02-28', '2026-03-31', '2026-04-30']);
 
-// Taxas iniciais contra o extrato da Cartpanda de 26/10/2026 (valor do pedido → valor líquido, sem os R$ 0,35 de processamento).
+// ---------- Taxas do Cartpanda Pay, conferidas com o pagamento de 26/10/2026 (13 pedidos, taxas de transação R$ 215,37) ----------
 const tx = lerTaxas();
-const liquido = (forma: 'cartao' | 'pix', parcelas: number, total: number) =>
-  total - (taxaDoPedido({...mp[0].pedido, forma, parcelas, total}, tx) - 0.35);
-perto(liquido('cartao', 6, 239.9), 191.68, 0.006);
-perto(liquido('cartao', 5, 223.11), 181.61, 0.006);
-perto(liquido('pix', 1, 239.9), 237.52, 0.006);
-perto(liquido('pix', 1, 339.8), 336.44, 0.006);
-perto(liquido('cartao', 1, 239.9), 225.53, 0.006);
-perto(liquido('pix', 1, 829.6), 821.39, 0.006);
+const taxaDe = (forma: 'cartao' | 'pix' | 'boleto', parcelas: number, total: number) => taxaDoPedido({...mp[0].pedido, forma, parcelas, total}, tx);
+const pagamento26: [number, 'cartao' | 'pix', number][] = [[239.9, 'cartao', 6], [239.9, 'cartao', 6], [239.9, 'cartao', 6], [339.8, 'pix', 1], [239.9, 'pix', 1], [223.11, 'cartao', 5],
+  [239.9, 'pix', 1], [239.9, 'pix', 1], [239.9, 'pix', 1], [239.9, 'pix', 1], [339.8, 'pix', 1], [829.6, 'pix', 1], [239.9, 'pix', 1]];
+perto(pagamento26.reduce((s2, [t, f, par]) => s2 + taxaDe(f, par, t), 0), 215.37, 0.03);
+perto(taxaDe('cartao', 6, 239.9), 239.9 - 191.68, 0.006);
+perto(taxaDe('cartao', 5, 223.11), 223.11 - 181.61, 0.006);
+perto(taxaDe('cartao', 1, 239.9), 239.9 - 225.53, 0.006); // recebeu R$ 213,53 + R$ 12,00 de reserva
+perto(taxaDe('pix', 1, 829.6), 829.6 - 821.39, 0.006);
+perto(taxaDe('boleto', 1, 239.9), 3.5);
+assert.ok(tx.every((t) => t.forma === 'boleto' || t.fixo === 0), 'não existe taxa fixa por pedido no cartão nem no Pix');
+perto(taxaDe('cartao', 10, 100), 5.99); // acima de 6x o cliente paga os juros
+perto(taxaDe('cartao', 6, 100), 20.1);
+const juros = {2: 7.24, 3: 9.34, 4: 11.16, 5: 12.61, 6: 14.11, 7: 15.61, 8: 17.49, 9: 19.38, 10: 20.77, 11: 22.72, 12: 24.68};
+const t12 = montarTaxas({pix_pct: 0.99, boleto_fixo: 3.5, base_pct: 4.99, sem_juros: 12, juros});
+perto(t12.find((t) => t.forma === 'cartao' && t.parcelas === 12)!.pct, 4.99 + 24.68);
+perto(t12.find((t) => t.forma === 'cartao' && t.parcelas === 1)!.pct, 4.99);
 // Reserva de 5%: pedido 52321200 (R$ 215,91 em 6x) entrou R$ 161,71 + R$ 10,80 de reserva.
 const cx = caixaCartpanda([mp[0].pedido], tx, '2026-10-26', {reserva_pct: 5, reserva_dias: 90, prazo_cartao: 2});
-perto(cx.retida, 10.8); perto(cx.aLiberar, 161.71 - 0.35, 0.006); // os R$ 0,35 saem numa linha "Taxa" à parte
+perto(cx.retida, 10.8); perto(cx.aLiberar, 161.71, 0.006);
 
 // Planos da Cartpanda: Starter empata com o Light em R$ 24.402/mês.
 const cp = compararPlanos(24603.15);
 perto(cp.viradas[0].faturamento, 24402, 1); assert.equal(cp.melhor.nome, 'Starter');
 assert.equal(compararPlanos(15000).melhor.nome, 'Light'); assert.equal(compararPlanos(60000).melhor.nome, 'Premium');
-// Taxas iniciais: 7x a 12x sem acréscimo (sem juros só até 6x).
-perto(taxaDoPedido({...mp[0].pedido, parcelas: 10, total: 100}, tx), 5.99 + 0.35);
 
-// Extrato OFX (formato do Inter) e classificação.
+// ---------- Radar de custos ----------
+const base = mp[0].pedido;
+const pj: Pedido[] = [
+  {...base, id: 'j1', forma: 'cartao', parcelas: 6, total: 200, status: 'pago'},
+  {...base, id: 'j2', forma: 'cartao', parcelas: 2, total: 100, status: 'pago'},
+  {...base, id: 'j3', forma: 'cartao', parcelas: 10, total: 100, status: 'pago'},
+  {...base, id: 'j4', forma: 'pix', parcelas: 1, total: 100, status: 'pago'},
+  {...base, id: 'j5', forma: 'cartao', parcelas: 1, total: 100, status: 'pago'},
+];
+const ja = jurosAbsorvidos(pj, juros, 6);
+perto(ja.valor, 200 * 0.1411 + 100 * 0.0724); assert.equal(ja.nParcelados, 2); perto(ja.receitaCartao, 500);
+const sim = simularSemJuros(pj, juros, 6);
+perto(sim[2].custo, 100 * 0.0724); perto(sim[2].economiaVsAtual, ja.valor - 100 * 0.0724); assert.ok(sim[5].atual);
+perto(sim[11].custo, ja.valor + 100 * 0.2077);
+const pz = compararPrazos(9197, [{dias: 2, pct: 5.99}, {dias: 5, pct: 5.49}, {dias: 14, pct: 4.99}], 2, 1.2);
+perto(pz[1].economia, 9197 * 0.005); perto(pz[1].capital, (9197 / 30) * 3); perto(pz[1].liquido, 9197 * 0.005 - ((9197 / 30) * 3 * 1.2) / 100);
+perto(pz[2].economia, 9197 * 0.01); assert.equal(pz[0].atual, true); assert.equal(pz[0].capital, 0);
+const pv = pixVsCartao(pj, tx);
+perto(pv.pctCartao, ((200 * 20.1 + 100 * 13.23 + 100 * 5.99 + 100 * 5.99) / 100 / 500) * 100); perto(pv.pctPix, 0.99);
+perto(dasAnexoI(150_000).efetiva, 4); perto(dasAnexoI(295_000).efetiva, ((295_000 * 7.3) / 100 - 5_940) / 295_000 * 100, 0.001);
+assert.equal(dasAnexoI(400_000).faixa, 3);
+const radarTeste = radarCustos(ent, '2026-10-25', '2026-10-26', {juros, sem_juros: 6, prazos: [{dias: 2, pct: 5.99}, {dias: 5, pct: 5.49}], prazo_atual: 2, custo_capital_mes: 1.2, rbt12: 0, das_pct: 4, taxa_repasse: 4.9});
+assert.equal(radarTeste.prazos.length, 2); assert.ok(radarTeste.das.anualizado); assert.ok(radarTeste.repasse.diasComVenda >= 1);
+const tendencia = taxaEfetivaSemanal(ent, '2026-10-26', 8); assert.equal(tendencia.serie.length, 8);
+
+// ---------- Custo em dólar e custos iniciais ----------
+perto(custoProduto({custo: 0, custo_usd: 14.2}, 5), 71); assert.equal(custoProduto({custo: 0, custo_usd: 14.2}, 0), 0); perto(custoProduto({custo: 90.99}, 5), 90.99);
+const bd = db();
+const novo = bd.prepare('INSERT INTO produtos (nome, preco, shopify_id) VALUES (?, ?, ?)');
+novo.run('Livro de Tecido - vaca', 134.9, 'T1'); novo.run('Livro Sensorial Fazenda', 239.9, 'F1'); novo.run('Livro de Descobertas — Animais', 99.9, 'A1'); novo.run('Meu Livro de Descobertas', 279.9, 'M1');
+aplicarCustosIniciais(bd);
+const custoDe = (id: string) => bd.prepare('SELECT custo, custo_usd FROM produtos WHERE shopify_id = ?').get(id) as {custo: number; custo_usd: number};
+perto(custoDe('T1').custo, 43.54); perto(custoDe('F1').custo, 90.99); assert.equal(custoDe('A1').custo, 0); perto(custoDe('M1').custo_usd, 21.36);
+
+// ---------- Extrato OFX, cartões e classificação ----------
 const ofx = `<OFX><BANKACCTFROM><BANKID>077</BANKID><ACCTID>1</ACCTID></BANKACCTFROM><BANKTRANLIST>
 <STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261026<TRNAMT>179.68<FITID>A1<NAME>Cartão De Crédito - Cartpanda<MEMO>Credito domicilio cartao</STMTTRN>
 <STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20261026<TRNAMT>-829.47<FITID>A2<NAME>Simples Nacional<MEMO>SIMPLES NACIONAL</STMTTRN>
@@ -145,11 +192,65 @@ const ofx = `<OFX><BANKACCTFROM><BANKID>077</BANKID><ACCTID>1</ACCTID></BANKACCT
 </BANKTRANLIST><LEDGERBAL><BALAMT>8100.10<DTASOF>20261026</LEDGERBAL></OFX>`;
 const lo = lerOfx(ofx);
 assert.equal(lo.movs.length, 5); assert.equal(lo.saldo, 8100.1); assert.equal(lo.movs[1].data, '2026-10-26');
-const cls = lo.movs.map((x) => ({...x, categoria: classificar(x, REGRAS_INICIAIS), regra: 'auto'}));
-assert.deepEqual(cls.map((x) => x.categoria), ['recebimento_vendas', 'das', 'taxas_cartpanda', 'assinaturas', 'assinaturas']);
+const extra = {pedido_numero: '', produto_ext: '', obs: ''};
+const cls: MovBanco[] = lo.movs.map((x) => ({...x, ...extra, categoria: classificar(x, REGRAS_INICIAIS), regra: 'auto'}));
+assert.deepEqual(cls.map((x) => x.categoria), ['recebimento_vendas', 'das_mei', 'taxas_cartpanda', 'assinaturas', 'assinaturas']);
 const lb = lancamentosDoBanco(cls);
-assert.equal(lb.length, 3, 'DAS e a assinatura com seu estorno; repasse e checkout ficam fora do DRE');
-assert.equal(lb[0].data, '2026-09-30', 'DAS pago em outubro é competência de setembro');
+assert.equal(lb.length, 3, 'MEI atrasado e a assinatura com seu estorno; repasse e checkout ficam fora do DRE');
+assert.equal(lb[0].categoria, 'regularizacao'); assert.equal(lb[0].data, '2026-10-26', 'regularização fica na data do pagamento');
 assert.equal(lb.filter((l) => l.categoria === 'assinaturas').reduce((s2, l) => s2 + l.valor_centavos, 0), 0, 'estorno anula a assinatura');
+const dasDoMes = lancamentosDoBanco([{...cls[1], categoria: 'das'}]);
+assert.equal(dasDoMes[0].categoria, 'das'); assert.equal(dasDoMes[0].data, '2026-09-30', 'DAS do mês pago em outubro é competência de setembro');
+const nomes: [string, string][] = [
+  ['Maree Instituicao De Pagamento Ltda', 'fornecedor'], ['Pix Marketplace', 'fornecedor'], ['Mercadolivre*mercado', 'fornecedor'], ['Mercado*mercadolivre', 'fornecedor'],
+  ['MERCADO PAGO INST DE PAGTO LTD', 'fornecedor'], ['Shopee*tupi Tech Ltd', 'fornecedor'], ['Mp *melimais', 'assinaturas'], ['Htm       *nico Dr', 'assinaturas'],
+  ['Runway', 'assinaturas'], ['DI*google Google', 'assinaturas'], ['Iof Internacional', 'tarifas'], ['Barbara Emanuelle Melo Vieira', 'reembolso_socio'],
+  ['Rrt Assessoria E Consultoria', 'enquadramento'], ['Cdb Credito Banco Inter S A', 'aplicacao'], ['Lucas Vinicios De Oliveira Coutinho', 'transferencia'], ['Fornecedor Qualquer', 'a_classificar'],
+];
+for (const [n, esperado] of nomes) assert.equal(classificar({nome: n, memo: ''}, REGRAS_INICIAIS), esperado, n);
+// Importar duas vezes não duplica; o que foi classificado à mão não muda.
+assert.equal(importarOfx(ofx).n, 5); importarOfx(ofx);
+assert.equal((bd.prepare('SELECT count(*) n FROM banco').get() as {n: number}).n, 5);
+bd.prepare("UPDATE banco SET categoria = 'das', regra = 'manual' WHERE fitid = 'A2'").run(); importarOfx(ofx);
+assert.equal((bd.prepare("SELECT categoria FROM banco WHERE fitid = 'A2'").get() as {categoria: string}).categoria, 'das');
+
+const csvCartao = 'conta;data;descricao;valor;categoria\ncartao-pj;2026-10-25;Mercadolivre*mercado;-90,99;\ncartao-pj;25/10/2026;Mercadolivre*mercado;-90,99;\ncartao-pj;2026-10-22;Mp *melimais;-9,90;\ncartao-pessoal;2026-10-26;Meta Ads;-3.418,12;anuncios\n';
+const mv = lerCsvMovimentos(csvCartao);
+assert.equal(mv.length, 4); assert.equal(new Set(mv.map((m) => m.fitid)).size, 4, 'linhas iguais no mesmo dia continuam distintas'); assert.equal(mv[1].data, '2026-10-25');
+perto(mv[3].valor, -3418.12); assert.equal(mv[3].categoria, 'anuncios');
+assert.throws(() => lerCsvMovimentos('conta;data;descricao;valor\noutra;2026-10-25;X;-1'), /desconhecida/);
+assert.equal(importarCsv(csvCartao).n, 4); importarCsv(csvCartao);
+assert.equal((bd.prepare("SELECT count(*) n FROM banco WHERE conta LIKE 'cartao%'").get() as {n: number}).n, 4);
+
+const compra = (data: string, valor: number, extraMov: Partial<MovBanco> = {}): MovBanco =>
+  ({conta: 'cartao-pj', fitid: `${data}-${valor}-${Math.random()}`, data, valor: -valor, tipo: '', nome: '', memo: '', categoria: 'fornecedor', regra: 'auto', ...extra, pedido_numero: '', produto_ext: '', obs: '', ...extraMov});
+// Fatura de novembro do cartão PJ (print de 26/10): R$ 762,78 aberta, limite R$ 800, fecha dia 3, vence dia 10.
+const compras = [['2026-10-25', 90.99], ['2026-10-25', 90.99], ['2026-10-25', 90.99], ['2026-10-25', 90.99], ['2026-10-22', 9.9], ['2026-10-17', 1.47], ['2026-10-16', 6.5],
+  ['2026-10-15', 42.08], ['2026-10-14', 65.09], ['2026-10-14', 63.09], ['2026-10-14', 69.95], ['2026-10-14', 71.25], ['2026-10-10', 69.49], ['2026-10-02', 50]] as [string, number][];
+const ft = faturaCartao(compras.map(([d, v]) => compra(d, v)), '2026-10-26', {fechamento: 3, vencimento: 10, limite: 800});
+perto(ft.total, 762.78); perto(ft.disponivel, 37.22); assert.equal(ft.inicio, '2026-10-04'); assert.equal(ft.fecha, '2026-11-03'); assert.equal(ft.vencimento, '2026-11-10');
+assert.equal(faturaCartao([], '2026-11-02', {fechamento: 3, vencimento: 10, limite: 800}).fecha, '2026-11-03');
+const so = saldoSocio([compra('2026-10-13', 1313.73, {conta: 'cartao-pessoal', categoria: 'anuncios'}), compra('2026-10-26', 3418.12, {conta: 'cartao-pessoal', categoria: 'anuncios'}),
+  compra('2026-10-19', 1620.56, {conta: '077-1', categoria: 'reembolso_socio'})]);
+perto(so.pago, 4731.85); perto(so.reembolsado, 1620.56); perto(so.aReembolsar, 3111.29);
+
+// Conciliação: compra de fornecedor do mesmo valor do custo do pedido, até 5 dias depois do pagamento, do pedido mais antigo ao mais novo.
+const custos111 = new Map([['111', 90.99]]);
+const fornecedor = [compra('2026-10-26', 90.99, {fitid: 'f1'}), compra('2026-10-27', 90.99, {fitid: 'f2'}), compra('2026-10-27', 76.23, {fitid: 'f3'})];
+const sug = sugerirVinculos(fornecedor, ent.pedidos, ent.itens, custos111);
+assert.deepEqual(sug.map((s) => [s.fitid, s.pedido]), [['f1', '1'], ['f2', '2']]);
+const sug2 = sugerirVinculos([{...fornecedor[0], pedido_numero: '1'}, fornecedor[1]], ent.pedidos, ent.itens, custos111);
+assert.deepEqual(sug2.map((s) => [s.fitid, s.pedido]), [['f2', '2']]);
+assert.equal(numeroPedido('#20944'), '20944');
+// Mesmo valor no cartão e por boleto no mesmo dia (R$ 65,09 em 14/10): possível pagamento em duplicidade. R$ 90,99 é custo conhecido e repete à vontade.
+const dup = possiveisDuplicidades([compra('2026-10-14', 65.09), compra('2026-10-14', 65.09, {conta: '077-1'}), compra('2026-10-25', 90.99), compra('2026-10-25', 90.99, {conta: '077-1'}),
+  compra('2026-10-20', 70, {pedido_numero: '5'}), compra('2026-10-20', 70, {conta: '077-1'})], [90.99]);
+assert.equal(dup.length, 1); perto(-dup[0][0].valor, 65.09);
+const recorrente = possiveisDuplicidades([compra('2026-10-14', 71.25), compra('2026-10-14', 71.25, {conta: '077-1'}), compra('2026-10-13', 71.25, {conta: '077-1'}), compra('2026-10-12', 71.25, {conta: '077-1'})], []);
+assert.equal(recorrente.length, 0, 'valor que se repete é produto comprado várias vezes');
+
+// DRE: regularização aparece à parte e não entra no lucro recorrente.
+const dreReg = dreMes({...ent, lancamentos: [{id: 1, data: '2026-10-26', categoria: 'regularizacao', descricao: 'MEI', valor_centavos: 82947, pedidos: 0, origem: 'banco'}]}, '2026-10');
+perto(dreReg.pontual, 829.47); perto(dreReg.lucroRecorrente - dreReg.lucro, 829.47);
 
 console.log('Todos os testes passaram.');
