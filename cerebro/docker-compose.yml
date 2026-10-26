@@ -1,0 +1,16 @@
+# Servidor (Oracle ou qualquer VPS): docker compose up -d --build
+services:
+  cerebro:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./dados:/dados
+    ports:
+      - "127.0.0.1:3000:3000" # só a própria máquina; o acesso de fora vem pelo túnel
+  tunel:
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file: .env
+    depends_on: [cerebro]

@@ -1,0 +1,8 @@
+node_modules
+.next
+data/*.db*
+data/segredo
+next-env.d.ts
+*.tsbuildinfo
+.env
+dados

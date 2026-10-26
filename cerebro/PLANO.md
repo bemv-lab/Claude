@@ -1,6 +1,6 @@
 # Cérebro Rocco · plano (26/10/2026)
 
-Sistema único da Rocco Kids: financeiro, precificação, campanhas, produto, criativos, pedidos e contabilidade, com uma memória compartilhada que qualquer conversa com o Claude consulta. Protótipo visual: `cerebro/prototipo.html`.
+Sistema único da Rocco Kids: financeiro, precificação, campanhas, produto, criativos, pedidos e contabilidade, com uma memória compartilhada que qualquer conversa com o Claude consulta. Sistema em `cerebro/` (como rodar: `README.md`). Maquete inicial: `cerebro/prototipo.html`.
 
 ## Princípio central: memória antes de telas
 
@@ -15,12 +15,12 @@ O problema de hoje são os chats soltos, que perdem contexto e gastam tokens. O 
 | Camada | Escolha | Por quê |
 |---|---|---|
 | App | Next.js (TypeScript) | uma base para telas e API; o repo já usa TS (Remotion) |
-| Banco | Postgres | dinheiro pede transação e histórico; serve para DRE e para a memória |
+| Banco | SQLite embutido no Node 22 | transação e histórico num arquivo só; backup é copiar o arquivo; troca por Postgres fica só em `lib/db.ts` |
 | Coletores | jobs agendados (Node) | Meta Ads, Cartpanda, Shopify, ML, Shopee, fatura da Meta |
 | Agente | servidor MCP + Claude | lê e grava no banco; ações externas só com OK |
-| Hospedagem | Oracle Cloud Always Free (ARM) + Docker | custo R$ 0; cabe app + Postgres + coletores |
+| Hospedagem | Oracle Cloud Always Free (ARM) + Docker | custo R$ 0; cabe app + banco + coletores |
 | Acesso | Cloudflare Tunnel + Access | login por e-mail para Bárbara e Lucas, sem abrir portas; grátis até 50 usuários |
-| Backup | dump diário do Postgres para o Google Drive | dado financeiro não pode depender de uma VM grátis |
+| Backup | `npm run backup` diário (cópia consistente) + rclone para o Google Drive | dado financeiro não pode depender de uma VM grátis |
 
 Alternativa com menos manutenção: Supabase (Postgres + login) + Vercel, ~US$ 25/mês quando sair do plano grátis.
 
@@ -45,3 +45,9 @@ Desde 01/01/2026 a Meta repassa PIS/Cofins (9,25%) e ISS (2,9%): no pós-pago, R
 - Regime tributário e anexo do Simples (CNPJ), contador.
 - Uma fatura da Meta com a linha do "1%".
 - Se vão usar a Oracle: criar a conta (pede cartão só para verificação).
+
+## Estado (26/10/2026)
+
+Feito na v0.1: login, Início, Precificação, Financeiro e DRE, Taxas e planos com gatilhos, Campanhas (importação do CSV da Meta + esteira), Memória, conector MCP com 7 ferramentas, Docker + túnel da Cloudflare, backup. Testado: contas (`npm run testar`), navegador de ponta a ponta e o conector MCP. Não testado: o build da imagem Docker (sem Docker nesta sessão).
+
+Próximos passos da fase 0/1: importar o Único Drop, conector MCP remoto (claude.ai e celular), coleta automática da Meta pela API e da Cartpanda, lançamentos automáticos de vendas.
