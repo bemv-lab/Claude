@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from nucleo import acoes, analises, categorizar, db, demo, dividas, planejamento, previstos, rendas, resumo  # noqa: E402
+from nucleo import acoes, analises, categorizar, compartilhado, db, demo, dividas, planejamento, previstos, rendas, resumo  # noqa: E402
 from nucleo.importacao import Lote, atualizar  # noqa: E402
 from nucleo.importadores import csv_, ofx  # noqa: E402
 from nucleo.util import chave_estabelecimento, detectar_parcela, hoje, parse_data, parse_valor, somar_meses  # noqa: E402
@@ -627,3 +627,52 @@ class TestRendas(BaseBanco):
         rendas.encerrar(self.con, ativa, a_partir="2026-12")
         self.assertEqual(rendas.valor_mes(self.con, "2026-12"), 0)
         self.assertEqual(rendas.valor_mes(self.con, "2026-11"), 700000)
+
+
+class TestCompartilhado(unittest.TestCase):
+    """Dois computadores na mesma pasta do Drive: só um edita; o outro consulta uma cópia."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.pasta = self.tmp / "drive"
+        self.pasta.mkdir()
+        self.banco = self.pasta / "financas.db"
+        db.conectar(self.banco).close()
+        self.lucas = compartilhado.Uso(self.pasta, "Lucas", self.banco, self.tmp / "l" / "consulta.db")
+        self.barbara = compartilhado.Uso(self.pasta, "Bárbara", self.banco, self.tmp / "b" / "consulta.db")
+
+    def test_um_edita_outro_consulta(self):
+        self.assertEqual(self.lucas.avaliar(forcar=True), "edicao")
+        self.assertEqual(self.barbara.avaliar(forcar=True), "consulta")
+        self.assertIn("Lucas", self.barbara.motivo)
+        self.assertEqual(self.barbara.banco_para_ler(), self.tmp / "b" / "consulta.db")
+        self.lucas.liberar()
+        self.assertEqual(self.barbara.avaliar(forcar=True), "edicao")
+        self.assertEqual(self.barbara.banco_para_ler(), self.banco)
+        self.assertEqual(self.lucas.avaliar(forcar=True), "consulta")
+
+    def test_espera_o_drive_trazer_a_ultima_versao(self):
+        self.lucas.avaliar(forcar=True)
+        con = db.conectar(self.banco)
+        self.lucas.editou(compartilhado.subir_versao(con))
+        con.close()
+        self.lucas.liberar()
+        # o arquivo de trava chegou, mas o banco ainda é o antigo: simula voltando o contador
+        con = db.conectar(self.banco)
+        con.execute("UPDATE config SET valor = '0' WHERE chave = 'versao_edicao'")
+        con.commit()
+        con.close()
+        self.assertEqual(self.barbara.avaliar(forcar=True), "consulta")
+        self.assertIn("Google Drive", self.barbara.motivo)
+
+    def test_batida_velha_libera(self):
+        self.lucas.avaliar(forcar=True)
+        t = json.loads((self.pasta / "em-uso.json").read_text(encoding="utf-8"))
+        t["batida"] = "2000-01-01T00:00:00"
+        (self.pasta / "em-uso.json").write_text(json.dumps(t), encoding="utf-8")
+        self.assertEqual(self.barbara.avaliar(forcar=True), "edicao")
+
+    def test_sem_pasta_sempre_edita(self):
+        u = compartilhado.Uso(None, "x", self.banco, self.tmp / "c.db")
+        self.assertEqual(u.avaliar(forcar=True), "edicao")
+        self.assertEqual(u.banco_para_ler(), self.banco)

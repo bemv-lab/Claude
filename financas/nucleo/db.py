@@ -10,9 +10,23 @@ from .util import agora_iso
 
 RAIZ = Path(__file__).resolve().parent.parent
 PASTA_DADOS = RAIZ / "dados"
-BANCO_REAL = PASTA_DADOS / "financas.db"
+
+
+def _local() -> dict:
+    """local.json (criado pelo instalar_atalho.py): pasta compartilhada e nome deste computador."""
+    try:
+        return json.loads((RAIZ / "local.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+LOCAL = _local()
+# com pasta compartilhada (Google Drive), banco e extratos ficam lá; senão, aqui mesmo
+PASTA_COMPARTILHADA = Path(LOCAL["pasta"]).expanduser() if LOCAL.get("pasta") else None
+BANCO_REAL = (PASTA_COMPARTILHADA or PASTA_DADOS) / "financas.db"
 BANCO_DEMO = PASTA_DADOS / "demo.db"
-ENTRADA_REAL = RAIZ / "entrada"
+BANCO_CONSULTA = PASTA_DADOS / "consulta.db"
+ENTRADA_REAL = PASTA_COMPARTILHADA / "entrada" if PASTA_COMPARTILHADA else RAIZ / "entrada"
 ENTRADA_DEMO = PASTA_DADOS / "demo-entrada"
 
 ESQUEMA = """

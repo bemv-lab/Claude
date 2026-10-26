@@ -21,6 +21,12 @@ No Windows, use `py app.py` se `python` não funcionar.
 Cria o ícone Prosperidade (Windows: área de trabalho e menu Iniciar; Mac: `Prosperidade.app` na mesa).
 Se mudarem a pasta `financas` de lugar, rodem de novo. Com o sistema já aberto, o ícone só abre o navegador.
 
+**Nos dois computadores (Bárbara e Lucas):** o mesmo `instalar_atalho.py` pergunta a pasta compartilhada do
+Google Drive (ex.: `G:/Meu Drive/Prosperidade`) e o nome de quem usa. O primeiro computador leva o banco e os
+extratos para lá; o segundo encontra e passa a usar. A configuração fica em `local.json` (fora do git).
+Só um edita por vez (`em-uso.json` na pasta); o outro fica em "Só consulta" até o primeiro fechar ou ficar
+15 minutos parado. Detalhes em `nucleo/compartilhado.py`.
+
 Outros comandos:
 
 ```bash

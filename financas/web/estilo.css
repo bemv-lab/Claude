@@ -482,3 +482,5 @@ textarea { resize: vertical; }
   .controles label.campo { flex: 1 1 100%; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.selo-consulta { background: var(--sup-2); color: var(--texto-2); border: 1px solid var(--linha); cursor: pointer; }

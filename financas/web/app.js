@@ -76,9 +76,19 @@ async function carregarCadastros() { S.cad = await api("/api/cadastros"); }
 async function carregarEstado() {
   const e = await api("/api/estado"); S.modo = e.modo; S.hoje = e.hoje;
   $("#selo-demo").hidden = e.modo !== "demo";
+  mostrarConsulta(e);
   const m = await api("/api/meses"); S.meses = m.meses;
   if (!S.mes) S.mes = e.hoje.slice(0, 7);
 }
+// dois computadores: enquanto o outro edita, este só consulta (o servidor recusa gravações)
+function mostrarConsulta(e) {
+  const selo = $("#selo-consulta"), antes = S.consulta;
+  S.consulta = e.modo === "real" && e.consulta; S.motivoConsulta = e.motivo;
+  selo.hidden = !S.consulta; selo.title = e.motivo || ""; selo.onclick = () => toast(S.motivoConsulta);
+  if (S.consulta && !antes) toast(e.motivo, true);
+  if (!S.consulta && antes) toast("Este computador voltou a editar.");
+}
+if (!S.vigiaConsulta) S.vigiaConsulta = setInterval(() => api("/api/estado", { silencioso: true }).then(mostrarConsulta).catch(() => {}), 30000);
 async function atualizarContador() {
   const h = await api("/api/duvidas", { silencioso: true }).catch(() => null);
   S.nDuvidas = h ? h.total : 0; montarNav();
@@ -1019,6 +1029,15 @@ const MANUAL = [
       <li>Para usar pelo celular na mesma rede Wi-Fi: <code>python app.py --rede</code>. Aparecem um endereço e um PIN.</li>
       <li>Os dados ficam em <code>financas/dados/financas.db</code>. Façam backup em Ajustes > Backup.</li>
     </ol>`],
+  ["Nos dois computadores", `
+    <p>Os dados ficam numa pasta do Google Drive que os dois enxergam. Cada computador tem o sistema instalado e o ícone na área de trabalho.</p>
+    <dl>
+      <dt>Um edita por vez</dt><dd>Quem abre primeiro edita. No outro computador aparece o selo <b>Só consulta</b> no topo: dá para ver tudo, mas nada é gravado. Toquem no selo para ver quem está usando.</dd>
+      <dt>Quando volta a editar</dt><dd>Assim que o outro fecha o sistema ou fica 15 minutos sem usar. A tela confere sozinha a cada 30 segundos e avisa "Este computador voltou a editar".</dd>
+      <dt>"O Google Drive ainda está trazendo as últimas mudanças"</dt><dd>O outro acabou de editar e o arquivo ainda está chegando. Esperem um minuto e atualizem a página.</dd>
+      <dt>Configuração</dt><dd>Feita uma vez em cada computador pelo <code>instalar_atalho.py</code>: a pasta compartilhada e o nome de quem usa. Para trocar, rodem de novo.</dd>
+      <dt>Cuidados</dt><dd>Deixem a pasta do Drive "Disponível off-line" nos dois computadores. Não abram nem copiem o arquivo <code>financas.db</code> à mão. Se o Drive criar uma cópia com "(1)" no nome, me avisem antes de apagar.</dd>
+    </dl>`],
   ["Rotina sugerida", `
     <dl>
       <dt>Toda semana</dt><dd>Baixem os extratos do Inter, BB e Itaú, coloquem em <code>entrada/&lt;conta&gt;/</code> (ou arrastem na tela Importar) e toquem em <b>Atualizar</b>. Depois resolvam a fila de <b>Dúvidas</b>.</dd>

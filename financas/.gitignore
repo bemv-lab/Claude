@@ -11,3 +11,6 @@ backups/
 *.pdf
 !testes/amostras/*
 __pycache__/
+
+# configuração de cada computador (pasta compartilhada e nome)
+local.json

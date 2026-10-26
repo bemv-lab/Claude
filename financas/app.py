@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import hashlib
 import hmac
 import json
@@ -24,18 +25,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from nucleo import (acoes, alertas, analises, backup, categorizar, db, demo, dividas, importacao, planejamento,
-                    previstos, rendas, resumo)
+from nucleo import (acoes, alertas, analises, backup, categorizar, compartilhado, db, demo, dividas, importacao,
+                    planejamento, previstos, rendas, resumo)
 from nucleo.util import agora_iso, dias_restantes_mes, hoje, normalizar, parse_valor
 
 WEB = Path(__file__).resolve().parent / "web"
 ESTADO = {"modo": "real", "pin": None, "tokens": set()}
 TRAVA = threading.Lock()
 LIMITE_UPLOAD = 25 * 1024 * 1024
+# dois computadores com o banco no Google Drive: só um edita por vez (ver nucleo/compartilhado.py)
+USO = compartilhado.Uso(db.PASTA_COMPARTILHADA, db.LOCAL.get("nome") or socket.gethostname(), db.BANCO_REAL,
+                        db.BANCO_CONSULTA)
 
 
 def caminho_banco():
-    return db.BANCO_DEMO if ESTADO["modo"] == "demo" else db.BANCO_REAL
+    return db.BANCO_DEMO if ESTADO["modo"] == "demo" else USO.banco_para_ler()
 
 
 def pasta_entrada():
@@ -85,7 +89,7 @@ def _centavos(v):
 def r_estado(con, q, corpo):
     n = con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
     return {"modo": ESTADO["modo"], "transacoes": n, "hoje": hoje().isoformat(),
-            "demo_existe": db.BANCO_DEMO.exists()}
+            "demo_existe": db.BANCO_DEMO.exists(), **USO.estado()}
 
 
 @rota("POST", "/api/modo")
@@ -917,9 +921,17 @@ class Handler(BaseHTTPRequestHandler):
                         host = self.headers.get("Host", "")
                         if urlparse(self.headers["Origin"]).netloc != host:
                             raise Erro("Origem não permitida", 403)
+                    edita = ESTADO["modo"] == "real" and metodo != "GET" and fn is not r_modo
+                    if ESTADO["modo"] == "real":
+                        USO.usou()
+                        if USO.avaliar(forcar=edita) == "consulta" and edita:
+                            raise Erro(USO.motivo, 423)
                     con = db.conectar(caminho_banco())
                     try:
-                        return self._json(200, fn(con, q, corpo, *achou.groups(), **extra))
+                        res = fn(con, q, corpo, *achou.groups(), **extra)
+                        if edita and USO.ativo:
+                            USO.editou(compartilhado.subir_versao(con))
+                        return self._json(200, res)
                     finally:
                         con.close()
                 except Erro as e:
@@ -1000,7 +1012,8 @@ def main():
     if a.demo:
         demo.criar()
         ESTADO["modo"] = "demo"
-    con = db.conectar(db.BANCO_REAL)            # cria o banco e o cadastro inicial
+    USO.avaliar(forcar=True)                    # com pasta compartilhada: pega a vez ou fica em consulta
+    con = db.conectar(USO.banco_para_ler())     # cria o banco e o cadastro inicial
     importacao.preparar_pastas(con, db.ENTRADA_REAL)
     con.close()
     host = "0.0.0.0" if a.rede else "127.0.0.1"
@@ -1019,12 +1032,24 @@ def main():
     if a.rede:
         ESTADO["pin"] = a.pin or f"{secrets.randbelow(10 ** 6):06d}"
         print(f"  No celular (mesmo Wi-Fi): http://{ip_local()}:{a.porta}   PIN: {ESTADO['pin']}")
+    if USO.ativo:
+        print(f"  Dados na pasta compartilhada: {db.PASTA_COMPARTILHADA}  (este computador: {USO.nome})")
+        if USO.modo == "consulta":
+            print(f"  Só consulta: {USO.motivo}")
+
+        def bater():
+            while True:
+                threading.Event().wait(60)
+                USO.batida()
+        threading.Thread(target=bater, daemon=True).start()
+        atexit.register(USO.liberar)
     print("  Para parar: Ctrl+C\n")
     if not a.sem_navegador:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
+        USO.liberar()
         print("\n  Até logo!")
 
 
