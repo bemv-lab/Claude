@@ -2,18 +2,40 @@
 
 O sistema da Rocco Kids: precificação, financeiro com DRE, taxas e gatilhos de plano, esteira de campanhas da Meta e a memória compartilhada que qualquer conversa com o Claude consulta. Plano completo e fases: `PLANO.md`.
 
+## Módulo financeiro (v0.2, no estilo Único Drop)
+
+Calculado pedido a pedido, a partir da Shopify (checkout Cartpanda) e da Meta, em `Financeiro`:
+
+| Aba | O que mostra |
+|---|---|
+| Financeiro | receita, custo, marketing, taxas e impostos, gráfico diário, lucro líquido, meta do mês, forma de pagamento, conversão por forma, funil da Meta |
+| Detalhado | pedidos pagos e pendentes por forma, composição do lucro, ticket, vendas por hora e dia da semana, parcelamento, bandeiras, estados, cupons, últimas vendas |
+| Ranking | lucro por produto, com o marketing atribuído pelo anúncio que trouxe o pedido (UTM) |
+| Conversão | dia a dia, por forma de pagamento |
+| DRE | mês pela data de pagamento, com as despesas lançadas e a diferença para o Único Drop |
+| Despesas | lançamentos com categoria, status (pago ou a pagar) e repetição mensal |
+
+Diferenças para o Único Drop: desconta o DAS e o imposto da Meta (lá estão em 0%); marketing por produto pela UTM; despesas mensais automáticas; o Claude lê tudo pelo conector.
+Conferido com os prints de 26/10/2026: receita de outubro, checkout, conversão do Pix e o lucro do dia batem (`npm run conferir <pasta com JSON da Shopify>`).
+
+Dados: `npm run sincronizar` (ou o botão Sincronizar). Precisa de `SHOPIFY_LOJA`, `SHOPIFY_TOKEN`, `META_TOKEN` e `META_CONTA` no `.env` (ver `.env.exemplo`). No servidor, rode a cada hora:
+`0 * * * * cd ~/Claude/cerebro && docker compose exec -T cerebro npm run -s sincronizar`
+
+Como gerar as chaves:
+- Shopify: Configurações > Apps e canais de vendas > Desenvolver apps > Criar app > permissão `read_orders` > instalar > copiar o token do Admin API.
+- Meta: Gerenciador de Negócios > Usuários do sistema > gerar token com `ads_read` para a conta C01 - Lucas Oliveira (RK).
+
 ## O que já funciona (v0.1)
 
 | Tela | O que faz |
 |---|---|
 | Início | faturamento, pedidos, ticket médio, resultado e ROAS real do mês; alertas (gatilho de plano, DAS, anúncios para pausar ou escalar, taxas de exemplo) |
 | Precificação | por produto: margem de contribuição, lucro por pedido, CPA máximo e ROAS de break-even, com DAS, plataforma, mix real de parcelamento e imposto da Meta; "que preço dá a margem que eu quero" |
-| Financeiro e DRE | lançamentos por conta e DRE do mês (Simples Nacional, comércio); gasto de mídia copiado do Gerenciador ganha o imposto da Meta lançado junto |
 | Taxas e planos | DAS, plataforma, imposto Meta, taxa e % de pedidos por forma de pagamento, planos com gatilho de pedidos/mês |
 | Campanhas | importa o CSV do Gerenciador e classifica cada anúncio em teste, validação, escala ou pausar, com regras tiradas da precificação |
 | Memória | decisões e aprendizados com data, área e autor |
 
-Conector MCP `rocco-cerebro` (7 ferramentas): `contexto_rocco`, `buscar_memoria`, `registrar_memoria`, `precificar`, `dre`, `lancar`, `avaliar_campanhas`.
+Conector MCP `rocco-cerebro` (8 ferramentas): `contexto_rocco`, `financeiro`, `dre`, `precificar`, `buscar_memoria`, `registrar_memoria`, `lancar`, `avaliar_campanhas`.
 
 Tecnologia: Next.js 15 + SQLite embutido no Node 22 (um arquivo, `dados/cerebro.db`; backup é copiar o arquivo). Para duas pessoas e milhares de lançamentos, SQLite sobra; se um dia precisar, a troca por Postgres fica só em `lib/db.ts`.
 

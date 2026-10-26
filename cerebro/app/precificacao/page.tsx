@@ -15,7 +15,7 @@ export default async function Precificacao({searchParams}: {searchParams: Promis
     <Casca>
       <div className="topo">
         <div><div className="olho">Dinheiro</div><h1>Precificação <b>sem esquecer nada</b></h1></div>
-        {cfg.taxas_exemplo ? <Link href="/taxas" className="selo">taxas de pagamento de exemplo · trocar</Link> : null}
+        {cfg.gateway_exemplo ? <Link href="/taxas" className="selo">taxas por parcela a conferir</Link> : null}
       </div>
       <div className="acoes">
         <div className="abas">

@@ -3,7 +3,8 @@ import Link from 'next/link';
 import {usePathname} from 'next/navigation';
 
 const L = ({href, children}: {href: string; children: React.ReactNode}) => {
-  const atual = usePathname() === href;
+  const caminho = usePathname();
+  const atual = href === '/' ? caminho === '/' : caminho === href || caminho.startsWith(`${href}/`);
   return <Link href={href} aria-current={atual ? 'page' : undefined}>{children}</Link>;
 };
 const Breve = ({children, fase}: {children: React.ReactNode; fase: string}) => <div className="item">{children} <span>{fase}</span></div>;
@@ -15,7 +16,7 @@ export default function Trilho({children}: {children: React.ReactNode}) {
       <L href="/">Início</L>
       <div className="grupo">Dinheiro</div>
       <L href="/precificacao">Precificação</L>
-      <L href="/financeiro">Financeiro e DRE</L>
+      <L href="/financeiro">Financeiro</L>
       <L href="/taxas">Taxas e planos</L>
       <div className="grupo">Crescimento</div>
       <L href="/campanhas">Campanhas</L>

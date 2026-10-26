@@ -62,8 +62,19 @@ export async function arquivarProduto(fd: FormData) {
 export async function salvarConfig(fd: FormData) {
   await exigir();
   const up = db().prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
-  for (const k of ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao']) up.run(k, num(fd, k));
+  for (const k of ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao', 'meta_mes']) if (fd.has(k)) up.run(k, num(fd, k));
   pronto('/taxas', '/precificacao', '/', '/campanhas');
+}
+
+export async function salvarTaxas(fd: FormData) {
+  await exigir();
+  const up = db().prepare('UPDATE taxas_gateway SET pct = ?, fixo = ? WHERE forma = ? AND parcelas = ?');
+  for (const k of fd.keys()) {
+    const m = k.match(/^pct_(\w+)_(\d+)$/);
+    if (m) up.run(num(fd, k), num(fd, `fixo_${m[1]}_${m[2]}`), m[1], Number(m[2]));
+  }
+  db().prepare("UPDATE config SET valor = 0 WHERE chave = 'gateway_exemplo'").run();
+  pronto('/taxas', '/precificacao', '/financeiro', '/');
 }
 
 export async function salvarFormas(fd: FormData) {
@@ -112,21 +123,27 @@ export async function novoLancamento(fd: FormData) {
   const valor = centavos(fd, 'valor');
   if (valor <= 0) return;
   const d = db();
-  const r = d.prepare('INSERT INTO lancamentos (data, categoria, descricao, valor_centavos, pedidos, origem, criado_por) VALUES (?,?,?,?,?,?,?)')
-    .run(data, categoria, txt(fd, 'descricao'), valor, Math.round(num(fd, 'pedidos')), 'manual', u.email);
+  const r = d.prepare('INSERT INTO lancamentos (data, categoria, descricao, valor_centavos, pedidos, origem, criado_por, pago, recorrente) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(data, categoria, txt(fd, 'descricao'), valor, Math.round(num(fd, 'pedidos')), 'manual', u.email, fd.get('a_pagar') ? 0 : 1, fd.get('recorrente') ? 1 : 0);
   // Gasto copiado do Gerenciador vem sem imposto: lança o imposto da Meta junto, vinculado.
   if (categoria === 'midia' && fd.get('sem_imposto')) {
     const pct = lerConfig().meta_imposto_pct;
-    d.prepare('INSERT INTO lancamentos (data, categoria, descricao, valor_centavos, origem, vinculo, criado_por) VALUES (?,?,?,?,?,?,?)')
-      .run(data, 'imposto_midia', `Imposto Meta ${pct}% sobre ${txt(fd, 'descricao') || 'mídia'}`, Math.round((valor * pct) / 100), 'automatico', Number(r.lastInsertRowid), u.email);
+    d.prepare('INSERT INTO lancamentos (data, categoria, descricao, valor_centavos, origem, vinculo, criado_por, recorrente) VALUES (?,?,?,?,?,?,?,?)')
+      .run(data, 'imposto_midia', `Imposto Meta ${pct}% sobre ${txt(fd, 'descricao') || 'mídia'}`, Math.round((valor * pct) / 100), 'automatico', Number(r.lastInsertRowid), u.email, fd.get('recorrente') ? 1 : 0);
   }
-  pronto('/financeiro', '/');
+  pronto('/financeiro/despesas', '/financeiro', '/');
+}
+
+export async function marcarPago(fd: FormData) {
+  await exigir();
+  db().prepare('UPDATE lancamentos SET pago = 1 WHERE id = ?').run(Number(fd.get('id')));
+  pronto('/financeiro/despesas');
 }
 
 export async function apagarLancamento(fd: FormData) {
   await exigir();
   db().prepare('DELETE FROM lancamentos WHERE id = ?').run(Number(fd.get('id')));
-  pronto('/financeiro', '/');
+  pronto('/financeiro/despesas', '/financeiro', '/');
 }
 
 // ---------- Campanhas ----------
@@ -164,4 +181,18 @@ export async function apagarMemoria(fd: FormData) {
   await exigir();
   db().prepare('DELETE FROM memoria WHERE id = ?').run(Number(fd.get('id')));
   pronto('/memoria', '/');
+}
+
+// ---------- Sincronização (Shopify + Meta) ----------
+
+export async function sincronizar(_: unknown, _fd: FormData) {
+  await exigir();
+  const {sincronizarShopify} = await import('@/lib/shopify');
+  const {sincronizarMeta} = await import('@/lib/meta');
+  const msgs: string[] = [];
+  for (const f of [sincronizarShopify, () => sincronizarMeta(3)]) {
+    try { msgs.push((await f()).msg); } catch (e) { msgs.push(`Erro: ${(e as Error).message}`); }
+  }
+  pronto('/financeiro', '/', '/precificacao');
+  return {msgs};
 }

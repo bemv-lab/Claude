@@ -4,7 +4,8 @@ import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {db} from '../lib/db';
-import {alertas, lerConfig, lerFormas, lerMemoria, lerPlanos, lerProdutos, mesAtual, resumoMes, ultimaImportacao, hoje} from '../lib/dados';
+import {alertas, entrada, lerConfig, lerFormas, lerMemoria, lerPlanos, lerProdutos, mesAtual, periodo, resumoMes, ultimaImportacao, hoje} from '../lib/dados';
+import {dreMes, resumo, ranking} from '../lib/financeiro';
 import {CATEGORIAS, ehCategoria, fmtBRL, fmtNum, fmtPct, precificar, taxaMedia, type Produto} from '../lib/calc';
 
 const srv = new McpServer({name: 'rocco-cerebro', version: '0.1.0'});
@@ -21,10 +22,21 @@ function blocoProdutos() {
 function blocoMes(mes: string) {
   const r = resumoMes(mes);
   return [
-    `Receita ${fmtBRL(r.grupos.receita)} · ${r.pedidos} pedidos · ticket ${fmtBRL(r.ticketMedio)}`,
-    `Deduções ${fmtBRL(r.grupos.deducoes)} · CMV ${fmtBRL(r.grupos.cmv)} · variáveis ${fmtBRL(r.grupos.variaveis)} · marketing ${fmtBRL(r.grupos.marketing)} (imposto Meta ${fmtBRL(r.porCategoria.imposto_midia ?? 0)})`,
-    `Fixas ${fmtBRL(r.grupos.fixas)} · financeiras ${fmtBRL(r.grupos.financeiras)} · outras receitas ${fmtBRL(r.grupos.outras)}`,
-    `Margem de contribuição ${fmtBRL(r.margemContribuicao)} · resultado ${fmtBRL(r.resultado)} (${fmtPct(r.margemLiquidaPct)}) · ROAS real ${r.roasReal === null ? '–' : fmtNum(r.roasReal)}`,
+    `Receita paga ${fmtBRL(r.receita)} · ${r.pagos.n} pedidos pagos · ${r.pendentes.n} pendentes · ticket ${fmtBRL(r.ticket)} · conversão ${fmtPct(r.conversao)}`,
+    `Custo dos produtos ${fmtBRL(r.custo)}${r.semCusto ? ` (${r.semCusto} produto(s) sem custo cadastrado)` : ''} · anúncios ${fmtBRL(r.ads.total)} (Meta ${fmtBRL(r.ads.facebook)})`,
+    `Checkout ${fmtBRL(r.checkout)} · gateway ${fmtBRL(r.gateway)} · DAS ${fmtBRL(r.imposto)}${r.impostoEstimado ? ' (estimado)' : ''} · imposto Meta ${fmtBRL(r.impostoMeta)}`,
+    `Lucro ${fmtBRL(r.lucro)} (${fmtPct(r.margem)}) · ROI ${r.roi === null ? '–' : fmtPct(r.roi)} · CPA ${r.cpa === null ? '–' : fmtBRL(r.cpa)} · despesas lançadas ${fmtBRL(r.adicionais)}`,
+  ].join('\n');
+}
+
+function blocoDre(mes: string) {
+  const [a, m] = mes.split('-').map(Number);
+  const fim = `${mes}-${String(new Date(Date.UTC(a, m, 0)).getUTCDate()).padStart(2, '0')}`;
+  const d = dreMes(entrada(`${mes}-01`, fim), mes);
+  return [
+    `DRE ${mes} (data de pagamento). Receitas ${fmtBRL(d.totalReceitas)}: ${Object.entries(d.receitas).filter(([, v]) => v).map(([k, v]) => `${k} ${fmtBRL(v)}`).join(', ')}`,
+    ...d.despesas.map(([n, v]) => `- ${n}: ${fmtBRL(v)}`),
+    `Lucro ${fmtBRL(d.lucro)} · margem ${fmtPct(d.margem)} · ROI ${d.roi === null ? '–' : fmtPct(d.roi)}`,
   ].join('\n');
 }
 
@@ -38,7 +50,7 @@ srv.registerTool('contexto_rocco', {
   return texto([
     `# Cérebro Rocco · ${hoje()}`,
     `## Taxas`,
-    `DAS ${fmtPct(cfg.das_pct)} · plataforma ${fmtPct(cfg.plataforma_pct)} · imposto Meta ${fmtPct(cfg.meta_imposto_pct)} sobre o gasto do Gerenciador · taxa média de pagamento ${fmtPct(taxa)}${cfg.taxas_exemplo ? ' (TAXAS DE EXEMPLO, ainda não confirmadas)' : ''}`,
+    `DAS ${fmtPct(cfg.das_pct)} · checkout ${fmtPct(cfg.plataforma_pct)} · imposto Meta ${fmtPct(cfg.meta_imposto_pct)} sobre o gasto do Gerenciador · taxa média de pagamento ${fmtPct(taxa)}${cfg.gateway_exemplo ? ' (taxas de cartão por parcela ainda a conferir)' : ''}`,
     formas.map((f) => `- ${f.nome}: taxa ${fmtPct(f.taxa_pct)}, ${fmtPct(f.mix_pct)} dos pedidos`).join('\n'),
     `## Produtos`, blocoProdutos() || '(nenhum)',
     `## Mês ${mes}`, blocoMes(mes),
@@ -90,7 +102,24 @@ srv.registerTool('precificar', {
 srv.registerTool('dre', {
   description: 'DRE de um mês (Simples Nacional, comércio) a partir dos lançamentos.',
   inputSchema: {mes: z.string().regex(/^\d{4}-\d{2}$/).optional().describe('AAAA-MM; padrão: mês atual')},
-}, async ({mes}) => texto(blocoMes(mes ?? mesAtual())));
+}, async ({mes}) => texto(blocoDre(mes ?? mesAtual())));
+
+srv.registerTool('financeiro', {
+  description: 'Números do período como no dashboard financeiro (pedidos da Shopify + anúncios da Meta + despesas): receita, custos, taxas, DAS, imposto Meta, lucro, CPA, ROI e o ranking de produtos.',
+  inputSchema: {periodo: z.enum(['hoje', 'ontem', '7d', '30d', 'mes', 'mes-passado']).default('7d'), de: z.string().optional(), ate: z.string().optional()},
+}, async ({periodo: p, de, ate}) => {
+  const per = periodo({p, de, ate});
+  const e = entrada(per.ini, per.fim);
+  const r = resumo(e, per.ini, per.fim);
+  const rk = ranking(r, e).slice(0, 10);
+  return texto([
+    `Período ${per.ini} a ${per.fim}`,
+    `Receita ${fmtBRL(r.receita)} · ${r.pagos.n} pagos · ${r.pendentes.n} pendentes (${fmtBRL(r.pendentes.v)}) · conversão ${fmtPct(r.conversao)} · ticket ${fmtBRL(r.ticket)}`,
+    `Custo ${fmtBRL(r.custo)} · anúncios ${fmtBRL(r.ads.total)} · checkout ${fmtBRL(r.checkout)} · gateway ${fmtBRL(r.gateway)} · DAS ${fmtBRL(r.imposto)} · imposto Meta ${fmtBRL(r.impostoMeta)}`,
+    `Lucro ${fmtBRL(r.lucro)} (${fmtPct(r.margem)}) · CPA ${r.cpa === null ? '–' : fmtBRL(r.cpa)} · ROAS ${r.roas === null ? '–' : fmtNum(r.roas)} · ROI ${r.roi === null ? '–' : fmtPct(r.roi)}`,
+    'Produtos (lucro):', ...rk.map((x) => `- ${x.nome}: receita ${fmtBRL(x.receita)}, custo ${x.semCusto ? 'SEM CUSTO' : fmtBRL(x.custo)}, marketing ${fmtBRL(x.marketing)}, lucro ${fmtBRL(x.lucro)} (${fmtPct(x.margem)})`),
+  ].join('\n'));
+});
 
 srv.registerTool('lancar', {
   description: `Registra um lançamento financeiro. Contas: ${Object.entries(CATEGORIAS).map(([k, c]) => `${k} (${c.nome})`).join(', ')}. Confirme valores com a pessoa antes de lançar.`,

@@ -9,7 +9,9 @@
     "usuario": "tsx scripts/usuario.ts",
     "mcp": "tsx mcp/server.ts",
     "testar": "tsx scripts/testar.ts",
-    "backup": "tsx scripts/backup.ts"
+    "backup": "tsx scripts/backup.ts",
+    "sincronizar": "tsx scripts/sincronizar.ts",
+    "conferir": "tsx scripts/conferir.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",

@@ -51,6 +51,63 @@ function migrar(d: DatabaseSync) {
   `);
   const vazio = (d.prepare('SELECT count(*) n FROM config').get() as {n: number}).n === 0;
   if (vazio) semear(d);
+  const versao = (d.prepare('PRAGMA user_version').get() as {user_version: number}).user_version;
+  if (versao < 2) migrarV2(d);
+}
+
+// v2: módulo financeiro no estilo Único Drop, calculado a partir dos pedidos e dos anúncios.
+function migrarV2(d: DatabaseSync) {
+  d.exec(`
+  BEGIN;
+  CREATE TABLE IF NOT EXISTS pedidos (
+    id TEXT PRIMARY KEY, numero TEXT NOT NULL, origem TEXT NOT NULL DEFAULT 'shopify',
+    criado_em TEXT NOT NULL, dia TEXT NOT NULL, hora INTEGER NOT NULL, pago_em TEXT, dia_pago TEXT,
+    status TEXT NOT NULL, forma TEXT NOT NULL, parcelas INTEGER NOT NULL DEFAULT 1, bandeira TEXT NOT NULL DEFAULT '',
+    total REAL NOT NULL, subtotal REAL NOT NULL DEFAULT 0, frete REAL NOT NULL DEFAULT 0, desconto REAL NOT NULL DEFAULT 0,
+    reembolsado REAL NOT NULL DEFAULT 0, cupom TEXT NOT NULL DEFAULT '', uf TEXT NOT NULL DEFAULT '',
+    cliente_id TEXT NOT NULL DEFAULT '', utm_source TEXT NOT NULL DEFAULT '', utm_campaign TEXT NOT NULL DEFAULT '', utm_content TEXT NOT NULL DEFAULT '', utm_term TEXT NOT NULL DEFAULT '',
+    atualizado_em TEXT NOT NULL DEFAULT (datetime('now')));
+  CREATE INDEX IF NOT EXISTS pedidos_dia ON pedidos(dia);
+  CREATE INDEX IF NOT EXISTS pedidos_dia_pago ON pedidos(dia_pago);
+  CREATE TABLE IF NOT EXISTS pedido_itens (
+    pedido_id TEXT NOT NULL REFERENCES pedidos(id) ON DELETE CASCADE, produto_ext TEXT NOT NULL, nome TEXT NOT NULL,
+    quantidade INTEGER NOT NULL, preco REAL NOT NULL);
+  CREATE INDEX IF NOT EXISTS itens_pedido ON pedido_itens(pedido_id);
+  CREATE TABLE IF NOT EXISTS ads_dia (
+    data TEXT NOT NULL, plataforma TEXT NOT NULL, anuncio_id TEXT NOT NULL, anuncio TEXT NOT NULL DEFAULT '',
+    campanha_id TEXT NOT NULL DEFAULT '', campanha TEXT NOT NULL DEFAULT '', conjunto_id TEXT NOT NULL DEFAULT '', conjunto TEXT NOT NULL DEFAULT '',
+    gasto REAL NOT NULL DEFAULT 0, impressoes INTEGER NOT NULL DEFAULT 0, cliques INTEGER NOT NULL DEFAULT 0,
+    views INTEGER NOT NULL DEFAULT 0, carrinho INTEGER NOT NULL DEFAULT 0, checkout INTEGER NOT NULL DEFAULT 0,
+    compras INTEGER NOT NULL DEFAULT 0, valor_compras REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (data, plataforma, anuncio_id));
+  CREATE TABLE IF NOT EXISTS taxas_gateway (
+    forma TEXT NOT NULL, parcelas INTEGER NOT NULL, pct REAL NOT NULL DEFAULT 0, fixo REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (forma, parcelas));
+  CREATE TABLE IF NOT EXISTS estado (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
+  ALTER TABLE produtos ADD COLUMN shopify_id TEXT;
+  ALTER TABLE lancamentos ADD COLUMN pago INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE lancamentos ADD COLUMN recorrente INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE produtos ADD COLUMN imagem TEXT NOT NULL DEFAULT '';
+  CREATE UNIQUE INDEX IF NOT EXISTS produtos_shopify ON produtos(shopify_id);
+  INSERT OR IGNORE INTO config (chave, valor) VALUES ('meta_mes', 50000), ('gateway_exemplo', 1);
+  PRAGMA user_version = 2;
+  COMMIT;
+  `);
+  // Taxas da Cartpanda Pay como estão no Único Drop (26/10/2026): Pix 0,99%, boleto R$ 3,50 e a tabela por parcela,
+  // lida aqui como taxa TOTAL de cada parcela (1x = 5,99%). O Único Drop soma 5,99% + tabela; falta confirmar com a Cartpanda.
+  // 7x a 12x estão em 5,99% no Único Drop (parecem não configuradas): ficam marcadas para conferir.
+  const t = d.prepare('INSERT OR IGNORE INTO taxas_gateway (forma, parcelas, pct, fixo) VALUES (?, ?, ?, ?)');
+  t.run('pix', 1, 0.99, 0);
+  t.run('boleto', 1, 0, 3.5);
+  const tabela = [5.99, 7.24, 9.34, 11.16, 12.61, 14.11, 5.99, 5.99, 5.99, 5.99, 5.99, 5.99];
+  tabela.forEach((pct, i) => t.run('cartao', i + 1, pct, 0));
+  const mem = d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')");
+  for (const texto of [
+    'Conferência com o Único Drop (26/10/2026): o Cérebro reproduz a receita de outubro (R$ 24.603,15: cartão 9.196,74, Pix 15.166,51, boleto 239,90), o checkout 2,5% (R$ 615,08), a conversão do Pix dia a dia e o lucro de 26/10 (R$ 7,71) quando usa as mesmas configurações.',
+    'No Único Drop, "Imposto % sobre faturamento" e "Imposto sobre Facebook/Meta Ads" estão em 0%: o lucro de lá não desconta DAS nem o imposto da Meta (13,83%). Em outubro isso infla o lucro em ~R$ 1.500.',
+    'Taxa do cartão: o Único Drop soma 5,99% + a tabela de parcelas (6x = 20,10%). A tabela tem 1x = 5,99%, então parece ser a taxa total; o Cérebro usa a tabela como total. 7x a 12x estão em 5,99% lá (parecem não configuradas). Conferir com o relatório da Cartpanda.',
+    'Conta de anúncios a considerar: só a C01 - Lucas Oliveira (RK), id 735313220351102. As contas C01 a C05 da Gabrielle não tiveram gasto em outubro.',
+  ]) mem.run(texto);
 }
 
 // Valores iniciais. Os de pagamento e produto são de exemplo e ficam marcados na tela até serem trocados.

@@ -2,6 +2,10 @@
 import assert from 'node:assert/strict';
 import {precificar, precoParaMargem, avaliarAnuncio, dre, taxaMedia, lerNumero, type Produto, type Config, type Forma} from '../lib/calc';
 import {lerExportMeta} from '../lib/csv';
+import {mapearPedido, localBR, type PedidoShopify} from '../lib/shopify';
+import {mapearInsights} from '../lib/meta';
+import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, type Entrada} from '../lib/financeiro';
+import {recorrencias} from '../lib/dados';
 
 const cfg: Config = {das_pct: 4, plataforma_pct: 2.5, meta_imposto_pct: 13.83, cpa_alvo_padrao: 55};
 const formas: Forma[] = [
@@ -54,5 +58,59 @@ assert.equal(m.ads[1].gasto, 82.15);
 assert.equal(m.periodo, '2026-10-01 a 2026-10-07');
 const csvBR = 'Nome do anúncio;Valor usado (BRL);Compras;Valor de conversão de compras\nX;1.234,50;2;394,00\n';
 assert.equal(lerExportMeta(csvBR).ads[0].gasto, 1234.5);
+
+// ---------- Módulo financeiro (pedidos sintéticos, no formato da Shopify + Cartpanda) ----------
+const din = (v: number) => ({shopMoney: {amount: String(v)}});
+function ped(id: string, criado: string, status: string, tipo: string, total: number, extra: Partial<PedidoShopify> = {}, attrs: Record<string, string> = {}, itens: [string, number, number][] = [['111', 1, total]]): PedidoShopify {
+  return {
+    id: `gid://shopify/Order/${id}`, name: `#${id}`, createdAt: criado, cancelledAt: null, displayFinancialStatus: status, paymentGatewayNames: [`cartpanda_${tipo}`],
+    currentTotalPriceSet: din(status === 'VOIDED' ? 0 : total), totalPriceSet: din(total), subtotalPriceSet: din(total), totalShippingPriceSet: din(0), totalDiscountsSet: din(0), totalRefundedSet: din(0),
+    discountCodes: [], shippingAddress: {provinceCode: 'SP'}, customer: {id: 'gid://shopify/Customer/9'},
+    customAttributes: Object.entries({shipping_payment_type: tipo, ...attrs}).map(([key, value]) => ({key, value})),
+    lineItems: {nodes: itens.map(([p, q, pr]) => ({name: `Produto ${p} - 1 unidade`, quantity: q, product: {id: `gid://shopify/Product/${p}`}, originalUnitPriceSet: din(pr)}))},
+    transactions: status === 'PAID' ? [{kind: 'CAPTURE', status: 'SUCCESS', processedAt: criado}] : [], ...extra,
+  };
+}
+assert.deepEqual(localBR('2026-10-27T02:30:00Z'), {dia: '2026-10-26', hora: 23});
+const brutos = [
+  ped('1', '2026-10-26T13:00:00Z', 'PAID', 'cc', 215.91, {}, {aditional_info_parcels_number: '6', 'Bandeira do cartão': 'Mastercard', utm_content: 'AD1'}),
+  ped('2', '2026-10-26T10:20:00Z', 'PAID', 'pix', 239.9, {}, {utm_content: 'AD1'}, [['111', 1, 239.9]]),
+  ped('3', '2026-10-25T15:00:00Z', 'PENDING', 'pix', 239.9),
+  ped('4', '2026-10-25T16:00:00Z', 'VOIDED', 'pix', 479.8),
+  ped('5', '2026-10-25T19:00:00Z', 'PAID', 'boleto', 339.8, {}, {}, [['111', 1, 239.9], ['222', 1, 99.9]]),
+];
+const mp = brutos.map(mapearPedido);
+assert.equal(mp[0].pedido.forma, 'cartao'); assert.equal(mp[0].pedido.parcelas, 6); assert.equal(mp[0].pedido.bandeira, 'mastercard');
+assert.equal(mp[3].pedido.status, 'cancelado'); assert.equal(mp[3].pedido.total, 479.8, 'cancelado usa o valor gerado, não o atual (0)');
+assert.equal(mp[2].pedido.status, 'pendente'); assert.equal(mp[2].pedido.dia_pago, null);
+const taxasG = [{forma: 'pix', parcelas: 1, pct: 0.99, fixo: 0}, {forma: 'boleto', parcelas: 1, pct: 0, fixo: 3.5}, {forma: 'cartao', parcelas: 1, pct: 5.99, fixo: 0}, {forma: 'cartao', parcelas: 6, pct: 14.11, fixo: 0}];
+perto(taxaDoPedido(mp[0].pedido, taxasG), 215.91 * 0.1411);
+perto(taxaDoPedido(mp[4].pedido, taxasG), 3.5);
+const ent: Entrada = {
+  pedidos: mp.map((x) => x.pedido), itens: mp.flatMap((x) => x.itens),
+  ads: [mapearInsights({date_start: '2026-10-26', ad_id: 'AD1', spend: '208.95', impressions: '6478', inline_link_clicks: '146', actions: [{action_type: 'landing_page_view', value: '140'}, {action_type: 'add_to_cart', value: '4'}]})],
+  lancamentos: [{id: 1, data: '2026-10-05', categoria: 'contador', descricao: '', valor_centavos: 30000, pedidos: 0, origem: ''}],
+  custos: new Map([['111', 90.99]]), nomes: new Map([['111', 'Livro Fazenda']]), taxas: taxasG,
+  cfg: {checkout_pct: 2.5, das_pct: 4, meta_imposto_pct: 13.83},
+};
+const h = resumo(ent, '2026-10-26', '2026-10-26');
+perto(h.receita, 455.81); assert.equal(h.pagos.n, 2); perto(h.custo, 181.98); perto(h.checkout, 11.395);
+perto(h.gateway, 215.91 * 0.1411 + 239.9 * 0.0099); perto(h.imposto, 455.81 * 0.04); perto(h.impostoMeta, 208.95 * 0.1383);
+perto(h.lucro, 455.81 - 181.98 - 208.95 - h.checkout - h.gateway - h.imposto - h.impostoMeta);
+perto(h.cpa!, 104.475); perto(h.ticket, 227.905); assert.equal(h.funil.views, 140);
+// Lucro "como no Único Drop" (DAS e imposto Meta em 0%, cartão 5,99% + tabela): R$ 7,71 no print de 26/10.
+const ud = resumo({...ent, cfg: {...ent.cfg, das_pct: 0, meta_imposto_pct: 0}, taxas: taxasG.map((t) => t.forma === 'cartao' && t.parcelas === 6 ? {...t, pct: 20.10} : t)}, '2026-10-26', '2026-10-26');
+perto(ud.lucro, 7.71, 0.02);
+const sem = resumo(ent, '2026-10-25', '2026-10-25');
+assert.equal(sem.semCusto, 1, 'produto 222 sem custo'); assert.equal(sem.cancelados.n, 1); assert.equal(sem.pendentes.n, 1);
+const conv = conversaoDiaria(ent, '2026-10-25', '2026-10-25', 'pix').total;
+assert.equal(conv.naoPago.n, 2); perto(conv.naoPago.v, 719.7);
+const dreOut = dreMes(ent, '2026-10');
+perto(dreOut.totalReceitas, 455.81 + 339.8); perto(dreOut.despesas.find(([n]) => n === 'Despesas fixas')![1], 300);
+const rk = ranking(resumo(ent, '2026-10-25', '2026-10-26'), ent);
+perto(rk.reduce((s2, p) => s2 + p.marketing, 0), 208.95 * 1.1383, 0.05);
+assert.ok(rk.find((p) => p.produto === '222')!.marketing < 1, 'anúncio AD1 trouxe só o produto 111');
+const rec = recorrencias([{id: 9, data: '2026-01-31', categoria: 'assinaturas', descricao: 'Shopify', valor_centavos: 100, pedidos: 0, origem: '', recorrente: 1}], '2026-02-01', '2026-04-30');
+assert.deepEqual(rec.map((r) => r.data), ['2026-02-28', '2026-03-31', '2026-04-30']);
 
 console.log('Todos os testes passaram.');

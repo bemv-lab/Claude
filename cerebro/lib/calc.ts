@@ -19,6 +19,8 @@ export type Produto = {
   outros: number;
   cpa_alvo: number;
   exemplo: number;
+  shopify_id?: string | null;
+  imagem?: string;
 };
 
 /** Taxa média de pagamento, ponderada pelo que os clientes escolhem de fato. */
@@ -119,7 +121,7 @@ export const CATEGORIAS = {
 export type Categoria = keyof typeof CATEGORIAS;
 export const ehCategoria = (c: string): c is Categoria => c in CATEGORIAS;
 
-export type Lancamento = {id: number; data: string; categoria: string; descricao: string; valor_centavos: number; pedidos: number; origem: string};
+export type Lancamento = {id: number; data: string; categoria: string; descricao: string; valor_centavos: number; pedidos: number; origem: string; pago?: number; recorrente?: number};
 
 export function dre(lancs: Lancamento[]) {
   const g: Record<string, number> = {receita: 0, outras: 0, deducoes: 0, cmv: 0, variaveis: 0, marketing: 0, fixas: 0, financeiras: 0};

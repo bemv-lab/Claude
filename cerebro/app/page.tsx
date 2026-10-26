@@ -20,8 +20,7 @@ export default async function Inicio() {
   const cfg = lerConfig();
   const avisos = alertas(mes);
   const memorias = lerMemoria('', 4);
-  const vFat = variacao(r.grupos.receita, ant.grupos.receita);
-  const impostoMeta = r.porCategoria.imposto_midia ?? 0;
+  const vFat = variacao(r.receita, ant.receita);
   const hora = Number(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false}));
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
 
@@ -32,17 +31,17 @@ export default async function Inicio() {
           <div className="olho">{nomeMes(mes)}</div>
           <h1>{saudacao}, {u?.nome?.split(' ')[0]}. <b>Lucro real</b> do mês.</h1>
         </div>
-        <Link className="botao leve" href="/financeiro">Lançar movimento</Link>
+        <Link className="botao leve" href="/financeiro?p=mes">Abrir financeiro</Link>
       </div>
 
       <div className="kpis">
-        <div className="kpi"><span className="rot">Faturamento</span><span className="val">{fmtBRL(r.grupos.receita)}</span>
+        <div className="kpi"><span className="rot">Receita paga no mês</span><span className="val">{fmtBRL(r.receita)}</span>
           <span className={`var ${vFat === null ? '' : vFat >= 0 ? 'sobe' : 'desce'}`}>{vFat === null ? 'sem mês anterior' : `${vFat >= 0 ? '+' : ''}${fmtNum(vFat, 1)}% vs mês anterior`}</span></div>
-        <div className="kpi"><span className="rot">Pedidos · ticket médio</span><span className="val">{r.pedidos} · {fmtBRL(r.ticketMedio)}</span><span className="var">só vendas lançadas com nº de pedidos</span></div>
-        <div className="kpi"><span className="rot">Resultado líquido</span><span className={`val ${r.resultado < 0 ? 'desce' : ''}`}>{fmtBRL(r.resultado)}</span>
-          <span className="var">{r.grupos.receita ? `${fmtPct(r.margemLiquidaPct)} da receita` : 'sem receita no mês'}</span></div>
-        <div className="kpi"><span className="rot">ROAS real (com imposto Meta)</span><span className="val">{r.roasReal === null ? '–' : fmtNum(r.roasReal)}</span>
-          <span className={`var ${impostoMeta ? 'desce' : ''}`}>{impostoMeta ? `${fmtBRL(impostoMeta)} de imposto Meta` : 'sem mídia lançada'}</span></div>
+        <div className="kpi"><span className="rot">Pedidos pagos · ticket médio</span><span className="val">{r.pagos.n} · {fmtBRL(r.ticket)}</span><span className="var">{r.pendentes.n} pendentes · {fmtPct(r.conversao)} de conversão</span></div>
+        <div className="kpi"><span className="rot">Lucro líquido</span><span className={`val ${r.lucro < 0 ? 'desce' : ''}`}>{fmtBRL(r.lucro)}</span>
+          <span className="var">{r.receita ? `${fmtPct(r.margem)} da receita, já com DAS e imposto Meta` : 'sem receita no mês'}</span></div>
+        <div className="kpi"><span className="rot">ROAS real (com imposto Meta)</span><span className="val">{r.ads.total ? fmtNum(r.receita / (r.ads.total + r.impostoMeta)) : '–'}</span>
+          <span className={`var ${r.impostoMeta ? 'desce' : ''}`}>{r.impostoMeta ? `${fmtBRL(r.impostoMeta)} de imposto Meta` : 'sem anúncios sincronizados'}</span></div>
       </div>
 
       <div className="duas">

@@ -51,3 +51,14 @@ Desde 01/01/2026 a Meta repassa PIS/Cofins (9,25%) e ISS (2,9%): no pós-pago, R
 Feito na v0.1: login, Início, Precificação, Financeiro e DRE, Taxas e planos com gatilhos, Campanhas (importação do CSV da Meta + esteira), Memória, conector MCP com 7 ferramentas, Docker + túnel da Cloudflare, backup. Testado: contas (`npm run testar`), navegador de ponta a ponta e o conector MCP. Não testado: o build da imagem Docker (sem Docker nesta sessão).
 
 Próximos passos da fase 0/1: importar o Único Drop, conector MCP remoto (claude.ai e celular), coleta automática da Meta pela API e da Cartpanda, lançamentos automáticos de vendas.
+
+## Estado (26/10/2026, noite): módulo financeiro v0.2
+
+Feito: pedidos da Shopify (com forma, parcelas, bandeira, cupom, UF e UTM, sem dados pessoais), anúncios da Meta por dia e por anúncio (várias contas), taxas da Cartpanda Pay por parcela, motor de cálculo com testes, telas Financeiro, Detalhado, Ranking, Conversão, DRE e Despesas, conector MCP com a ferramenta `financeiro`.
+Conferido com o Único Drop (prints de 26/10): receita de outubro por forma, checkout 2,5%, conversão do Pix dia a dia e lucro de 26/10 (com as configurações dele).
+
+Pendências do módulo:
+- Relatórios da Cartpanda para conferir as taxas reais (o Único Drop soma 5,99% + tabela de parcelas; 7x a 12x parecem não configuradas).
+- Custo de cada produto (só o Livro Sensorial Fazenda, R$ 90,99, foi deduzido do Único Drop).
+- Chaves da Shopify e da Meta no servidor (conta de anúncios: C01 - Lucas Oliveira (RK)).
+- Próximo módulo sugerido: Clientes VIP e Matriz RFM (os prints já chegaram; o Cérebro já guarda o id do cliente da Shopify).
