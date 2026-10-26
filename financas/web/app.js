@@ -1091,6 +1091,8 @@ const MANUAL = [
   ["Importar", `
     <dl>
       <dt>Arquivos aceitos</dt><dd>OFX, CSV e Excel dos bancos, PDF do Itaú e a fatura do cartão Inter. Arrastem na tela ou coloquem em <code>entrada/&lt;conta&gt;/</code>.</dd>
+      <dt>Fatura do cartão Inter</dt><dd>Salvem o CSV com o vencimento no nome: <code>fatura-inter-venc-AAAA-MM-DD.csv</code> (ex.: <code>fatura-inter-venc-2026-11-20.csv</code>). Assim cada compra conta no mês da fatura certa. Sem isso, o sistema usa o dia de fechamento e pode errar compras feitas perto dele.</dd>
+      <dt>Extrato do Itaú (PDF)</dt><dd>Precisa instalar um leitor uma vez: <code>py -m pip install pdfplumber</code> no Windows ou <code>python3 -m pip install pdfplumber</code> no Mac.</dd>
       <dt>Repetidos</dt><dd>Lançamento que já existe não entra de novo.</dd>
       <dt>Arquivo desconhecido</dt><dd>O sistema pede para mapear as colunas (data, descrição, valor) uma vez e lembra para os próximos.</dd>
     </dl>`],
