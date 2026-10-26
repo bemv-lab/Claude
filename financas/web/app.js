@@ -983,6 +983,11 @@ TELAS.flash = async (el) => {
         <label class="campo">Data do saldo<input type="date" name="data" value="${esc(f.data_inicial || S.hoje)}"></label>
         <button class="btn btn-primario">Salvar saldo</button>
       </form>
+      <form class="controles" id="f-recarga" style="margin-top:14px">
+        <label class="campo">Nova recarga (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
+        <label class="campo">Data da recarga<input type="date" name="data" value="${esc(S.hoje)}"></label>
+        <button class="btn btn-primario">Registrar recarga</button>
+      </form>
       <div class="grade g3" style="margin-top:14px">
         <div class="estat"><span class="rotulo">Saldo atual</span><span class="valor-grande num">${f.saldo === null ? "—" : brl(f.saldo)}</span></div>
         <div class="estat"><span class="rotulo">Por dia</span><span class="valor-grande num">${brl(f.por_dia)}</span><span class="mudo" style="font-size:13px">nos ${f.dias_restantes} dias que faltam no mês</span></div>
@@ -998,6 +1003,8 @@ TELAS.flash = async (el) => {
     <p class="nota">O Flash não entra no controle do mês: não soma em entradas, saídas, orçamento nem no plano.</p>
   </div>`;
   $("#f-flash", el).addEventListener("submit", salvarSaldo);
+  $("#f-recarga", el).addEventListener("submit", async (e) => { e.preventDefault(); const v = form(e.target);
+    await api("/api/flash/recarga", { metodo: "POST", corpo: { valor: v.valor, data: v.data } }); toast("Recarga registrada"); TELAS.flash(el); });
 };
 
 /* ------------------------------------------------------------------ Dívidas */

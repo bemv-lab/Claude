@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -357,6 +358,26 @@ def r_flash(con, q, corpo):
     return {"existe": True, "saldo": saldo, "saldo_informado": int(float(ini or 0)), "data_inicial": data_ini,
             "itens": itens, "gastos_mes": gastos,
             "dias_restantes": dias, "por_dia": por_dia, "por_semana": min(saldo or 0, por_dia * 7)}
+
+
+@rota("POST", "/api/flash/recarga")
+def r_flash_recarga(con, q, corpo):
+    """Registra uma recarga do Flash: entra como crédito no extrato da conta do benefício."""
+    valor = _centavos(corpo.get("valor"))
+    if not valor or valor <= 0:
+        raise Erro("Informe o valor da recarga")
+    data = corpo.get("data") or hoje().isoformat()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data):
+        raise Erro("Data inválida")
+    conta = con.execute("SELECT id FROM contas WHERE tipo = 'beneficio' ORDER BY id LIMIT 1").fetchone()
+    if not conta:
+        raise Erro("Conta do Flash não cadastrada")
+    h = hashlib.sha1(f"recarga|{conta['id']}|{data}|{valor}|{agora_iso()}".encode()).hexdigest()
+    con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, tipo, classificacao, hash, mes_ref, criado_em)
+                   VALUES (?,?,?,?,?, 'normal', 'manual', ?, ?, ?)""",
+                (conta["id"], data, "Recarga do Flash", "RECARGA FLASH", valor, h, data[:7], agora_iso()))
+    con.commit()
+    return {"ok": True}
 
 
 @rota("POST", "/api/flash/saldo")
