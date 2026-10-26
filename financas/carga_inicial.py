@@ -160,6 +160,22 @@ def aplicar_rendas(con, aj: dict) -> int:
     return n
 
 
+def aplicar_recargas(con, aj: dict) -> int:
+    """Recargas do Flash informadas nos ajustes (podem ser apagadas de lá quando não forem mais necessárias)."""
+    n = 0
+    conta = con.execute("SELECT id FROM contas WHERE tipo = 'beneficio' ORDER BY id LIMIT 1").fetchone()
+    for r in aj.get("recargas_flash", []):
+        h = hashlib.sha1(f"recarga-ajuste|{r['data']}|{r['valor']}|{r.get('observacao','')}".encode()).hexdigest()
+        if conta and not con.execute("SELECT 1 FROM transacoes WHERE hash = ?", (h,)).fetchone():
+            con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, tipo, classificacao, hash,
+                           mes_ref, observacao, criado_em) VALUES (?,?,?,?,?, 'normal', 'manual', ?, ?, ?, ?)""",
+                        (conta["id"], r["data"], "Recarga do Flash", "RECARGA FLASH", r["valor"], h, r["data"][:7],
+                         r.get("observacao"), agora_iso()))
+            n += 1
+    con.commit()
+    return n
+
+
 def aplicar_competencias(con, aj: dict) -> int:
     """Lançamentos que contam em outro mês (ex.: salário de outubro pago em 28/09)."""
     n = 0
@@ -217,6 +233,7 @@ def main() -> int:
         r["duvidas"] = con.execute("SELECT COUNT(*) FROM transacoes WHERE classificacao='duvida'").fetchone()[0]
     aplicar_competencias(con, aj)
     aplicar_rendas(con, aj)
+    aplicar_recargas(con, aj)
     aplicar_previstos(con, aj)
     if aj.get("orcamento") == "realista":
         from nucleo import alertas, planejamento
