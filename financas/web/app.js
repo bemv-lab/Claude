@@ -973,10 +973,22 @@ TELAS.flash = async (el) => {
   const f = await api("/api/flash");
   if (!f.existe) { el.innerHTML = `<div class="cartao vazio"><h3>Sem extrato do Flash</h3><p>Importem o extrato do Flash na pasta flash.</p></div>`; return; }
   const maxG = Math.max(1, ...f.gastos_mes.map((g) => -g.total));
+  const salvarSaldo = async (e) => { e.preventDefault(); const v = form(e.target);
+    await api("/api/flash/saldo", { metodo: "POST", corpo: { saldo: v.saldo, data: v.data } }); toast("Saldo do Flash salvo"); TELAS.flash(el); };
   el.innerHTML = `<div class="pilha">
-    <div class="cartao estat"><span class="rotulo">Saldo do Flash</span>
-      <span class="valor-grande num">${f.saldo === null ? "—" : brl(f.saldo)}</span>
-      <span class="mudo" style="font-size:13px">${f.saldo === null ? "Enviem o saldo inicial e a data dele." : `saldo de ${dataBR(f.data_inicial)} + compras depois dessa data`}</span></div>
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Saldo do Flash</h2><span class="mudo" style="font-size:13px">${f.saldo === null ? "ainda não informado" : `desde ${dataBR(f.data_inicial)}`}</span></div>
+      <form class="controles" id="f-flash">
+        <label class="campo">Saldo agora (R$)<input name="saldo" inputmode="decimal" value="${paraInput(f.saldo_informado ?? 0)}"></label>
+        <label class="campo">Data do saldo<input type="date" name="data" value="${esc(f.data_inicial || S.hoje)}"></label>
+        <button class="btn btn-primario">Salvar saldo</button>
+      </form>
+      <div class="grade g3" style="margin-top:14px">
+        <div class="estat"><span class="rotulo">Saldo atual</span><span class="valor-grande num">${f.saldo === null ? "—" : brl(f.saldo)}</span></div>
+        <div class="estat"><span class="rotulo">Por dia</span><span class="valor-grande num">${brl(f.por_dia)}</span><span class="mudo" style="font-size:13px">nos ${f.dias_restantes} dias que faltam no mês</span></div>
+        <div class="estat"><span class="rotulo">Por semana</span><span class="valor-grande num">${brl(f.por_semana)}</span><span class="mudo" style="font-size:13px">7 dias seguidos</span></div>
+      </div>
+    </div>
     <div class="grade g2">
       <div class="cartao"><div class="cartao-cab"><h2>Gastos do mês</h2></div>
         ${f.gastos_mes.length ? `<div class="barras">${f.gastos_mes.map((g) => `<div class="barra-linha"><span>${esc(g.nome)}</span><span class="num">${brl(g.total)}</span><div class="trilho"><i style="width:${(-g.total / maxG) * 100}%"></i></div></div>`).join("")}</div>` : `<p class="mudo">Nenhum gasto neste mês.</p>`}</div>
@@ -985,6 +997,7 @@ TELAS.flash = async (el) => {
     </div>
     <p class="nota">O Flash não entra no controle do mês: não soma em entradas, saídas, orçamento nem no plano.</p>
   </div>`;
+  $("#f-flash", el).addEventListener("submit", salvarSaldo);
 };
 
 /* ------------------------------------------------------------------ Dívidas */

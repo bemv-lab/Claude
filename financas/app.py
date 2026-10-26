@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from nucleo import (acoes, alertas, analises, backup, categorizar, db, demo, dividas, importacao, planejamento,
                     previstos, rendas, resumo)
-from nucleo.util import agora_iso, hoje, normalizar, parse_valor
+from nucleo.util import agora_iso, dias_restantes_mes, hoje, normalizar, parse_valor
 
 WEB = Path(__file__).resolve().parent / "web"
 ESTADO = {"modo": "real", "pin": None, "tokens": set()}
@@ -348,11 +348,29 @@ def r_flash(con, q, corpo):
     itens = db.linhas(con.execute("""SELECT t.id, t.data, t.descricao, t.valor, cat.nome AS categoria
         FROM transacoes t LEFT JOIN categorias cat ON cat.id = t.categoria_id WHERE t.conta_id = ?
         ORDER BY t.data DESC, t.id DESC LIMIT 200""", (cid,)))
+    dias = dias_restantes_mes()
+    por_dia = max(0, saldo) // dias if saldo and saldo > 0 and dias else 0
     mes = hoje().strftime("%Y-%m")
     gastos = db.linhas(con.execute("""SELECT COALESCE(cat.nome, 'Sem categoria') AS nome, SUM(t.valor) AS total
         FROM transacoes t LEFT JOIN categorias cat ON cat.id = t.categoria_id
         WHERE t.conta_id = ? AND t.valor < 0 AND t.data LIKE ? GROUP BY 1 ORDER BY 2""", (cid, mes + "%")))
-    return {"existe": True, "saldo": saldo, "data_inicial": data_ini, "itens": itens, "gastos_mes": gastos}
+    return {"existe": True, "saldo": saldo, "saldo_informado": int(float(ini or 0)), "data_inicial": data_ini,
+            "itens": itens, "gastos_mes": gastos,
+            "dias_restantes": dias, "por_dia": por_dia, "por_semana": min(saldo or 0, por_dia * 7)}
+
+
+@rota("POST", "/api/flash/saldo")
+def r_flash_saldo(con, q, corpo):
+    """O casal informa o saldo do cartão quando recarrega: conta a partir dessa data."""
+    valor = _centavos(corpo.get("saldo"))
+    if valor is None:
+        raise Erro("Informe o saldo")
+    data = corpo.get("data") or hoje().isoformat()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data):
+        raise Erro("Data inválida")
+    db.definir_config(con, "flash_saldo_inicial", str(valor))
+    db.definir_config(con, "flash_data_inicial", data)
+    return {"ok": True}
 
 
 @rota("GET", "/api/meses")
