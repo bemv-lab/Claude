@@ -65,3 +65,16 @@ Pendências do módulo:
 - Custo de cada produto (só o Livro Sensorial Fazenda, R$ 90,99, foi deduzido do Único Drop).
 - Chaves da Shopify e da Meta no servidor (conta de anúncios: C01 - Lucas Oliveira (RK)).
 - Próximo módulo sugerido: Clientes VIP e Matriz RFM (os prints já chegaram; o Cérebro já guarda o id do cliente da Shopify).
+
+## Estado (26/10/2026, fim da noite): conta PJ e planos da Cartpanda
+
+- Aba Conta PJ: importa o OFX do banco (sem duplicar), classifica por regras editáveis e leva ao DRE o que é despesa (DAS na competência do mês anterior, contador, assinaturas, pró-labore, tarifas). Repasse da Cartpanda, fornecedor, checkout (Stripe), retiradas, aplicações e anúncios ficam fora do resultado, só para conferência.
+- Conferido no extrato do Inter (28/09 a 26/10, saldo R$ 8.100,10): checkout cobrado pela Stripe = 2,5% das vendas de cada semana; fornecedor "Pix Marketplace" com R$ 90,99 por Livro Fazenda; DAS R$ 829,47 = 4% de R$ 20.736,75 (provavelmente setembro).
+- Plano da Cartpanda: comparação automática (Light × Starter × Premium × Advanced) com as vendas dos últimos 30 dias; o Início avisa quando trocar compensa. Starter vale a partir de R$ 24.402/mês.
+- Cartpanda Pay: aceita até 12x, juros assumidos pela loja até 6x (7x+ a loja paga 5,99%).
+
+Em aberto (Bárbara):
+- O que é a Maree Instituição de Pagamento (42 Pix, 17 devolvidos; valores de R$ 59,99 e R$ 69,99) e o boleto Mercado Pago de R$ 65,09.
+- Retiradas da Bárbara (R$ 1.620,56): pró-labore (despesa) ou distribuição de lucro (fora do resultado)?
+- Fornecedor pago (R$ 5.192,62) × custo calculado (R$ 8.553,06) em outubro: parte paga por outra conta ou pela Maree?
+- Por onde são pagos os anúncios da Meta (não saem da conta PJ)? Se for cartão de sócio, lançar como despesa paga por fora e combinar o reembolso.

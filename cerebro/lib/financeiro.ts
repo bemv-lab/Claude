@@ -263,3 +263,24 @@ export function caixaCartpanda(pagos: Pedido[], taxas: Taxa[], hoje: string, c: 
   }
   return {retida, libera30, aLiberar, porMes: [...porMes.entries()].sort()};
 }
+
+// Planos da Cartpanda (tabela de 26/10/2026): mensalidade + % de checkout sobre as vendas.
+export const PLANOS_CARTPANDA = [
+  {nome: 'Light', mensal: 4.99, pct: 2.5},
+  {nome: 'Starter', mensal: 127, pct: 2},
+  {nome: 'Premium', mensal: 597, pct: 1},
+  {nome: 'Advanced', mensal: 1649, pct: 0.5},
+];
+
+/** Custo de cada plano para um faturamento mensal, o mais barato e a partir de quanto cada um passa a valer a pena. */
+export function compararPlanos(faturamentoMes: number, atual = 'Light') {
+  const custos = PLANOS_CARTPANDA.map((p) => ({...p, custo: p.mensal + (faturamentoMes * p.pct) / 100}));
+  const melhor = custos.reduce((m, p) => (p.custo < m.custo ? p : m), custos[0]);
+  const doAtual = custos.find((p) => p.nome === atual) ?? custos[0];
+  // Faturamento em que o plano seguinte empata com o anterior.
+  const viradas = PLANOS_CARTPANDA.slice(1).map((p, i) => {
+    const ant = PLANOS_CARTPANDA[i];
+    return {de: ant.nome, para: p.nome, faturamento: ((p.mensal - ant.mensal) / (ant.pct - p.pct)) * 100};
+  });
+  return {custos, melhor, economia: doAtual.custo - melhor.custo, viradas};
+}

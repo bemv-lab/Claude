@@ -34,7 +34,7 @@ export default async function Despesas({searchParams}: {searchParams: Promise<{m
 
   return (
     <Casca>
-      <CabecalhoFin aba="despesas" titulo={<>Despesas · <b>{nome}</b></>} sub="Gastos e custos fixos (equipe, aplicativos, contador, impostos pagos). Vendas, custo dos produtos e taxas de pagamento vêm sozinhos dos pedidos." />
+      <CabecalhoFin aba="despesas" titulo={<>Despesas · <b>{nome}</b></>} sub="Gastos pagos por fora da conta PJ (ex.: no cartão de um sócio). O que sai da conta PJ entra sozinho pelo extrato; vendas, custo dos produtos e taxas vêm dos pedidos." />
 
       <div className="cartao">
         <h2>Novo lançamento</h2>

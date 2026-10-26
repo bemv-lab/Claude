@@ -1,12 +1,12 @@
 import Casca from '@/components/Casca';
-import {lerConfig, lerFormas, lerPlanos, lerTaxas, mesAtual, resumoMes} from '@/lib/dados';
-import {fmtPct, taxaMedia} from '@/lib/calc';
+import {lerConfig, lerFormas, lerPlanos, lerTaxas, mesAtual, planoCartpanda, resumoMes} from '@/lib/dados';
+import {fmtBRL, fmtPct, taxaMedia} from '@/lib/calc';
 import {apagarPlano, salvarConfig, salvarPlano, salvarTaxas} from '@/app/acoes';
 
 export const dynamic = 'force-dynamic';
 
 export default function Taxas() {
-  const cfg = lerConfig(), formas = lerFormas(), planos = lerPlanos(), taxas = lerTaxas();
+  const cfg = lerConfig(), formas = lerFormas(), planos = lerPlanos(), taxas = lerTaxas(), pc = planoCartpanda();
   const {taxa, somaMix} = taxaMedia(formas);
   const pedidos = resumoMes(mesAtual()).pagos.n;
   return (
@@ -63,7 +63,7 @@ export default function Taxas() {
             </table></div>
             <div className="acoes"><button type="submit">Salvar taxas</button></div>
           </form>
-          <p className="nota">Conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (5x 18,60%, 6x 20,10%), Pix 0,99% e R$ 0,35 de processamento por pedido. 1x = 5,99% também conferido. Falta provar 7x a 12x (aqui em 20,10% por cautela). O Único Drop deixa 7x+ sem acréscimo e não conta os R$ 0,35.</p>
+          <p className="nota">Conferidas no extrato da Cartpanda (26/10): cartão = 5,99% + acréscimo da parcela (5x 18,60%, 6x 20,10%), Pix 0,99% e R$ 0,35 de processamento por pedido. 1x = 5,99% também conferido. De 7x a 12x a loja paga só 5,99%: a Cartpanda está com parcelas sem juros até 6x, e acima disso o cliente paga os juros. O Único Drop não conta os R$ 0,35.</p>
         </div>
         <div className="cartao">
           <div><h2>Como os clientes pagam de verdade</h2><p className="nota">Pedidos pagos dos últimos 90 dias. É esse mix que a precificação usa.</p></div>
@@ -75,6 +75,18 @@ export default function Taxas() {
           )}
           <p className="nota">Taxa média ponderada: <b>{fmtPct(taxa)}</b> por pedido.</p>
         </div>
+      </div>
+
+      <div className="cartao">
+        <div className="topo"><div><h2>Plano da Cartpanda</h2><p className="nota">Custo de cada plano com as vendas pagas dos últimos 30 dias ({fmtBRL(pc.fat30)})</p></div><span className="tag">atual: {pc.atual}</span></div>
+        <div className="tabela"><table>
+          <thead><tr><th>Plano</th><th className="n">Mensalidade</th><th className="n">Checkout</th><th className="n">Custo no mês</th><th /></tr></thead>
+          <tbody>{pc.cmp.custos.map((p) => (
+            <tr key={p.nome}><td><b>{p.nome}</b></td><td className="n">{fmtBRL(p.mensal)}</td><td className="n">{fmtPct(p.pct)}</td><td className="n">{fmtBRL(p.custo)}</td>
+              <td>{p.nome === pc.cmp.melhor.nome ? <span className="chip g">mais barato</span> : p.nome === pc.atual ? <span className="chip">atual</span> : null}</td></tr>
+          ))}</tbody>
+        </table></div>
+        <p className="nota">Vale trocar a partir de: {pc.cmp.viradas.map((v) => `${v.para} ${fmtBRL(v.faturamento)}/mês`).join(' · ')}. O Início avisa quando a troca compensar ou estiver a 15% de compensar.</p>
       </div>
 
       <div className="cartao">

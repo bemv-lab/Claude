@@ -221,3 +221,6 @@ h3.olho{margin:4px 0 0;font-weight:500}
 nav.abas{margin-bottom:-8px}
 @media (max-width:900px){.grade3,.destaques4{grid-template-columns:1fr 1fr}.faixa6{grid-template-columns:repeat(3,1fr)}.faixa5{grid-template-columns:repeat(3,1fr)}}
 @media (max-width:520px){.grade3,.destaques4{grid-template-columns:1fr}.faixa6{grid-template-columns:1fr 1fr}.partes-linha,.lucro-linha{grid-template-columns:1fr}}
+.classificar{display:flex!important;gap:8px;align-items:center;flex-wrap:wrap}
+.classificar select{width:auto;max-width:220px;padding:6px 8px;font-size:13px}
+.classificar .check{font-size:11px;color:var(--muted)}

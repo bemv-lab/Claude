@@ -2,6 +2,7 @@
 import {DatabaseSync} from 'node:sqlite';
 import {mkdirSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
+import {REGRAS_INICIAIS} from './banco';
 
 const g = globalThis as unknown as {__cerebroDb?: DatabaseSync};
 
@@ -53,6 +54,29 @@ function migrar(d: DatabaseSync) {
   if (vazio) semear(d);
   const versao = (d.prepare('PRAGMA user_version').get() as {user_version: number}).user_version;
   if (versao < 2) migrarV2(d);
+  if (versao < 3) migrarV3(d);
+}
+
+// v3: extrato da conta PJ (OFX) com regras de classificação.
+function migrarV3(d: DatabaseSync) {
+  d.exec(`
+  BEGIN;
+  CREATE TABLE IF NOT EXISTS banco (
+    conta TEXT NOT NULL, fitid TEXT NOT NULL, data TEXT NOT NULL, valor REAL NOT NULL, tipo TEXT NOT NULL DEFAULT '',
+    nome TEXT NOT NULL DEFAULT '', memo TEXT NOT NULL DEFAULT '', categoria TEXT NOT NULL DEFAULT 'a_classificar',
+    regra TEXT NOT NULL DEFAULT 'auto', importado_em TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (conta, fitid));
+  CREATE INDEX IF NOT EXISTS banco_data ON banco(data);
+  CREATE TABLE IF NOT EXISTS banco_regras (padrao TEXT PRIMARY KEY, categoria TEXT NOT NULL, prioridade INTEGER NOT NULL DEFAULT 100);
+  PRAGMA user_version = 3;
+  COMMIT;
+  `);
+  const r = d.prepare('INSERT OR IGNORE INTO banco_regras (padrao, categoria, prioridade) VALUES (?, ?, ?)');
+  REGRAS_INICIAIS.forEach(([p, c], i) => r.run(p, c, 100 + i));
+  d.prepare("UPDATE planos SET plano = 'Light', custo_mensal = 4.99, taxa_pct = 2.5, gatilho_pedidos = 0, proximo = 'Starter (R$ 127 + 2%)', obs = 'Comparação automática por faturamento em Taxas e planos.' WHERE servico = 'Cartpanda' AND plano = 'preencher'").run();
+  const mem = d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')");
+  mem.run('Cartpanda (26/10/2026): plano Light (R$ 4,99/mês + 2,5% de checkout, cobrado toda semana pela Stripe; conferido com as vendas). Starter R$ 127 + 2%, Premium R$ 597 + 1%, Advanced R$ 1.649 + 0,5%. Starter compensa acima de R$ 24.402/mês; Premium acima de R$ 47.000/mês. Cartpanda Pay: parcelas sem juros até 6x (7x+ o cliente paga juros e a loja paga 5,99%).');
+  mem.run(
+    'Extrato Inter PJ (28/09 a 26/10/2026, saldo R$ 8.100,10): entradas da Cartpanda R$ 21.645,07; fornecedor "Pix Marketplace" 59 Pix (31 de R$ 90,99 = custo do Livro Fazenda); DAS R$ 829,47 pago em 26/10; contador RRT R$ 1.499; taxas semanais da Cartpanda pela Stripe; assinaturas por Ebanx, Ebury e Vindi; retiradas da Bárbara R$ 1.620,56; CDB R$ 800. Nenhum pagamento de anúncio da Meta sai desta conta. Em aberto: o que é a Maree (42 Pix, 17 devolvidos) e o boleto Mercado Pago de R$ 65,09.');
 }
 
 // v2: módulo financeiro no estilo Único Drop, calculado a partir dos pedidos e dos anúncios.
@@ -89,18 +113,19 @@ function migrarV2(d: DatabaseSync) {
   ALTER TABLE lancamentos ADD COLUMN recorrente INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE produtos ADD COLUMN imagem TEXT NOT NULL DEFAULT '';
   CREATE UNIQUE INDEX IF NOT EXISTS produtos_shopify ON produtos(shopify_id);
-  INSERT OR IGNORE INTO config (chave, valor) VALUES ('meta_mes', 50000), ('gateway_exemplo', 1), ('reserva_pct', 5), ('reserva_dias', 90), ('prazo_cartao', 2);
+  INSERT OR IGNORE INTO config (chave, valor) VALUES ('meta_mes', 50000), ('gateway_exemplo', 1), ('reserva_pct', 5), ('reserva_dias', 90), ('prazo_cartao', 2), ('parcelas_sem_juros', 6);
   PRAGMA user_version = 2;
   COMMIT;
   `);
   // Taxas da Cartpanda Pay conferidas no extrato da Cartpanda (pagamento de 26/10/2026):
   // cartão = 5,99% + acréscimo da parcela (5x = 18,60%, 6x = 20,10%, como o Único Drop calcula), Pix 0,99%,
   // e R$ 0,35 de processamento por pedido (R$ 4,90 em 14 pedidos), que o Único Drop não conta.
-  // 1x = 5,99% também conferido (pedido 52310804). 7x a 12x = 20,10% (cautela) ainda sem prova: ficam marcadas para conferir.
+  // 1x = 5,99% também conferido (pedido 52310804). A Cartpanda está com "parcelas sem juros: 6": de 7x a 12x o cliente
+  // paga os juros e a loja paga só os 5,99% (como o Único Drop já fazia).
   const t = d.prepare('INSERT OR IGNORE INTO taxas_gateway (forma, parcelas, pct, fixo) VALUES (?, ?, ?, ?)');
   t.run('pix', 1, 0.99, 0.35);
   t.run('boleto', 1, 0, 3.85);
-  const acrescimo = [0, 7.24, 9.34, 11.16, 12.61, 14.11, 14.11, 14.11, 14.11, 14.11, 14.11, 14.11];
+  const acrescimo = [0, 7.24, 9.34, 11.16, 12.61, 14.11, 0, 0, 0, 0, 0, 0];
   acrescimo.forEach((a, i) => t.run('cartao', i + 1, +(5.99 + a).toFixed(2), 0.35));
   const mem = d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')");
   for (const texto of [

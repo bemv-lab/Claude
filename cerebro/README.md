@@ -13,7 +13,8 @@ Calculado pedido a pedido, a partir da Shopify (checkout Cartpanda) e da Meta, e
 | Ranking | lucro por produto, com o marketing atribuído pelo anúncio que trouxe o pedido (UTM) |
 | Conversão | dia a dia, por forma de pagamento |
 | DRE | mês pela data de pagamento, com as despesas lançadas e a diferença para o Único Drop |
-| Despesas | lançamentos com categoria, status (pago ou a pagar) e repetição mensal |
+| Despesas | lançamentos pagos por fora da conta PJ, com status e repetição mensal |
+| Conta PJ | extrato OFX do banco: saldo, fluxo de caixa por categoria, repasses da Cartpanda, fornecedor e checkout conferidos; despesas pagas pela conta entram sozinhas no DRE |
 
 Diferenças para o Único Drop: desconta o DAS e o imposto da Meta (lá estão em 0%); marketing por produto pela UTM; despesas mensais automáticas; o Claude lê tudo pelo conector.
 Conferido com os prints de 26/10/2026: receita de outubro, checkout, conversão do Pix e o lucro do dia batem (`npm run conferir <pasta com JSON da Shopify>`).

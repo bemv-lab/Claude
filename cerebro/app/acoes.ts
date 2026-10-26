@@ -196,3 +196,35 @@ export async function sincronizar(_: unknown, _fd: FormData) {
   pronto('/financeiro', '/', '/precificacao');
   return {msgs};
 }
+
+// ---------- Extrato bancário ----------
+
+export async function importarExtrato(_: unknown, fd: FormData) {
+  await exigir();
+  const arq = fd.get('arquivo');
+  if (!(arq instanceof File) || arq.size === 0) return {erro: 'Escolha o arquivo OFX do extrato.'};
+  if (arq.size > 10_000_000) return {erro: 'Arquivo grande demais (máximo 10 MB).'};
+  const {importarOfx} = await import('@/lib/banco');
+  try {
+    const r = importarOfx(await arq.text());
+    pronto('/financeiro/banco', '/financeiro/dre', '/financeiro');
+    return {ok: `${r.n} movimentos de ${r.de.split('-').reverse().join('/')} a ${r.ate.split('-').reverse().join('/')} importados (sem duplicar).`};
+  } catch (e) {
+    return {erro: (e as Error).message};
+  }
+}
+
+export async function classificarMov(fd: FormData) {
+  await exigir();
+  const {CATEGORIAS_BANCO, reclassificar} = await import('@/lib/banco');
+  const categoria = txt(fd, 'categoria');
+  if (!(categoria in CATEGORIAS_BANCO)) return;
+  const d = db();
+  d.prepare("UPDATE banco SET categoria = ?, regra = 'manual' WHERE conta = ? AND fitid = ?").run(categoria, txt(fd, 'conta'), txt(fd, 'fitid'));
+  const padrao = txt(fd, 'padrao').toLowerCase();
+  if (fd.get('regra') && padrao.length >= 3) {
+    d.prepare('INSERT INTO banco_regras (padrao, categoria, prioridade) VALUES (?, ?, 50) ON CONFLICT(padrao) DO UPDATE SET categoria = excluded.categoria').run(padrao, categoria);
+    reclassificar();
+  }
+  pronto('/financeiro/banco', '/financeiro/dre', '/financeiro');
+}

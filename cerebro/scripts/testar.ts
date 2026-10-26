@@ -4,7 +4,8 @@ import {precificar, precoParaMargem, avaliarAnuncio, dre, taxaMedia, lerNumero, 
 import {lerExportMeta} from '../lib/csv';
 import {mapearPedido, localBR, type PedidoShopify} from '../lib/shopify';
 import {mapearInsights} from '../lib/meta';
-import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, caixaCartpanda, type Entrada} from '../lib/financeiro';
+import {resumo, dreMes, ranking, conversaoDiaria, taxaDoPedido, caixaCartpanda, compararPlanos, type Entrada} from '../lib/financeiro';
+import {lerOfx, classificar, lancamentosDoBanco, REGRAS_INICIAIS} from '../lib/banco';
 import {recorrencias, lerTaxas} from '../lib/dados';
 
 const cfg: Config = {das_pct: 4, plataforma_pct: 2.5, meta_imposto_pct: 13.83, cpa_alvo_padrao: 55};
@@ -126,5 +127,29 @@ perto(liquido('pix', 1, 829.6), 821.39, 0.006);
 // Reserva de 5%: pedido 52321200 (R$ 215,91 em 6x) entrou R$ 161,71 + R$ 10,80 de reserva.
 const cx = caixaCartpanda([mp[0].pedido], tx, '2026-10-26', {reserva_pct: 5, reserva_dias: 90, prazo_cartao: 2});
 perto(cx.retida, 10.8); perto(cx.aLiberar, 161.71 - 0.35, 0.006); // os R$ 0,35 saem numa linha "Taxa" à parte
+
+// Planos da Cartpanda: Starter empata com o Light em R$ 24.402/mês.
+const cp = compararPlanos(24603.15);
+perto(cp.viradas[0].faturamento, 24402, 1); assert.equal(cp.melhor.nome, 'Starter');
+assert.equal(compararPlanos(15000).melhor.nome, 'Light'); assert.equal(compararPlanos(60000).melhor.nome, 'Premium');
+// Taxas iniciais: 7x a 12x sem acréscimo (sem juros só até 6x).
+perto(taxaDoPedido({...mp[0].pedido, parcelas: 10, total: 100}, tx), 5.99 + 0.35);
+
+// Extrato OFX (formato do Inter) e classificação.
+const ofx = `<OFX><BANKACCTFROM><BANKID>077</BANKID><ACCTID>1</ACCTID></BANKACCTFROM><BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261026<TRNAMT>179.68<FITID>A1<NAME>Cartão De Crédito - Cartpanda<MEMO>Credito domicilio cartao</STMTTRN>
+<STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20261026<TRNAMT>-829.47<FITID>A2<NAME>Simples Nacional<MEMO>SIMPLES NACIONAL</STMTTRN>
+<STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20261013<TRNAMT>-149.16<FITID>A3<NAME>Stripe Brasil<MEMO>Pix enviado</STMTTRN>
+<STMTTRN><TRNTYPE>PAYMENT<DTPOSTED>20261018<TRNAMT>-69.99<FITID>A4<NAME>Ebanx Instituicao<MEMO>Pix enviado</STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261019<TRNAMT>69.99<FITID>A5<NAME>Ebanx Instituicao<MEMO>Pix enviado devolvido</STMTTRN>
+</BANKTRANLIST><LEDGERBAL><BALAMT>8100.10<DTASOF>20261026</LEDGERBAL></OFX>`;
+const lo = lerOfx(ofx);
+assert.equal(lo.movs.length, 5); assert.equal(lo.saldo, 8100.1); assert.equal(lo.movs[1].data, '2026-10-26');
+const cls = lo.movs.map((x) => ({...x, categoria: classificar(x, REGRAS_INICIAIS), regra: 'auto'}));
+assert.deepEqual(cls.map((x) => x.categoria), ['recebimento_vendas', 'das', 'taxas_cartpanda', 'assinaturas', 'assinaturas']);
+const lb = lancamentosDoBanco(cls);
+assert.equal(lb.length, 3, 'DAS e a assinatura com seu estorno; repasse e checkout ficam fora do DRE');
+assert.equal(lb[0].data, '2026-09-30', 'DAS pago em outubro é competência de setembro');
+assert.equal(lb.filter((l) => l.categoria === 'assinaturas').reduce((s2, l) => s2 + l.valor_centavos, 0), 0, 'estorno anula a assinatura');
 
 console.log('Todos os testes passaram.');

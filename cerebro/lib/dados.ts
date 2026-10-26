@@ -1,9 +1,10 @@
 // Leituras do banco usadas pelas telas e pelo conector MCP.
 import {db} from './db';
 import {precificar, avaliarAnuncio, type Config, type Forma, type Produto, type Lancamento} from './calc';
-import {resumo, caixaCartpanda, type Entrada, type Taxa, NOME_FORMA} from './financeiro';
+import {resumo, caixaCartpanda, compararPlanos, type Entrada, type Taxa, NOME_FORMA} from './financeiro';
 import type {Pedido, Item} from './shopify';
 import type {AdDia} from './meta';
+import {lancamentosDoBanco, type MovBanco} from './banco';
 
 export function lerConfig(): Config & {meta_mes: number; gateway_exemplo: number; reserva_pct: number; reserva_dias: number; prazo_cartao: number} {
   const rows = db().prepare('SELECT chave, valor FROM config').all() as {chave: string; valor: number}[];
@@ -50,7 +51,9 @@ export function entrada(ini: string, fim: string): Entrada {
   const itens = simples<Item>(d.prepare(`SELECT i.* FROM pedido_itens i JOIN pedidos p ON p.id = i.pedido_id WHERE (p.dia BETWEEN ? AND ?) OR (p.dia_pago BETWEEN ? AND ?)`).all(ini, fim, ini, fim));
   const ads = simples<AdDia>(d.prepare('SELECT * FROM ads_dia WHERE data BETWEEN ? AND ?').all(ini, fim));
   const lancamentos = [...simples<Lancamento>(d.prepare('SELECT * FROM lancamentos WHERE data BETWEEN ? AND ?').all(ini, fim)),
-    ...recorrencias(simples<Lancamento>(d.prepare('SELECT * FROM lancamentos WHERE recorrente = 1 AND data < ?').all(ini)), ini, fim)];
+    ...recorrencias(simples<Lancamento>(d.prepare('SELECT * FROM lancamentos WHERE recorrente = 1 AND data < ?').all(ini)), ini, fim),
+    // Despesas pagas pela conta PJ (DAS volta um mês: por isso o extrato é lido até 40 dias depois do fim).
+    ...lancamentosDoBanco(lerBanco(ini, desloca(fim, 40))).filter((l) => l.data >= ini && l.data <= fim)];
   const prods = d.prepare('SELECT shopify_id, nome, custo FROM produtos WHERE shopify_id IS NOT NULL').all() as {shopify_id: string; nome: string; custo: number}[];
   const cfg = lerConfig();
   return {
@@ -76,6 +79,21 @@ export function recorrencias(base: Lancamento[], ini: string, fim: string) {
     }
   }
   return out;
+}
+
+/** Vendas pagas dos últimos 30 dias e a comparação dos planos da Cartpanda. */
+export function planoCartpanda() {
+  const h = hoje();
+  const fat30 = (db().prepare("SELECT coalesce(sum(total - reembolsado), 0) v FROM pedidos WHERE status = 'pago' AND dia_pago > ? AND dia_pago <= ?").get(desloca(h, -30), h) as {v: number}).v;
+  const atual = (db().prepare("SELECT plano FROM planos WHERE servico = 'Cartpanda' LIMIT 1").get() as {plano: string} | undefined)?.plano || 'Light';
+  return {fat30, atual, cmp: compararPlanos(fat30, atual)};
+}
+
+export const lerBanco = (ini: string, fim: string) => simples<MovBanco>(db().prepare('SELECT * FROM banco WHERE data BETWEEN ? AND ? ORDER BY data DESC, fitid DESC').all(ini, fim));
+
+export function saldosBanco() {
+  return (db().prepare("SELECT chave, valor FROM estado WHERE chave LIKE 'banco_saldo:%'").all() as {chave: string; valor: string}[])
+    .map((r) => ({conta: r.chave.slice(12), ...(JSON.parse(r.valor) as {saldo: number; em: string; banco: string})}));
 }
 
 /** Caixa na Cartpanda (reserva e cartão a liberar), a partir dos pedidos pagos que ainda podem estar presos. */
@@ -148,6 +166,12 @@ export function alertas(mes = mesAtual()) {
   if (r.semCusto) out.push({nivel: 'w', texto: `${r.semCusto} produto(s) vendido(s) no mês sem custo cadastrado: o lucro está inflado.`, onde: 'precificação'});
   if (!cfg.das_pct) out.push({nivel: 'b', texto: 'Imposto (DAS) em 0%: o lucro não desconta o Simples Nacional.', onde: 'taxas e planos'});
   if (r.receita > 0 && r.impostoEstimado && cfg.das_pct) out.push({nivel: 'a', texto: `DAS estimado do mês: ${(r.imposto).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})} (${cfg.das_pct}% da receita). Lance a guia quando pagar.`, onde: 'financeiro'});
+  const plano = planoCartpanda();
+  if (plano.cmp.economia > 1) out.push({nivel: 'a', texto: `Cartpanda: com ${plano.fat30.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})} de vendas nos últimos 30 dias, o plano ${plano.cmp.melhor.nome} sairia ${plano.cmp.economia.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})} mais barato por mês que o ${plano.atual}.`, onde: 'taxas e planos'});
+  else {
+    const prox = plano.cmp.viradas.find((v) => v.de === plano.atual);
+    if (prox && plano.fat30 >= prox.faturamento * 0.85) out.push({nivel: 'w', texto: `Cartpanda: faltam ${(prox.faturamento - plano.fat30).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})} de vendas em 30 dias para o ${prox.para} valer mais que o ${plano.atual}.`, onde: 'taxas e planos'});
+  }
   const ultimaSync = (db().prepare("SELECT valor FROM estado WHERE chave = 'shopify_ultima'").get() as {valor: string} | undefined)?.valor;
   if (!ultimaSync) out.push({nivel: 'w', texto: 'A Shopify ainda não foi sincronizada: os números de venda estão vazios.', onde: 'financeiro'});
   const u = ultimaImportacao();
