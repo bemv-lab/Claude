@@ -358,6 +358,9 @@ export function ultimaImportacao() {
   return {imp, ref, ads: ads.map((a) => ({...a, ...(ref ? avaliarAnuncio(a, ref) : {etapa: 'teste' as const, motivo: 'Cadastre um produto para gerar as regras.', cpa: null, roas: null, roasReal: null})}))};
 }
 
+export type Pendencia = {id: number; chave: string; titulo: string; detalhe: string; status: string; criado_em: string; resolvido_em: string | null; resolucao: string};
+export const lerPendencias = () => simples<Pendencia>(db().prepare("SELECT * FROM pendencias ORDER BY CASE status WHEN 'aberta' THEN 0 ELSE 1 END, id").all());
+
 export type Memoria = {id: number; criado_em: string; area: string; texto: string; autor: string};
 export function lerMemoria(busca = '', limite = 100) {
   if (busca) return db().prepare("SELECT * FROM memoria WHERE texto LIKE ? OR area LIKE ? ORDER BY id DESC LIMIT ?").all(`%${busca}%`, `%${busca}%`, limite) as Memoria[];
@@ -398,10 +401,13 @@ export function alertas(mes = mesAtual()) {
   if (rec.tipo !== 'usar') out.push({nivel: rec.tipo === 'falta' ? 'b' : 'w', texto: `${rec.titulo} ${rec.detalhe}`, onde: 'caixa'});
   if (cx.prev.cob.dias !== null && cx.prev.cob.dias <= 3) out.push({nivel: 'a', texto: `A Meta deve cobrar cerca de ${fmtBRL(cx.prev.cob.valor)} ${cx.prev.cob.dias === 0 ? 'a qualquer momento' : `em ${cx.prev.cob.dias} dia(s)`}. Deixe esse valor separado (e o cartão com limite para ele).`, onde: 'caixa'});
   for (const p of cx.portoes.filter((q) => q.aberto)) out.push({nivel: 'g', texto: `Caixa com folga: já dá para ${p.nome.toLowerCase()} (deixa ${fmtBRL(p.capital)} parados; ${p.ganho}).`, onde: 'caixa'});
+  const abertas = lerPendencias().filter((q) => q.status === 'aberta');
+  if (abertas.length) out.push({nivel: 'a', texto: `${abertas.length} pendência(s) a verificar: ${abertas.slice(0, 3).map((q) => q.titulo.replace(/:.*$/, '')).join('; ')}${abertas.length > 3 ? '…' : ''}.`, onde: 'conta pj'});
   const aClassificar = (db().prepare("SELECT count(*) n FROM banco WHERE categoria = 'a_classificar'").get() as {n: number}).n;
   if (aClassificar) out.push({nivel: 'w', texto: `${aClassificar} movimento(s) do extrato e dos cartões sem categoria: ficam fora do DRE até você classificar.`, onde: 'conta pj'});
   const duplicidades = possiveisDuplicidades(lerBanco(desloca(hoje(), -90), hoje()), [...new Set(entrada(desloca(hoje(), -1), hoje()).custos.values())]);
-  for (const [x, y] of duplicidades.slice(0, 3)) out.push({nivel: 'b', texto: `Possível pagamento em duplicidade: ${fmtBRL(-x.valor)} em ${x.data.slice(8)}/${x.data.slice(5, 7)} no ${nomeConta(x.conta)} e na ${nomeConta(y.conta)}, sem pedido vinculado. Confira se foram duas compras.`, onde: 'conta pj'});
+  const jaPendente = new Set(lerPendencias().map((q) => q.chave));
+  for (const [x, y] of duplicidades.filter(([q]) => !jaPendente.has(`dup:${(-q.valor).toFixed(2)}`)).slice(0, 3)) out.push({nivel: 'b', texto: `Possível pagamento em duplicidade: ${fmtBRL(-x.valor)} em ${x.data.slice(8)}/${x.data.slice(5, 7)} no ${nomeConta(x.conta)} e na ${nomeConta(y.conta)}, sem pedido vinculado. Confira se foram duas compras.`, onde: 'conta pj'});
   const socio = saldoComSocio();
   if (socio.aReembolsar > 50) out.push({nivel: 'a', texto: `A empresa deve ${fmtBRL(socio.aReembolsar)} à Bárbara: despesas pagas no cartão pessoal (${fmtBRL(socio.pago)}) menos reembolsos (${fmtBRL(socio.reembolsado)}).`, onde: 'conta pj'});
   const fat = faturaCartaoPJ();

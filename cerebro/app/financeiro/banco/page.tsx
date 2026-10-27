@@ -1,10 +1,10 @@
 import Casca from '@/components/Casca';
 import {CabecalhoFin, Linha} from '@/components/Fin';
-import {custosDosProdutos, desloca, entrada, faturaCartaoPJ, hoje, lerBanco, lerConfig, lerCustosMedios, lerProdutos, mesAtual, saldoComSocio, saldosBanco} from '@/lib/dados';
+import {lerPendencias, custosDosProdutos, desloca, entrada, faturaCartaoPJ, hoje, lerBanco, lerConfig, lerCustosMedios, lerProdutos, mesAtual, saldoComSocio, saldosBanco} from '@/lib/dados';
 import {CATEGORIAS_BANCO, CONTAS_MANUAIS, fluxoCaixa, gruposDeValorRepetido, nomeConta, numeroPedido, possiveisDuplicidades, sugerirVinculos} from '@/lib/banco';
 import {resumo, taxaDoPedido} from '@/lib/financeiro';
 import {fmtBRL} from '@/lib/calc';
-import {aplicarSugestoes, classificarMov, importarCartoes, importarExtrato, novoMovimento, vincularGrupo} from '@/app/acoes';
+import {novaPendencia, resolverPendencia, aplicarSugestoes, classificarMov, importarCartoes, importarExtrato, novoMovimento, vincularGrupo} from '@/app/acoes';
 import ImportarArquivo from './ImportarArquivo';
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +48,8 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
   const semCompra = pagos.filter((p) => !vinculados.has(numeroPedido(p.numero)) && !sugestoes.some((s) => s.pedido === numeroPedido(p.numero)));
   const compras = movs.filter((x) => (x.categoria === 'fornecedor' || x.categoria === 'estoque') && x.valor < 0);
   const semVinculo = compras.filter((x) => !x.pedido_numero && !x.produto_ext);
+  const pendencias = lerPendencias();
+  const abertas = pendencias.filter((q) => q.status === 'aberta');
   const custos = custosDosProdutos();
   const grupos = gruposDeValorRepetido(todas).slice(0, 12);
   const { semVinculo: nSemVinculo, valorSemVinculo } = lerCustosMedios();
@@ -56,6 +58,23 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
   return (
     <Casca>
       <CabecalhoFin aba="banco" titulo={<>Conta <b>PJ</b> e cartões</>} sub="O dinheiro que de fato entrou e saiu: extrato do banco, cartão PJ e cartão pessoal. As despesas entram sozinhas no DRE e as compras de fornecedor se vinculam aos pedidos." />
+
+      <div className="cartao">
+        <div className="topo"><div><h2>Pendências a verificar</h2><p className="nota">O que ainda não foi confirmado. Ficam abertas e avisam no Início até você resolver.</p></div><span className={`chip ${abertas.length ? 'w' : 'g'}`}>{abertas.length} abertas</span></div>
+        <div className="feed">
+          {pendencias.map((q) => (
+            <div key={q.id}><span className={`ponto ${q.status === 'aberta' ? 'w' : 'g'}`} />
+              <span><b>{q.titulo}</b>{q.status === 'resolvida' ? <> <span className="chip g">resolvida</span></> : null}<small style={{fontFamily: 'inherit'}}>{q.detalhe}{q.resolucao ? ` Resolução: ${q.resolucao}` : ''}</small>
+                {q.status === 'aberta' && (
+                  <form action={resolverPendencia} className="classificar"><input type="hidden" name="id" value={q.id} /><input name="resolucao" placeholder="como foi resolvido" aria-label="Resolução" style={{maxWidth: 280}} /><button className="mini" type="submit">Resolver</button></form>
+                )}
+              </span></div>
+          ))}
+        </div>
+        <details><summary className="nota">Nova pendência</summary>
+          <form action={novaPendencia}><div className="campos"><label htmlFor="pd-t">O que verificar<input id="pd-t" name="titulo" required /></label><label htmlFor="pd-d">Detalhe<input id="pd-d" name="detalhe" /></label></div><div className="acoes"><button type="submit">Registrar</button></div></form>
+        </details>
+      </div>
 
       <div className="cartao">
         <div className="topo"><h2>Importar</h2>{saldos.map((s) => <span key={s.conta} className="tag">{s.banco} · saldo {fmtBRL(s.saldo)} em {s.em.split('-').reverse().join('/')}</span>)}</div>

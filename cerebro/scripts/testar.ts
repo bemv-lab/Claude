@@ -243,6 +243,9 @@ assert.equal(faturaCartao([], '2026-11-02', {fechamento: 3, vencimento: 10, limi
 const so = saldoSocio([compra('2026-10-13', 1313.73, {conta: 'cartao-pessoal', categoria: 'anuncios'}), compra('2026-10-26', 3418.12, {conta: 'cartao-pessoal', categoria: 'anuncios'}),
   compra('2026-10-19', 1620.56, {conta: '077-1', categoria: 'reembolso_socio'})]);
 perto(so.pago, 4731.85); perto(so.reembolsado, 1620.56); perto(so.aReembolsar, 3111.29);
+// Com os R$ 306,83 de Shopify e outras despesas que o reembolso também cobriu, a empresa deve só a fatura da Meta de 26/10 (R$ 3.418,12).
+perto(saldoSocio([compra('2026-10-13', 1313.73, {conta: 'cartao-pessoal', categoria: 'anuncios'}), compra('2026-10-26', 3418.12, {conta: 'cartao-pessoal', categoria: 'anuncios'}), compra('2026-10-19', 306.83, {conta: 'cartao-pessoal', categoria: 'outras_despesas'}), compra('2026-10-19', 1620.56, {conta: '077-1', categoria: 'reembolso_socio'})]).aReembolsar, 3418.12);
+perto(3002.81 * 0.1383, 415.31, 0.03); perto(1154.11 * 0.1383, 159.62, 0.03);
 
 // Conciliação: compra de fornecedor do mesmo valor do custo do pedido, até 5 dias depois do pagamento, do pedido mais antigo ao mais novo.
 const custos111 = new Map([['111', 90.99]]);

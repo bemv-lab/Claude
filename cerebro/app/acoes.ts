@@ -334,3 +334,20 @@ export async function apagarExperimento(fd: FormData) {
   db().prepare("DELETE FROM experimentos WHERE id = ? AND status = 'planejado'").run(Number(fd.get('id')));
   pronto('/financeiro/plano');
 }
+
+// ---------- Pendências a verificar ----------
+
+export async function resolverPendencia(fd: FormData) {
+  await exigir();
+  db().prepare("UPDATE pendencias SET status = 'resolvida', resolvido_em = datetime('now'), resolucao = ? WHERE id = ?").run(txt(fd, 'resolucao'), Number(fd.get('id')));
+  pronto('/financeiro/banco', '/');
+}
+
+export async function novaPendencia(fd: FormData) {
+  await exigir();
+  const titulo = txt(fd, 'titulo');
+  if (!titulo) return;
+  db().prepare('INSERT INTO pendencias (titulo, detalhe) VALUES (?, ?)').run(titulo, txt(fd, 'detalhe'));
+  pronto('/financeiro/banco', '/');
+}
+

@@ -57,6 +57,7 @@ function migrar(d: DatabaseSync) {
   if (versao < 3) migrarV3(d);
   if (versao < 4) migrarV4(d);
   if (versao < 5) migrarV5(d);
+  if (versao < 6) migrarV6(d);
 }
 
 // v3: extrato da conta PJ (OFX) com regras de classificação.
@@ -247,4 +248,26 @@ function migrarV5(d: DatabaseSync) {
   reclassificar(d);
   d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')").run(
     'Decisões da Bárbara (27/10/2026): (1) o custo de cada produto é SEMPRE a média geral dos pagamentos a fornecedor (valor pago ÷ unidades), vinculando cada pagamento a um pedido da Shopify ou a um produto; os custos do Único Drop são ignorados. (2) Ebanx é o fornecedor da China FFOrder e Ebury é o Wiio: contam como compra de produto. Vindi ainda não foi identificada. (3) A taxa de R$ 4,90 da Cartpanda é cobrada em CADA saque: dois saques no dia custam 2 × R$ 4,90. (4) Shopify custa US$ 19 por mês; a simulação do plano anual (US$ 204 por ano) fica para quando houver caixa. (5) Imposto da Meta precisa aparecer no financeiro, no painel e na precificação. (6) A empresa está indo para ME com CNAE de revenda: o DAS pelo Anexo I não se aplica; ela avisa quando for o momento de considerar o imposto da revenda e a diferença de ICMS. (7) O limite do cartão PJ será aumentado.');
+}
+
+// v6: pendências a verificar (o que a Bárbara ainda não sabe ou não confirmou) e conferência do imposto da Meta nas faturas.
+function migrarV6(d: DatabaseSync) {
+  d.exec(`
+  BEGIN;
+  CREATE TABLE IF NOT EXISTS pendencias (
+    id INTEGER PRIMARY KEY, chave TEXT UNIQUE, titulo TEXT NOT NULL, detalhe TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'aberta',
+    criado_em TEXT NOT NULL DEFAULT (datetime('now')), resolvido_em TEXT, resolucao TEXT NOT NULL DEFAULT '');
+  PRAGMA user_version = 6;
+  COMMIT;
+  `);
+  const p = d.prepare('INSERT OR IGNORE INTO pendencias (chave, titulo, detalhe) VALUES (?, ?, ?)');
+  p.run('dup:65.09', 'Boleto de R$ 65,09 (Mercado Pago) e compra de R$ 65,09 no cartão PJ em 14/10', 'Pode ser pagamento em duplicidade. Verificar se foram duas compras; se foi uma só, pedir o estorno.');
+  p.run('vindi', 'Vindi: cobrança de R$ 104,21 ainda não identificada', 'Entra como despesa "a identificar" no DRE até a Bárbara dizer o que é (e então reclassificar).');
+  p.run('shopify-anual-brl', 'Shopify anual: quanto os US$ 185,71 dão em reais', 'Plano mensal US$ 19; anual US$ 204 por ano (cobra US$ 185,71 hoje, com crédito de US$ 18,29). Fica em "aguardando caixa" até informar o valor em reais (aba Caixa).');
+  p.run('despesas-cartao-pessoal', 'Detalhar R$ 306,83 de despesas pagas no cartão pessoal', 'Do reembolso de R$ 1.620,56, R$ 1.313,73 cobriram a Meta de 13/10; os R$ 306,83 restantes cobriram Shopify e outras despesas. Lançados como um item só para o saldo com a Bárbara fechar em R$ 3.418,12; trocar pela lista item a item.');
+  p.run('saldo-devedor-meta', 'Saldo devedor de R$ 79,74 na Meta', 'A fatura de 26/10 (R$ 3.418,12) foi paga. Confirmar se o saldo devedor ainda existe; se não, zerar em Caixa > Âncoras.');
+  p.run('mei-retroativo', 'MEI: efeito retroativo de ter passado do limite de faturamento', 'A Bárbara vai perguntar ao RRT.');
+  p.run('imposto-revenda', 'Imposto da revenda e diferença de ICMS no cálculo', 'A Bárbara avisa quando for a hora de considerar (empresa passando para ME com CNAE de revenda). Até lá, DAS provisório de 4%.');
+  d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')").run(
+    'Imposto da Meta conferido nas faturas (27/10/2026): 26/10 R$ 3.418,12 = subtotal R$ 3.002,81 + imposto R$ 415,31 (13,83%); 13/10 R$ 1.313,73 = subtotal R$ 1.154,11 + imposto R$ 159,62 (13,83%). A empresa deve à Bárbara R$ 3.418,12 (a fatura de 26/10): a de 13/10 foi reembolsada, e os R$ 306,83 restantes do reembolso de R$ 1.620,56 cobriram Shopify e outras despesas. Pendentes a verificar: boleto/compra de R$ 65,09, Vindi, Shopify anual em reais, saldo devedor da Meta, MEI retroativo, imposto da revenda.');
 }
