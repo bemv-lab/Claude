@@ -80,9 +80,9 @@ export default async function DashboardFin({searchParams}: {searchParams: Promis
         <div><b>{fmtBRL(r.pagos.v)}</b><small>{r.pagos.n} pedidos aprovados</small></div>
         <div><b>{fmtPct(r.margem)}</b><small>Margem de lucro</small></div>
         <div><b>{fmtBRL(r.pendentes.v)}</b><small>{r.pendentes.n} pedidos pendentes</small></div>
-        <div><b>{r.cpa === null ? '–' : fmtBRL(r.cpa)}</b><small>Custo por aquisição</small></div>
+        <div><b>{r.cpaReal === null ? '–' : fmtBRL(r.cpaReal)}</b><small>CPA real · Gerenciador {r.cpa === null ? '–' : fmtBRL(r.cpa)} + imposto Meta</small></div>
         <div><b>{fmtBRL(r.ticket)}</b><small>Ticket médio</small></div>
-        <div><b>{r.roi === null ? '–' : fmtPct(r.roi)}</b><small>ROI (lucro ÷ anúncios)</small></div>
+        <div><b>{r.roi === null ? '–' : fmtPct(r.roi)}</b><small>ROI (lucro ÷ anúncios com imposto)</small></div>
       </div>
 
       <div className="meio">
@@ -132,8 +132,8 @@ export default async function DashboardFin({searchParams}: {searchParams: Promis
             <div><small>CPM</small><b>{r.funil.cpm === null ? '–' : fmtBRL(r.funil.cpm)}</b></div>
             <div><small>CTR</small><b>{r.funil.ctr === null ? '–' : fmtPct(r.funil.ctr)}</b></div>
             <div><small>CPC</small><b>{r.funil.cpc === null ? '–' : fmtBRL(r.funil.cpc)}</b></div>
-            <div><small>CPA</small><b>{r.cpa === null ? '–' : fmtBRL(r.cpa)}</b></div>
-            <div><small>ROAS</small><b>{r.roas === null ? '–' : `${fmtNum(r.roas)}x`}</b></div>
+            <div><small>CPA real</small><b>{r.cpaReal === null ? '–' : fmtBRL(r.cpaReal)}</b><small>Gerenciador {r.cpa === null ? '–' : fmtBRL(r.cpa)}</small></div>
+            <div><small>ROAS real</small><b>{r.roasReal === null ? '–' : `${fmtNum(r.roasReal)}x`}</b><small>Gerenciador {r.roas === null ? '–' : `${fmtNum(r.roas)}x`}</small></div>
           </div>
         </div>
         <div className="coluna">

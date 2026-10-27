@@ -92,3 +92,18 @@ Novo:
 - Custos dos produtos copiados da tela Produtos do Único Drop (9 de 15), com custo em dólar e cotação configurável.
 
 Em aberto com a Bárbara: boleto do Mercado Pago de R$ 65,09; o que são Ebanx, Ebury e Vindi (R$ 719,22); cotação do dólar do Único Drop; custo dos 6 produtos em branco; fatura do Shopify; exportação de Financeiro > Transações da Cartpanda; detalhe de outro repasse (os R$ 4,90 se repetem?).
+
+## Estado (27/10/2026): custo médio, caixa, plano de ação e novo visual
+
+Decisões da Bárbara que viraram regra do sistema:
+- Custo do produto = **média geral dos pagamentos a fornecedor** (valor pago ÷ unidades), com vínculo a produto (+ quantidade) ou a pedido. Os custos do Único Drop foram zerados. Ebanx = FFOrder e Ebury = Wiio (fornecedores da China, contam como compra de produto); Vindi ainda não identificada (despesa "a identificar" até ela dizer).
+- R$ 4,90 é cobrado em **cada saque** (o radar conta os saques reais do extrato).
+- Imposto da Meta aparece no financeiro, no painel, no DRE e na precificação (CPA, ROAS e ROI reais, ao lado do número do Gerenciador).
+- DAS: Anexo I não se aplica (ME com CNAE de revenda); 4% fica provisório até ela avisar o imposto da revenda e a diferença de ICMS.
+- Otimizações que dependem de caixa (D+5, D+14, saque em lote, Shopify anual de US$ 204) ficam no radar da aba Caixa e só liberam quando a folga passa de 1,5× o dinheiro que deixam parado.
+- Mudança de política de parcelamento só depois de documentada como experimento no Plano de ação.
+
+Feito: aba Caixa (previsão de 10 dias, recomendação "usar saldo ou sacar", Meta a cobrar), aba Plano de ação (antes e depois, queda de conversão, ações sugeridas), parcelamento médio e tolerância do cenário 3x, Pix contra cartão em teoria e prática, histórico de política de taxas por data, conector MCP com `caixa` e `custo_produtos`, visual novo (barra lateral escura, DM Sans em tudo, números tabulares, mais contraste).
+
+Em aberto: cotação ou valor em reais da cobrança do Shopify anual; o que é a Vindi; lista completa do que foi pago no cartão pessoal (para o valor que a empresa deve à Bárbara); R$ 65,09 em duplicidade; imagem de referência visual (não chegou a esta sessão); exportação de Financeiro > Transações da Cartpanda para conferir o mês pedido a pedido; limite do cartão PJ depois que ela aumentar.
+

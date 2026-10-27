@@ -1,10 +1,10 @@
 import Casca from '@/components/Casca';
 import {CabecalhoFin, Linha} from '@/components/Fin';
-import {desloca, entrada, faturaCartaoPJ, hoje, lerBanco, lerConfig, lerProdutos, mesAtual, saldoComSocio, saldosBanco} from '@/lib/dados';
-import {CATEGORIAS_BANCO, CONTAS_MANUAIS, fluxoCaixa, nomeConta, numeroPedido, possiveisDuplicidades, sugerirVinculos} from '@/lib/banco';
+import {custosDosProdutos, desloca, entrada, faturaCartaoPJ, hoje, lerBanco, lerConfig, lerCustosMedios, lerProdutos, mesAtual, saldoComSocio, saldosBanco} from '@/lib/dados';
+import {CATEGORIAS_BANCO, CONTAS_MANUAIS, fluxoCaixa, gruposDeValorRepetido, nomeConta, numeroPedido, possiveisDuplicidades, sugerirVinculos} from '@/lib/banco';
 import {resumo, taxaDoPedido} from '@/lib/financeiro';
 import {fmtBRL} from '@/lib/calc';
-import {aplicarSugestoes, classificarMov, importarCartoes, importarExtrato, novoMovimento} from '@/app/acoes';
+import {aplicarSugestoes, classificarMov, importarCartoes, importarExtrato, novoMovimento, vincularGrupo} from '@/app/acoes';
 import ImportarArquivo from './ImportarArquivo';
 
 export const dynamic = 'force-dynamic';
@@ -27,6 +27,7 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
   const produtos = lerProdutos();
   const fatura = faturaCartaoPJ();
   const socio = saldoComSocio();
+  const pessoal = lerBanco('2000-01-01', '2999-12-31').filter((x) => x.conta === 'cartao-pessoal').sort((a, b) => b.data.localeCompare(a.data));
 
   // Conciliação com as vendas do mês (pedidos pagos no mês); os pedidos vêm de uma semana antes para casar compras com pedidos.
   const e = entrada(desloca(ini, -7), fim);
@@ -47,6 +48,9 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
   const semCompra = pagos.filter((p) => !vinculados.has(numeroPedido(p.numero)) && !sugestoes.some((s) => s.pedido === numeroPedido(p.numero)));
   const compras = movs.filter((x) => (x.categoria === 'fornecedor' || x.categoria === 'estoque') && x.valor < 0);
   const semVinculo = compras.filter((x) => !x.pedido_numero && !x.produto_ext);
+  const custos = custosDosProdutos();
+  const grupos = gruposDeValorRepetido(todas).slice(0, 12);
+  const { semVinculo: nSemVinculo, valorSemVinculo } = lerCustosMedios();
   const duplicidades = possiveisDuplicidades(todas, [...new Set(e.custos.values())]).filter(([x]) => x.data >= ini && x.data <= fim);
 
   return (
@@ -100,11 +104,13 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
         <div className="cartao">
           <div><h2>Saldo com a Bárbara</h2><p className="nota">Despesas da empresa pagas no cartão pessoal e o que já foi devolvido</p></div>
           <div className="res">
+            {pessoal.map((x) => <Linha key={x.fitid} sub r={`${dm(x.data)} · ${x.nome}`} v={fmtBRL(-x.valor)} />)}
             <Linha r="Pago no cartão pessoal (Meta, Shopify…)" v={fmtBRL(socio.pago)} />
             <Linha r="Já reembolsado pela conta PJ" v={fmtBRL(socio.reembolsado)} />
             <Linha r={<b>A empresa deve à Bárbara</b>} v={<b className={socio.aReembolsar > 0 ? 'desce' : ''}>{fmtBRL(socio.aReembolsar)}</b>} />
+            {cfg.meta_saldo_devedor > 0 && <Linha sub r="Fora disso, ainda a pagar à Meta (saldo devedor, entra na próxima cobrança)" v={fmtBRL(cfg.meta_saldo_devedor)} />}
           </div>
-          <p className="nota">Reembolso não é salário nem lucro e não entra no DRE: a despesa já está na Meta, no Shopify etc. Lance as faturas da Meta e do Shopify como “{CONTAS_MANUAIS['cartao-pessoal']}” para este saldo ficar certo.</p>
+          <p className="nota">Reembolso não é salário nem lucro e não entra no DRE: a despesa já está na Meta, no Shopify etc. Só entra aqui o que foi lançado como “{CONTAS_MANUAIS['cartao-pessoal']}”: confira a lista acima com a fatura do cartão e lance o que faltar (Shopify de US$ 19 por mês, ferramentas, a cobrança da Meta de hoje…).</p>
         </div>
       </div>
 
@@ -144,6 +150,39 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
       </div>
 
       <div className="cartao">
+        <div><h2>Custo médio dos produtos</h2><p className="nota">Valor pago ao fornecedor ÷ unidades, de todos os pagamentos vinculados a um pedido ou produto. É este custo que entra no lucro, no ranking e na precificação.</p></div>
+        <div className="tabela"><table>
+          <thead><tr><th>Produto</th><th className="n">Custo médio</th><th className="n">Unidades</th><th className="n">Pago</th><th className="n">Pagamentos</th><th>Origem</th></tr></thead>
+          <tbody>{custos.map((c) => (
+            <tr key={c.shopify_id}>
+              <td>{c.nome.replace(/\s+-\s+1 unidade$/i, '')}</td>
+              <td className="n">{c.custo > 0 ? fmtBRL(c.custo) : '–'}</td>
+              <td className="n">{c.unidades || ''}</td>
+              <td className="n">{c.valor ? fmtBRL(c.valor) : ''}</td>
+              <td className="n">{c.compras || ''}</td>
+              <td>{c.origem === 'media' ? <span className="chip g">média dos pagamentos</span> : c.origem === 'manual' ? <span className="chip w">estimativa digitada</span> : <span className="chip">sem custo</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+        <p className="nota">{nSemVinculo} pagamento(s) a fornecedor ({fmtBRL(valorSemVinculo)}) ainda sem pedido ou produto não entram na média. Quanto mais pagamentos vinculados, mais exato o custo.</p>
+        {grupos.length > 0 && (
+          <details open>
+            <summary className="nota"><b>Vincular de uma vez:</b> pagamentos de mesmo valor (provavelmente o mesmo produto comprado várias vezes)</summary>
+            {grupos.map((g) => (
+              <form key={g.valor} action={vincularGrupo} className="classificar">
+                <span><b>{g.n} × {fmtBRL(g.valor)}</b> <small className="nota">({fmtBRL(g.total)}; {g.movs.slice(-1)[0] ? dm(g.movs[g.movs.length - 1].data) : ''} a {dm(g.movs[0].data)})</small></span>
+                {g.movs.map((m) => <input key={m.fitid} type="hidden" name="mov" value={`${m.conta}\u0001${m.fitid}`} />)}
+                <select name="produto" aria-label="Produto do grupo" defaultValue=""><option value="">este valor é de…</option>{produtos.filter((p) => p.shopify_id).map((p) => <option key={p.id} value={p.shopify_id!}>{p.nome}</option>)}</select>
+                <input name="quantidade" type="number" min="1" step="1" defaultValue="1" aria-label="Unidades em cada pagamento" style={{width: 64}} />
+                <small className="nota">un. por pagamento</small>
+                <button className="mini" type="submit">Vincular {g.n}</button>
+              </form>
+            ))}
+          </details>
+        )}
+      </div>
+
+      <div className="cartao">
         <div><h2>Para onde foi o dinheiro</h2><p className="nota">Mês por categoria, conta e cartões. As que têm DRE entram como despesa no resultado.</p></div>
         <div className="tabela"><table>
           <thead><tr><th>Categoria</th><th>No DRE</th><th className="n">Entrou</th><th className="n">Saiu</th><th className="n">Líquido</th></tr></thead>
@@ -180,6 +219,7 @@ export default async function Banco({searchParams}: {searchParams: Promise<{mes?
                     {(x.categoria === 'fornecedor' || x.categoria === 'estoque' || x.categoria === 'a_classificar') && <>
                       <input name="pedido" defaultValue={x.pedido_numero ? `#${x.pedido_numero}` : ''} placeholder="pedido #" aria-label="Pedido da Shopify" style={{width: 96}} />
                       <select name="produto" defaultValue={x.produto_ext} aria-label="Produto"><option value="">produto…</option>{produtos.filter((p) => p.shopify_id).map((p) => <option key={p.id} value={p.shopify_id!}>{p.nome}</option>)}</select>
+                      <input name="quantidade" type="number" min="1" step="1" defaultValue={x.quantidade || 1} aria-label="Unidades compradas neste pagamento" title="Unidades compradas neste pagamento (vale quando o vínculo é um produto)" style={{width: 56}} />
                     </>}
                     <label className="check"><input type="checkbox" name="regra" defaultChecked={x.categoria === 'a_classificar'} /> regra para “{padraoDe(x.nome)}”</label>
                     <button className="mini" type="submit">Salvar</button>

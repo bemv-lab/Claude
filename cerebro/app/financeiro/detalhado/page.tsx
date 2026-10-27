@@ -4,7 +4,7 @@ import {CabecalhoFin, Linha, rotuloPeriodo} from '@/components/Fin';
 import {GraficoDiario, Rosca, BarrasHora} from '@/components/graficos';
 import {desloca, entrada, lerConfig, mesAtual, periodo, resumoMes} from '@/lib/dados';
 import {resumo, serieDiaria, distribuicoes, NOME_FORMA} from '@/lib/financeiro';
-import {fmtBRL, fmtPct} from '@/lib/calc';
+import {fmtBRL, fmtNum, fmtPct} from '@/lib/calc';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,10 +63,13 @@ export default async function Detalhado({searchParams}: {searchParams: Promise<{
           <h2>Lucro</h2>
           <div className={`grande ${r.lucro < 0 ? 'desce' : 'sobe'}`}>{fmtBRL(r.lucro)}</div>
           <div className="res">
-            <Linha r="ROI" v={r.roi === null ? '–' : fmtPct(r.roi)} cls="sobe" />
+            <Linha r="ROI (com imposto Meta)" v={r.roi === null ? '–' : fmtPct(r.roi)} cls="sobe" />
             <Linha r="Margem de lucro" v={fmtPct(r.margem)} cls="sobe" />
-            <Linha r="CPA" v={r.cpa === null ? '–' : fmtBRL(r.cpa)} cls="desce" />
+            <Linha r="CPA real (com imposto Meta)" v={r.cpaReal === null ? '–' : fmtBRL(r.cpaReal)} cls="desce" />
+            <Linha sub r="CPA no Gerenciador (sem imposto)" v={r.cpa === null ? '–' : fmtBRL(r.cpa)} />
+            <Linha r="ROAS real (com imposto Meta)" v={r.roasReal === null ? '–' : `${fmtNum(r.roasReal)}x`} />
             <Linha r="Anúncios" v={fmtBRL(r.ads.total)} cls="desce" />
+            <Linha sub r="Imposto da Meta sobre os anúncios" v={fmtBRL(r.impostoMeta)} />
             <Linha sub r="Meta" v={fmtBRL(r.ads.facebook)} />
             <Linha sub r="Google" v={fmtBRL(r.ads.google)} />
             <Linha sub r="Manual" v={fmtBRL(r.ads.manual)} />

@@ -5,7 +5,6 @@ export type Config = {
   plataforma_pct: number; // taxa da plataforma de vendas por pedido
   meta_imposto_pct: number; // PIS/Cofins + ISS que a Meta soma ao gasto do Gerenciador
   cpa_alvo_padrao: number;
-  cotacao_dolar?: number; // R$ por US$, para produtos com custo em dólar
 };
 
 export type Forma = {id: number; nome: string; taxa_pct: number; mix_pct: number};
@@ -15,7 +14,8 @@ export type Produto = {
   nome: string;
   preco: number;
   custo: number;
-  custo_usd?: number; // custo em dólar (produto importado); vale no lugar de `custo` quando há cotação
+  custo_origem?: 'media' | 'manual' | 'sem'; // media: média dos pagamentos a fornecedor; manual: digitado enquanto não há pagamento vinculado
+  custo_unidades?: number; custo_compras?: number;
   frete: number;
   embalagem: number;
   outros: number;
@@ -33,15 +33,10 @@ export function taxaMedia(formas: Forma[]) {
   return {taxa, somaMix};
 }
 
-/** Custo unitário em reais: o custo em dólar vale quando há cotação; sem cotação, o produto fica sem custo. */
-export function custoProduto(p: {custo: number; custo_usd?: number}, cotacao = 0) {
-  return p.custo_usd && p.custo_usd > 0 ? p.custo_usd * cotacao : p.custo;
-}
-
 export function precificar(p: Produto, cfg: Config, formas: Forma[]) {
   const {taxa} = taxaMedia(formas);
   const meta = cfg.meta_imposto_pct / 100;
-  const custo = custoProduto(p, cfg.cotacao_dolar);
+  const custo = p.custo;
   const das = (p.preco * cfg.das_pct) / 100;
   const pagamento = (p.preco * taxa) / 100;
   const plataforma = (p.preco * cfg.plataforma_pct) / 100;
@@ -81,7 +76,7 @@ export function precificar(p: Produto, cfg: Config, formas: Forma[]) {
 export function precoParaMargem(p: Produto, cfg: Config, formas: Forma[], margemAlvoPct: number) {
   const {taxa} = taxaMedia(formas);
   const varPct = (cfg.das_pct + taxa + cfg.plataforma_pct + margemAlvoPct) / 100;
-  const fixos = custoProduto(p, cfg.cotacao_dolar) + p.frete + p.embalagem + p.outros + (p.cpa_alvo || cfg.cpa_alvo_padrao) * (1 + cfg.meta_imposto_pct / 100);
+  const fixos = p.custo + p.frete + p.embalagem + p.outros + (p.cpa_alvo || cfg.cpa_alvo_padrao) * (1 + cfg.meta_imposto_pct / 100);
   return varPct < 1 ? fixos / (1 - varPct) : Infinity;
 }
 

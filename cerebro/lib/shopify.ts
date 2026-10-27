@@ -1,6 +1,6 @@
 // Pedidos da Shopify (checkout Cartpanda) para o Cérebro.
 // Guarda só o que o financeiro usa: nada de CPF, nome, e-mail, endereço ou dados de cartão.
-import {db, aplicarCustosIniciais} from './db';
+import {db} from './db';
 
 export type PedidoShopify = {
   id: string; name: string; createdAt: string; cancelledAt: string | null; displayFinancialStatus: string;
@@ -88,7 +88,6 @@ export function gravarPedidos(lista: {pedido: Pedido; itens: Item[]}[]) {
     d.exec('ROLLBACK');
     throw e;
   }
-  aplicarCustosIniciais(d); // produtos novos que já têm custo conhecido (tela Produtos do Único Drop)
   return lista.length;
 }
 

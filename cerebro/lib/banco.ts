@@ -7,7 +7,7 @@ import type {Pedido, Item} from './shopify';
 
 export type MovBanco = {
   conta: string; fitid: string; data: string; valor: number; tipo: string; nome: string; memo: string; categoria: string; regra: string;
-  pedido_numero: string; produto_ext: string; obs: string;
+  pedido_numero: string; produto_ext: string; obs: string; quantidade: number;
 };
 
 /** Categorias do extrato. `dre` diz em qual conta do DRE a saída entra (null: não é despesa do resultado). */
@@ -32,6 +32,7 @@ export const CATEGORIAS_BANCO: Record<string, {nome: string; dre: string | null;
   frete: {nome: 'Frete e envio', dre: 'frete', ajuda: ''},
   outras_despesas: {nome: 'Outras despesas', dre: 'outras_fixas', ajuda: ''},
   transferencia: {nome: 'Transferência entre contas', dre: null, ajuda: ''},
+  a_identificar: {nome: 'Cobrança a identificar', dre: 'outras_fixas', ajuda: 'Entra como despesa até você dizer o que é (hoje: Vindi).'},
   a_classificar: {nome: 'A classificar', dre: null, ajuda: 'Escolha a categoria para o Cérebro saber o que é.'},
 };
 
@@ -61,9 +62,9 @@ export const REGRAS_INICIAIS: [string, string][] = [
   ['simples nacional', 'das_mei'], // enquanto a empresa é MEI com guias atrasadas; trocar para DAS quando virar ME
   ['rrt assessoria', 'enquadramento'],
   ['stripe', 'taxas_cartpanda'],
-  ['ebanx', 'assinaturas'],
-  ['ebury', 'assinaturas'],
-  ['vindi', 'assinaturas'],
+  ['ebanx', 'fornecedor'], // FFOrder (fornecedor da China)
+  ['ebury', 'fornecedor'], // Wiio (fornecedor da China)
+  ['vindi', 'a_identificar'],
   ['facebook', 'anuncios'],
   ['facebk', 'anuncios'],
   ['meta platforms', 'anuncios'],
@@ -254,6 +255,62 @@ export function saldoSocio(movs: MovBanco[]) {
   const pago = -movs.filter((m) => m.conta === 'cartao-pessoal').reduce((s, m) => s + m.valor, 0);
   const reembolsado = -movs.filter((m) => m.categoria === 'reembolso_socio').reduce((s, m) => s + m.valor, 0);
   return {pago, reembolsado, aReembolsar: pago - reembolsado};
+}
+
+// ---------- Custo médio pelos pagamentos a fornecedor ----------
+
+export type CustoMedio = {produto: string; custo: number; unidades: number; valor: number; compras: number};
+
+/**
+ * Custo unitário de cada produto = tudo o que foi pago ao fornecedor por ele ÷ unidades compradas.
+ * Cada pagamento (conta, cartão ou boleto) precisa estar vinculado a um produto (com quantidade) ou a um pedido da Shopify.
+ * Pedido com vários produtos: o valor se divide pelo custo de referência de cada um (ou por unidade, se ainda não há referência).
+ * Devolução (valor positivo na categoria de fornecedor) abate o valor e as unidades do mesmo vínculo.
+ */
+export function custosMedios(movs: MovBanco[], pedidos: {id: string; numero: string}[], itens: Item[], referencia = new Map<string, number>()) {
+  const porNumero = new Map(pedidos.map((p) => [numeroPedido(p.numero), p.id] as const));
+  const itensPor = new Map<string, Item[]>();
+  for (const i of itens) itensPor.set(i.pedido_id, [...(itensPor.get(i.pedido_id) ?? []), i]);
+  const acc = new Map<string, {valor: number; unidades: number; compras: number}>();
+  const soma = (produto: string, valor: number, unidades: number) => {
+    const x = acc.get(produto) ?? {valor: 0, unidades: 0, compras: 0};
+    x.valor += valor; x.unidades += unidades; x.compras++;
+    acc.set(produto, x);
+  };
+  let semVinculo = 0, valorSemVinculo = 0, pedidoNaoEncontrado = 0;
+  for (const m of movs) {
+    if (m.categoria !== 'fornecedor' && m.categoria !== 'estoque') continue;
+    const valor = -m.valor; // saída positiva, devolução negativa
+    const sinal = valor < 0 ? -1 : 1;
+    if (m.produto_ext) { soma(m.produto_ext, valor, sinal * Math.max(1, m.quantidade)); continue; }
+    if (m.pedido_numero) {
+      const its = itensPor.get(porNumero.get(m.pedido_numero) ?? '') ?? [];
+      if (!its.length) { pedidoNaoEncontrado++; semVinculo++; valorSemVinculo += valor; continue; }
+      const peso = (i: Item) => (referencia.get(i.produto_ext) ?? 1) * i.quantidade;
+      const total = its.reduce((s, i) => s + peso(i), 0);
+      for (const i of its) soma(i.produto_ext, (valor * peso(i)) / total, sinal * i.quantidade);
+      continue;
+    }
+    semVinculo++; valorSemVinculo += valor;
+  }
+  const medios = new Map<string, CustoMedio>();
+  for (const [produto, x] of acc) if (x.unidades > 0 && x.valor > 0) medios.set(produto, {produto, custo: x.valor / x.unidades, ...x});
+  return {medios, semVinculo, valorSemVinculo, pedidoNaoEncontrado};
+}
+
+/**
+ * Pagamentos de fornecedor sem vínculo que têm exatamente o mesmo valor (2 ou mais): provavelmente o mesmo produto comprado várias vezes.
+ * Basta escolher o produto uma vez para vincular o grupo todo.
+ */
+export function gruposDeValorRepetido(movs: MovBanco[]) {
+  const por = new Map<string, MovBanco[]>();
+  for (const m of movs) {
+    if ((m.categoria !== 'fornecedor' && m.categoria !== 'estoque') || m.valor >= 0 || m.pedido_numero || m.produto_ext) continue;
+    const k = (-m.valor).toFixed(2);
+    por.set(k, [...(por.get(k) ?? []), m]);
+  }
+  return [...por.entries()].filter(([, l]) => l.length >= 2).map(([k, l]) => ({valor: Number(k), n: l.length, total: Number(k) * l.length, movs: l}))
+    .sort((a, b) => b.total - a.total);
 }
 
 // ---------- Conciliação de compras com pedidos ----------

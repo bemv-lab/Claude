@@ -56,6 +56,7 @@ function migrar(d: DatabaseSync) {
   if (versao < 2) migrarV2(d);
   if (versao < 3) migrarV3(d);
   if (versao < 4) migrarV4(d);
+  if (versao < 5) migrarV5(d);
 }
 
 // v3: extrato da conta PJ (OFX) com regras de classificação.
@@ -156,9 +157,9 @@ function semear(d: DatabaseSync) {
 // O cliente paga esses juros; a loja só paga quando escolhe "parcelas sem juros".
 export const JUROS_OFICIAIS = [7.24, 9.34, 11.16, 12.61, 14.11, 15.61, 17.49, 19.38, 20.77, 22.72, 24.68];
 
-// Custos por produto, copiados da tela Produtos do Único Drop em 26/10/2026: [nome, custo em R$, custo em US$].
-// Aplicados por nome (e só quando o produto ainda está sem custo), porque os nomes da loja variam menos que os códigos lidos de print.
-export const CUSTOS_INICIAIS: [string, number, number][] = [
+// Custos que a v4 copiou da tela Produtos do Único Drop. Desde a v5 o custo vem da média dos pagamentos a fornecedor;
+// a v5 só zera estes valores (e apenas se ninguém os mudou), para o Único Drop não decidir o custo.
+const CUSTOS_UNICO_DROP: [string, number, number][] = [
   ['Livro Sensorial Fazenda', 90.99, 0],
   ['Kit Semana Rocco - 5 Conjuntos Infantis', 60, 0],
   ['Livro de Tecido', 43.54, 0],
@@ -171,17 +172,6 @@ export const CUSTOS_INICIAIS: [string, number, number][] = [
 ];
 
 const semAcento = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-
-export function aplicarCustosIniciais(d: DatabaseSync) {
-  const prods = d.prepare('SELECT id, nome, custo, custo_usd FROM produtos').all() as {id: number; nome: string; custo: number; custo_usd: number}[];
-  const up = d.prepare('UPDATE produtos SET custo = ?, custo_usd = ?, exemplo = 0 WHERE id = ?');
-  for (const p of prods) {
-    if (p.custo > 0 || p.custo_usd > 0) continue;
-    const n = semAcento(p.nome);
-    const s = CUSTOS_INICIAIS.find(([nome]) => { const k = semAcento(nome); return n === k || n.startsWith(`${k} - `); });
-    if (s) up.run(s[1], s[2], p.id);
-  }
-}
 
 // v4: taxas oficiais da Cartpanda Pay, custos dos produtos (inclui dólar), cartões e conciliação de compras.
 function migrarV4(d: DatabaseSync) {
@@ -206,7 +196,6 @@ function migrarV4(d: DatabaseSync) {
   for (const [dias, pct] of [[2, 5.99], [5, 5.49], [14, 4.99]]) prazo.run(dias, pct);
   const juros = d.prepare('INSERT OR IGNORE INTO juros_parcela (parcelas, pct) VALUES (?, ?)');
   JUROS_OFICIAIS.forEach((pct, i) => juros.run(i + 2, pct));
-  aplicarCustosIniciais(d);
 
   // Regras do extrato: troca as automáticas da v3 pelas novas e reclassifica o que não foi corrigido à mão.
   d.prepare('DELETE FROM banco_regras WHERE prioridade >= 100').run();
@@ -221,4 +210,41 @@ function migrarV4(d: DatabaseSync) {
   mem.run('Conta PJ (Inter), esclarecimentos da Bárbara em 26/10/2026: o DAS de R$ 829,47 são guias do MEI não pagas desde fevereiro (regularização, não é o DAS do mês); o pagamento de R$ 1.499,00 ao escritório RRT é o enquadramento de MEI para ME (pontual); a empresa está migrando de MEI para ME. Os R$ 1.620,56 enviados à Bárbara cobrem despesas da empresa pagas no cartão pessoal (Meta Ads, Shopify e outras): é reembolso, não salário nem lucro. "Maree" é ShopeePay (compras de fornecedor na Shopee); "Pix Marketplace" são compras no Mercado Livre. Os R$ 800 em CDB são a garantia do limite do cartão PJ do Inter (limite R$ 800; fatura de novembro aberta de R$ 762,78, vence 10/11, fecha dia 3).');
   mem.run('Meta Ads: a conta é paga no cartão pessoal da Bárbara (a ideia é passar para o cartão PJ). Faturas de outubro: 13/10 R$ 1.313,73 pago; 26/10 R$ 3.418,12 pago (duas tentativas de R$ 3.415,30 falharam no mesmo dia); saldo devedor de R$ 79,74. Confirmado: R$ 3.000 de gasto viram R$ 3.415,30 na fatura (+13,84%, o imposto repassado pela Meta). Para pagar no cartão PJ o limite precisa cobrir cada cobrança de ~R$ 3,4 mil; hoje é R$ 800, garantido por CDB.');
   mem.run('Em aberto com a Bárbara: boleto do Mercado Pago de R$ 65,09 (14/10, e há uma compra de R$ 65,09 no cartão PJ no mesmo dia: pode ser pagamento em duplicidade) para vincular a um pedido ou produto; o que são Ebanx, Ebury e Vindi (R$ 719,22 em 28 dias); cotação do dólar usada no Único Drop para os produtos com custo em US$; custo dos produtos que ainda estão em branco; efeito retroativo da saída do MEI (limite de faturamento) com o RRT.');
+}
+
+// v5: o custo do produto passa a ser a média dos pagamentos a fornecedor (com quantidade), não o do Único Drop.
+function migrarV5(d: DatabaseSync) {
+  d.exec(`
+  BEGIN;
+  ALTER TABLE banco ADD COLUMN quantidade INTEGER NOT NULL DEFAULT 1;
+  DELETE FROM config WHERE chave = 'cotacao_dolar';
+  INSERT OR IGNORE INTO config (chave, valor) VALUES ('meta_limite_cobranca', 3000), ('meta_saldo_devedor', 79.74), ('colchao_caixa', 0), ('shopify_anual_brl', 0);
+  CREATE TABLE IF NOT EXISTS politica_taxas (desde TEXT PRIMARY KEY, prazo_cartao INTEGER NOT NULL, sem_juros INTEGER NOT NULL);
+  INSERT OR IGNORE INTO politica_taxas (desde, prazo_cartao, sem_juros)
+    SELECT '2000-01-01', coalesce((SELECT valor FROM config WHERE chave = 'prazo_cartao'), 2), coalesce((SELECT valor FROM config WHERE chave = 'parcelas_sem_juros'), 6);
+  CREATE TABLE IF NOT EXISTS experimentos (
+    id INTEGER PRIMARY KEY, criado_em TEXT NOT NULL DEFAULT (datetime('now')), titulo TEXT NOT NULL, hipotese TEXT NOT NULL DEFAULT '', mudanca TEXT NOT NULL DEFAULT '',
+    sucesso TEXT NOT NULL DEFAULT '', reversao TEXT NOT NULL DEFAULT '', inicio TEXT, fim TEXT, status TEXT NOT NULL DEFAULT 'planejado', decisao TEXT NOT NULL DEFAULT '', criado_por TEXT NOT NULL DEFAULT '');
+  PRAGMA user_version = 5;
+  COMMIT;
+  `);
+  const prods = d.prepare('SELECT id, nome, custo, custo_usd FROM produtos').all() as {id: number; nome: string; custo: number; custo_usd: number}[];
+  const zera = d.prepare('UPDATE produtos SET custo = 0, custo_usd = 0 WHERE id = ?');
+  for (const p of prods) {
+    const n = semAcento(p.nome);
+    const s = CUSTOS_UNICO_DROP.find(([nome]) => { const k = semAcento(nome); return n === k || n.startsWith(`${k} - `); });
+    if (s && Math.abs(p.custo - s[1]) < 0.005 && Math.abs(p.custo_usd - s[2]) < 0.005) zera.run(p.id);
+  }
+  d.prepare("INSERT INTO experimentos (titulo, hipotese, mudanca, sucesso, reversao, criado_por) VALUES (?, ?, ?, ?, ?, 'Claude')").run(
+    'Reduzir o "sem juros" de 6x para 3x',
+    'A maioria dos compradores parcela em poucas vezes ou paga no Pix; quem parcela em 4x a 6x talvez compre igual com a parcela mais cara. Se a conversão do cartão não cair, a loja deixa de pagar os juros das parcelas de 4x a 6x.',
+    'Em Taxas e planos, trocar "parcelas sem juros até" de 6 para 3. Vale a partir do dia da mudança; os pedidos anteriores continuam calculados pela regra da época. Aceitar até 12x continua igual: o cliente passa a pagar os juros de 4x em diante.',
+    'Em 14 dias (e pelo menos 20 pedidos pagos): os pedidos por dia não caem mais de 10%, os pedidos pagos por checkout iniciado (Meta) não caem mais de 5 pontos e o lucro por pedido sobe. O ponto de equilíbrio (quantos pedidos a menos a economia aguenta) aparece no Plano de ação.',
+    'Se os pedidos pagos por checkout iniciado caírem mais de 5 pontos, ou os pedidos por dia caírem mais de 15% sem o gasto em anúncios ter caído, voltar para 6x no mesmo dia e testar uma alternativa (4x sem juros, desconto no Pix, parcela mostrada no anúncio).');
+  // Ebanx e Ebury são pagamentos aos fornecedores da China (FFOrder e Wiio); Vindi ainda não foi identificada.
+  const rec = d.prepare('UPDATE banco_regras SET categoria = ? WHERE padrao = ? AND prioridade >= 100');
+  rec.run('fornecedor', 'ebanx'); rec.run('fornecedor', 'ebury'); rec.run('a_identificar', 'vindi');
+  reclassificar(d);
+  d.prepare("INSERT INTO memoria (area, texto, autor) VALUES ('financeiro', ?, 'Claude')").run(
+    'Decisões da Bárbara (27/10/2026): (1) o custo de cada produto é SEMPRE a média geral dos pagamentos a fornecedor (valor pago ÷ unidades), vinculando cada pagamento a um pedido da Shopify ou a um produto; os custos do Único Drop são ignorados. (2) Ebanx é o fornecedor da China FFOrder e Ebury é o Wiio: contam como compra de produto. Vindi ainda não foi identificada. (3) A taxa de R$ 4,90 da Cartpanda é cobrada em CADA saque: dois saques no dia custam 2 × R$ 4,90. (4) Shopify custa US$ 19 por mês; a simulação do plano anual (US$ 204 por ano) fica para quando houver caixa. (5) Imposto da Meta precisa aparecer no financeiro, no painel e na precificação. (6) A empresa está indo para ME com CNAE de revenda: o DAS pelo Anexo I não se aplica; ela avisa quando for o momento de considerar o imposto da revenda e a diferença de ICMS. (7) O limite do cartão PJ será aumentado.');
 }

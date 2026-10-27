@@ -40,8 +40,13 @@ export async function sair() {
 export async function salvarProduto(fd: FormData) {
   await exigir();
   const id = Number(fd.get('id'));
-  db().prepare(`UPDATE produtos SET nome = ?, preco = ?, custo = ?, custo_usd = ?, frete = ?, embalagem = ?, outros = ?, cpa_alvo = ?, exemplo = 0, atualizado_em = datetime('now') WHERE id = ?`)
-    .run(txt(fd, 'nome') || 'Sem nome', num(fd, 'preco'), num(fd, 'custo'), num(fd, 'custo_usd'), num(fd, 'frete'), num(fd, 'embalagem'), num(fd, 'outros'), num(fd, 'cpa_alvo'), id);
+  const d = db();
+  // O custo vem da média dos pagamentos a fornecedor; só vale o digitado enquanto não há pagamento vinculado.
+  const {lerCustosMedios} = await import('@/lib/dados');
+  const ext = (d.prepare('SELECT shopify_id FROM produtos WHERE id = ?').get(id) as {shopify_id: string | null} | undefined)?.shopify_id;
+  const custoAuto = !!ext && lerCustosMedios().medios.has(ext);
+  d.prepare(`UPDATE produtos SET nome = ?, preco = ?, ${custoAuto ? '' : 'custo = ?, '}frete = ?, embalagem = ?, outros = ?, cpa_alvo = ?, exemplo = 0, atualizado_em = datetime('now') WHERE id = ?`)
+    .run(...[txt(fd, 'nome') || 'Sem nome', num(fd, 'preco'), ...(custoAuto ? [] : [num(fd, 'custo')]), num(fd, 'frete'), num(fd, 'embalagem'), num(fd, 'outros'), num(fd, 'cpa_alvo'), id]);
   pronto('/precificacao', '/', '/campanhas');
 }
 
@@ -63,9 +68,16 @@ export async function salvarConfig(fd: FormData) {
   await exigir();
   const up = db().prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
   const chaves = ['das_pct', 'plataforma_pct', 'meta_imposto_pct', 'cpa_alvo_padrao', 'meta_mes', 'reserva_pct', 'reserva_dias', 'prazo_cartao',
-    'pix_pct', 'boleto_fixo', 'parcelas_sem_juros', 'taxa_repasse', 'cotacao_dolar', 'custo_capital_mensal', 'rbt12',
+    'pix_pct', 'boleto_fixo', 'parcelas_sem_juros', 'taxa_repasse', 'custo_capital_mensal', 'meta_limite_cobranca', 'meta_saldo_devedor', 'colchao_caixa', 'shopify_anual_brl',
     'cartao_pj_limite', 'cartao_pj_fechamento', 'cartao_pj_vencimento'];
   for (const k of chaves) if (fd.has(k)) up.run(k, num(fd, k));
+  // Prazo e "sem juros até Nx" valem a partir de hoje: o histórico mantém os pedidos antigos na regra da época.
+  const d = db();
+  const hojeSP = new Date().toLocaleDateString('sv-SE', {timeZone: 'America/Sao_Paulo'});
+  const atual = d.prepare('SELECT prazo_cartao, sem_juros FROM politica_taxas ORDER BY desde DESC LIMIT 1').get() as {prazo_cartao: number; sem_juros: number} | undefined;
+  const cfg = lerConfig();
+  if (!atual || atual.prazo_cartao !== cfg.prazo_cartao || atual.sem_juros !== cfg.parcelas_sem_juros)
+    d.prepare('INSERT INTO politica_taxas (desde, prazo_cartao, sem_juros) VALUES (?, ?, ?) ON CONFLICT(desde) DO UPDATE SET prazo_cartao = excluded.prazo_cartao, sem_juros = excluded.sem_juros').run(hojeSP, cfg.prazo_cartao, cfg.parcelas_sem_juros);
   pronto('/taxas', '/precificacao', '/', '/campanhas', '/financeiro', '/financeiro/custos', '/financeiro/banco');
 }
 
@@ -207,14 +219,14 @@ export async function classificarMov(fd: FormData) {
   const categoria = txt(fd, 'categoria');
   if (!(categoria in CATEGORIAS_BANCO)) return;
   const d = db();
-  d.prepare("UPDATE banco SET categoria = ?, regra = 'manual', pedido_numero = ?, produto_ext = ? WHERE conta = ? AND fitid = ?")
-    .run(categoria, numeroPedido(txt(fd, 'pedido')), txt(fd, 'produto'), txt(fd, 'conta'), txt(fd, 'fitid'));
+  d.prepare("UPDATE banco SET categoria = ?, regra = 'manual', pedido_numero = ?, produto_ext = ?, quantidade = ? WHERE conta = ? AND fitid = ?")
+    .run(categoria, numeroPedido(txt(fd, 'pedido')), txt(fd, 'produto'), Math.max(1, Math.round(num(fd, 'quantidade')) || 1), txt(fd, 'conta'), txt(fd, 'fitid'));
   const padrao = txt(fd, 'padrao').toLowerCase();
   if (fd.get('regra') && padrao.length >= 3) {
     d.prepare('INSERT INTO banco_regras (padrao, categoria, prioridade) VALUES (?, ?, 50) ON CONFLICT(padrao) DO UPDATE SET categoria = excluded.categoria').run(padrao, categoria);
     reclassificar();
   }
-  pronto('/financeiro/banco', '/financeiro/dre', '/financeiro', '/financeiro/custos', '/');
+  pronto('/financeiro/banco', '/financeiro/dre', '/financeiro', '/financeiro/custos', '/precificacao', '/');
 }
 
 /** Importa compras de cartões e outras contas por CSV (conta, data, descricao, valor, categoria, pedido). */
@@ -252,4 +264,73 @@ export async function aplicarSugestoes(fd: FormData) {
     if (conta && fitid && pedido) up.run(pedido, conta, fitid);
   }
   pronto('/financeiro/banco');
+}
+
+/** Vincula de uma vez vários pagamentos de mesmo valor ao mesmo produto (cada um com a quantidade informada). */
+export async function vincularGrupo(fd: FormData) {
+  await exigir();
+  const produto = txt(fd, 'produto');
+  if (!produto) return;
+  const quantidade = Math.max(1, Math.round(num(fd, 'quantidade')) || 1);
+  const up = db().prepare("UPDATE banco SET produto_ext = ?, quantidade = ? WHERE conta = ? AND fitid = ? AND produto_ext = '' AND pedido_numero = ''");
+  for (const v of fd.getAll('mov').map(String)) {
+    const [conta, fitid] = v.split('\u0001');
+    if (conta && fitid) up.run(produto, quantidade, conta, fitid);
+  }
+  pronto('/financeiro/banco', '/financeiro', '/financeiro/dre', '/financeiro/custos', '/precificacao', '/');
+}
+
+/** Âncoras do caixa: saldo disponível na Cartpanda hoje (do painel deles) e os valores que o Cérebro não consegue ler sozinho. */
+export async function salvarAncorasCaixa(fd: FormData) {
+  await exigir();
+  const d = db();
+  const hojeSP = new Date().toLocaleDateString('sv-SE', {timeZone: 'America/Sao_Paulo'});
+  if (txt(fd, 'cartpanda_saldo') !== '') {
+    d.prepare("INSERT INTO estado (chave, valor) VALUES ('cartpanda_saldo', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor")
+      .run(JSON.stringify({valor: num(fd, 'cartpanda_saldo'), em: hojeSP}));
+  }
+  const up = d.prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
+  for (const k of ['colchao_caixa', 'meta_saldo_devedor', 'meta_limite_cobranca', 'shopify_anual_brl', 'taxa_repasse']) if (txt(fd, k) !== '') up.run(k, num(fd, k));
+  pronto('/financeiro/caixa', '/financeiro/custos', '/');
+}
+
+// ---------- Plano de ação (experimentos) ----------
+
+export async function criarExperimento(fd: FormData) {
+  const u = await exigir();
+  const titulo = txt(fd, 'titulo');
+  if (!titulo) return;
+  db().prepare('INSERT INTO experimentos (titulo, hipotese, mudanca, sucesso, reversao, criado_por) VALUES (?,?,?,?,?,?)')
+    .run(titulo, txt(fd, 'hipotese'), txt(fd, 'mudanca'), txt(fd, 'sucesso'), txt(fd, 'reversao'), u.nome);
+  pronto('/financeiro/plano', '/');
+}
+
+/** Marca o começo do teste hoje: o "antes" é calculado até a véspera e o "depois" a partir de hoje. */
+export async function iniciarExperimento(fd: FormData) {
+  await exigir();
+  const hojeSP = new Date().toLocaleDateString('sv-SE', {timeZone: 'America/Sao_Paulo'});
+  db().prepare("UPDATE experimentos SET status = 'em_andamento', inicio = ? WHERE id = ? AND status = 'planejado'").run(txt(fd, 'inicio') || hojeSP, Number(fd.get('id')));
+  pronto('/financeiro/plano', '/');
+}
+
+function fecharExperimento(fd: FormData, status: 'concluido' | 'revertido') {
+  const hojeSP = new Date().toLocaleDateString('sv-SE', {timeZone: 'America/Sao_Paulo'});
+  db().prepare("UPDATE experimentos SET status = ?, fim = ?, decisao = ? WHERE id = ? AND status = 'em_andamento'").run(status, hojeSP, txt(fd, 'decisao'), Number(fd.get('id')));
+  pronto('/financeiro/plano', '/');
+}
+
+export async function concluirExperimento(fd: FormData) {
+  await exigir();
+  fecharExperimento(fd, 'concluido');
+}
+
+export async function reverterExperimento(fd: FormData) {
+  await exigir();
+  fecharExperimento(fd, 'revertido');
+}
+
+export async function apagarExperimento(fd: FormData) {
+  await exigir();
+  db().prepare("DELETE FROM experimentos WHERE id = ? AND status = 'planejado'").run(Number(fd.get('id')));
+  pronto('/financeiro/plano');
 }

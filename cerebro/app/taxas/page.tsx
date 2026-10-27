@@ -7,7 +7,7 @@ import {apagarPlano, salvarConfig, salvarPlano, salvarTabelasTaxas} from '@/app/
 export const dynamic = 'force-dynamic';
 
 export default function Taxas() {
-  const cfg = lerConfig(), formas = lerFormas(), planos = lerPlanos(), taxas = lerTaxas(), pc = planoCartpanda();
+  const cfg = lerConfig(), formas = lerFormas(), planos = lerPlanos(), taxas = lerTaxas(false), pc = planoCartpanda();
   const prazos = lerPrazos(), juros = lerJuros(), rad = radar30();
   const {taxa} = taxaMedia(formas);
   const pedidos = resumoMes(mesAtual()).pagos.n;
@@ -28,11 +28,9 @@ export default function Taxas() {
           <div className="cartao">
             <div><h2>Impostos e custo do dinheiro</h2><p className="nota">Simples Nacional, Meta e dólar</p></div>
             <label htmlFor="das_pct">DAS: % sobre o faturamento<input id="das_pct" name="das_pct" type="number" step="0.01" defaultValue={cfg.das_pct} /></label>
-            <label htmlFor="rbt12">Faturamento dos últimos 12 meses (R$, do contador)<input id="rbt12" name="rbt12" type="number" step="1" defaultValue={cfg.rbt12} /></label>
             <label htmlFor="meta_imposto_pct">Imposto sobre Meta Ads (%)<input id="meta_imposto_pct" name="meta_imposto_pct" type="number" step="0.01" defaultValue={cfg.meta_imposto_pct} /></label>
-            <label htmlFor="cotacao_dolar">Cotação do dólar (R$) para custos em US$<input id="cotacao_dolar" name="cotacao_dolar" type="number" step="0.01" defaultValue={cfg.cotacao_dolar} /></label>
             <label htmlFor="custo_capital_mensal">Custo do dinheiro (% ao mês)<input id="custo_capital_mensal" name="custo_capital_mensal" type="number" step="0.1" defaultValue={cfg.custo_capital_mensal} /></label>
-            <p className="nota">Meta: 13,83% no pós-pago, confirmado na fatura (R$ 3.000 viraram R$ 3.415,30). DAS: com {fmtBRL(rad.das.rbt)} de faturamento {rad.das.anualizado ? '(últimos 30 dias × 12, estimado)' : 'em 12 meses'}, o Simples (Anexo I) cai na {rad.das.faixa}ª faixa, alíquota efetiva de cerca de {fmtPct(rad.das.efetiva)}. Confirme com o contador e use aqui.</p>
+            <p className="nota">Imposto da Meta: 13,83% no pós-pago, confirmado na fatura (R$ 3.000 viraram R$ 3.415,30). Ele entra no lucro, no ROAS e no CPA reais, no DRE e na precificação. DAS: {fmtPct(cfg.das_pct)} é provisório (a empresa vai para ME com CNAE de revenda; o Anexo I do Simples não se aplica). Quando a Bárbara avisar, o Cérebro soma o imposto da revenda e a diferença de ICMS.</p>
           </div>
           <div className="cartao">
             <div><h2>Cartpanda Pay</h2><p className="nota">Como vocês recebem e quem paga os juros</p></div>
@@ -44,7 +42,7 @@ export default function Taxas() {
               <label htmlFor="pix_pct">Pix (%)<input id="pix_pct" name="pix_pct" type="number" step="0.01" defaultValue={cfg.pix_pct} /></label>
               <label htmlFor="boleto_fixo">Boleto (R$ por boleto)<input id="boleto_fixo" name="boleto_fixo" type="number" step="0.01" defaultValue={cfg.boleto_fixo} /></label>
               <label htmlFor="plataforma_pct">Checkout (% da venda)<input id="plataforma_pct" name="plataforma_pct" type="number" step="0.01" defaultValue={cfg.plataforma_pct} /></label>
-              <label htmlFor="taxa_repasse">Taxa por repasse (R$)<input id="taxa_repasse" name="taxa_repasse" type="number" step="0.01" defaultValue={cfg.taxa_repasse} /></label>
+              <label htmlFor="taxa_repasse">Taxa por saque (R$, cobrada em cada saque)<input id="taxa_repasse" name="taxa_repasse" type="number" step="0.01" defaultValue={cfg.taxa_repasse} /></label>
               <label htmlFor="reserva_pct">Reserva retida (%)<input id="reserva_pct" name="reserva_pct" type="number" step="0.1" defaultValue={cfg.reserva_pct} /></label>
               <label htmlFor="reserva_dias">Reserva volta em (dias)<input id="reserva_dias" name="reserva_dias" type="number" step="1" defaultValue={cfg.reserva_dias} /></label>
             </div>

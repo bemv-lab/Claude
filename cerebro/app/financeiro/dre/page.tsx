@@ -57,7 +57,7 @@ export default async function Dre({searchParams}: {searchParams: Promise<{mes?: 
             <h2>Resultado</h2>
             <div><small className="nota">Lucro líquido</small><div className={`grande ${d.lucro < 0 ? 'desce' : ''}`}>{fmtBRL(d.lucro)}</div></div>
             <Barra r="Margem de lucro" v={d.lucro} base={d.totalReceitas} cls="sobe" />
-            <div className="dre-linha"><div><span>ROI (lucro ÷ anúncios)</span><span className="sobe">{d.roi === null ? '–' : fmtPct(d.roi)}</span></div></div>
+            <div className="dre-linha"><div><span>ROI (lucro ÷ anúncios com imposto Meta)</span><span className="sobe">{d.roi === null ? '–' : fmtPct(d.roi)}</span></div></div>
             {d.pontual > 0 && <div className="dre-linha"><div><span>Lucro sem despesas pontuais<br /><small className="nota">tira regularização do MEI e enquadramento ({fmtBRL(d.pontual)})</small></span><span className="sobe">{fmtBRL(d.lucroRecorrente)}</span></div></div>}
           </div>
           <div className="cartao alerta">

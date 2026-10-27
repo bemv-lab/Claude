@@ -4,7 +4,8 @@ import type {Pedido, Item} from './shopify';
 import type {AdDia} from './meta';
 import {CATEGORIAS, ehCategoria, type Lancamento} from './calc';
 
-export type Taxa = {forma: string; parcelas: number; pct: number; fixo: number};
+/** `desde`: a regra vale para pedidos pagos a partir dessa data (mudar "sem juros até Nx" ou o prazo não reescreve o passado). */
+export type Taxa = {forma: string; parcelas: number; pct: number; fixo: number; desde?: string};
 export type CfgFin = {checkout_pct: number; das_pct: number; meta_imposto_pct: number};
 export type Entrada = {
   pedidos: Pedido[]; itens: Item[]; ads: AdDia[]; lancamentos: Lancamento[];
@@ -24,7 +25,10 @@ const soma = (a: NV, v: number) => { a.n++; a.v += v; };
 
 export function taxaDoPedido(p: Pedido, taxas: Taxa[]) {
   const forma = p.forma === 'outro' ? 'cartao' : p.forma;
-  const t = taxas.find((x) => x.forma === forma && x.parcelas === p.parcelas) ?? taxas.find((x) => x.forma === forma && x.parcelas === 1);
+  const dia = p.dia_pago ?? p.dia;
+  // Entre as regras de datas diferentes, vale a mais recente que já estava em vigor no dia do pagamento.
+  const vigente = (parcelas: number) => taxas.filter((x) => x.forma === forma && x.parcelas === parcelas && (x.desde ?? '') <= dia).sort((a, b) => (b.desde ?? '').localeCompare(a.desde ?? ''))[0];
+  const t = vigente(p.parcelas) ?? vigente(1);
   return t ? (p.total * t.pct) / 100 + t.fixo : 0;
 }
 
@@ -105,9 +109,13 @@ export function resumo(e: Entrada, ini: string, fim: string, incluirAdicionais =
     receita, custo, semCusto: semCusto.size, ads: {facebook: adsFb, google: adsGoogle, manual: adsManual, total: adsTotal},
     impostoMeta, checkout, gateway, imposto, impostoEstimado: !dasLancado, taxas, adicionais, lucroOperacao, lucro,
     margem: receita ? (lucro / receita) * 100 : 0,
-    roi: adsTotal ? (lucro / adsTotal) * 100 : null,
+    // cpa e roas são como o Gerenciador mostra (sem o imposto da Meta); os "Real" somam o imposto, que é o dinheiro que sai de verdade.
+    adsComImposto: adsTotal + impostoMeta,
+    roi: adsTotal ? (lucro / (adsTotal + impostoMeta)) * 100 : null,
     cpa: pagos.n && adsTotal ? adsTotal / pagos.n : null,
+    cpaReal: pagos.n && adsTotal ? (adsTotal + impostoMeta) / pagos.n : null,
     roas: adsTotal ? receita / adsTotal : null,
+    roasReal: adsTotal ? receita / (adsTotal + impostoMeta) : null,
     ticket: pagos.n ? pagos.v / pagos.n : 0,
     conversao: gerados.n + cancelados.n ? (pagos.n / (gerados.n + cancelados.n)) * 100 : 0,
     frete, descontos, reembolsado,
@@ -244,7 +252,7 @@ export function dreMes(e: Entrada, mes: string) {
   const lucro = totalReceitas - totalDespesas;
   const pontual = cat('regularizacao');
   return {mes, receitas, outrasReceitas: cat('outras_receitas'), totalReceitas, despesas, totalDespesas, lucro, pontual, lucroRecorrente: lucro + pontual,
-    margem: totalReceitas ? (lucro / totalReceitas) * 100 : 0, roi: r.ads.total ? (lucro / r.ads.total) * 100 : null, semCusto: r.semCusto, resumo: r};
+    margem: totalReceitas ? (lucro / totalReceitas) * 100 : 0, roi: r.ads.total ? (lucro / (r.ads.total + r.impostoMeta)) * 100 : null, semCusto: r.semCusto, resumo: r};
 }
 
 /** Dinheiro preso na Cartpanda: reserva de garantia (5% por 90 dias) e cartão ainda a liberar (D+2). */
@@ -307,14 +315,15 @@ type Juros = Record<number, number>;
 const pagosDe = (pedidos: Pedido[]) => pedidos.filter((p) => p.status === 'pago');
 
 /** Juros de parcelamento que a loja paga por oferecer "sem juros até Nx". */
-export function jurosAbsorvidos(pedidos: Pedido[], juros: Juros, semJuros: number) {
+export function jurosAbsorvidos(pedidos: Pedido[], juros: Juros, semJuros: number | ((dia: string) => number)) {
   const por = new Map<number, {n: number; receita: number; custo: number}>();
   let valor = 0, receitaCartao = 0, receita = 0, nParcelados = 0;
   for (const p of pagosDe(pedidos)) {
     receita += p.total;
     if (p.forma !== 'cartao') continue;
     receitaCartao += p.total;
-    if (p.parcelas < 2 || p.parcelas > semJuros) continue;
+    const ate = typeof semJuros === 'number' ? semJuros : semJuros(p.dia_pago ?? p.dia);
+    if (p.parcelas < 2 || p.parcelas > ate) continue;
     const custo = (p.total * (juros[p.parcelas] ?? 0)) / 100;
     const x = por.get(p.parcelas) ?? {n: 0, receita: 0, custo: 0};
     x.n++; x.receita += p.total; x.custo += custo;
@@ -323,6 +332,17 @@ export function jurosAbsorvidos(pedidos: Pedido[], juros: Juros, semJuros: numbe
   }
   return {valor, receita, receitaCartao, nParcelados, pctReceita: receita ? (valor / receita) * 100 : 0, pctCartao: receitaCartao ? (valor / receitaCartao) * 100 : 0,
     porParcela: [...por.entries()].sort((a, b) => a[0] - b[0]).map(([parcelas, x]) => ({parcelas, ...x}))};
+}
+
+/** Como os compradores de cartão parcelam: pedidos e receita por parcela, e a média de parcelas. */
+export function mixParcelas(pedidos: Pedido[]) {
+  const cartao = pagosDe(pedidos).filter((p) => p.forma === 'cartao');
+  const por = new Map<number, {n: number; receita: number}>();
+  for (const p of cartao) { const x = por.get(p.parcelas) ?? {n: 0, receita: 0}; x.n++; x.receita += p.total; por.set(p.parcelas, x); }
+  const n = cartao.length, receita = cartao.reduce((s, p) => s + p.total, 0);
+  const faixas = [...por.entries()].sort((a, b) => a[0] - b[0]).map(([parcelas, x]) => ({parcelas, ...x, pctPedidos: n ? (x.n / n) * 100 : 0, pctReceita: receita ? (x.receita / receita) * 100 : 0}));
+  const ate = (k: number) => (n ? (faixas.filter((f) => f.parcelas <= k).reduce((s, f) => s + f.n, 0) / n) * 100 : 0);
+  return {n, receita, faixas, mediaParcelas: n ? cartao.reduce((s, p) => s + p.parcelas, 0) / n : 0, avista: ate(1), ate3: ate(3), de4a6: n ? 100 - ate(3) - faixas.filter((f) => f.parcelas > 6).reduce((s, f) => s + f.pctPedidos, 0) : 0};
 }
 
 /** Quanto custaria, com os pedidos do período, oferecer sem juros até 1x, 2x... 12x (supondo que o volume não mude). */
@@ -357,7 +377,9 @@ export function pixVsCartao(pedidos: Pedido[], taxas: Taxa[]) {
   const pctCartao = rc ? (tc / rc) * 100 : 0;
   const pctPix = taxas.find((t) => t.forma === 'pix')?.pct ?? 0;
   const total = pagos.length;
-  return {pctCartao, pctPix, descontoMax: Math.max(0, pctCartao - pctPix), nCartao: cartao.length, nPix: pix.length, shareCartao: total ? (cartao.length / total) * 100 : 0,
+  // Conversão de cada forma no período (pago ÷ pago + pendente + cancelado): é o que diz se empurrar para o Pix é realista.
+  const conv = (f: string) => { const t = pedidos.filter((p) => p.forma === f && ['pago', 'pendente', 'cancelado'].includes(p.status)); return t.length ? (t.filter((p) => p.status === 'pago').length / t.length) * 100 : null; };
+  return {conversaoCartao: conv('cartao'), conversaoPix: conv('pix'), pctCartao, pctPix, descontoMax: Math.max(0, pctCartao - pctPix), nCartao: cartao.length, nPix: pix.length, shareCartao: total ? (cartao.length / total) * 100 : 0,
     ticketCartao: cartao.length ? rc / cartao.length : 0, economiaPorPedido: cartao.length ? ((rc / cartao.length) * (pctCartao - pctPix)) / 100 : 0};
 }
 
@@ -377,50 +399,37 @@ export function taxaEfetivaSemanal(e: Entrada, fim: string, semanas = 8) {
   return {serie, recente: media(recentes), anterior: media(anteriores), variacao: comparavel ? media(recentes) - media(anteriores) : null};
 }
 
-/** Alíquota efetiva do Simples Nacional, Anexo I (comércio), pela receita bruta dos últimos 12 meses. */
-export const FAIXAS_ANEXO_I = [
-  {ate: 180_000, nominal: 4, deducao: 0},
-  {ate: 360_000, nominal: 7.3, deducao: 5_940},
-  {ate: 720_000, nominal: 9.5, deducao: 13_860},
-  {ate: 1_800_000, nominal: 10.7, deducao: 22_500},
-  {ate: 3_600_000, nominal: 14.3, deducao: 87_300},
-  {ate: 4_800_000, nominal: 19, deducao: 378_000},
-];
-
-export function dasAnexoI(rbt12: number) {
-  const i = FAIXAS_ANEXO_I.findIndex((f) => rbt12 <= f.ate);
-  const f = FAIXAS_ANEXO_I[i < 0 ? FAIXAS_ANEXO_I.length - 1 : i];
-  // (RBT12 × alíquota nominal − parcela a deduzir) ÷ RBT12, em %.
-  const efetiva = rbt12 > 0 ? Math.max(0, ((rbt12 * f.nominal) / 100 - f.deducao) / rbt12) * 100 : f.nominal;
-  return {faixa: (i < 0 ? FAIXAS_ANEXO_I.length : i + 1), nominal: f.nominal, efetiva: rbt12 > 0 ? efetiva : f.nominal};
-}
-
-export type CfgRadar = {juros: Juros; sem_juros: number; prazos: {dias: number; pct: number}[]; prazo_atual: number; custo_capital_mes: number; rbt12: number; das_pct: number; taxa_repasse: number};
+export type CfgRadar = {juros: Juros; sem_juros: number; sem_juros_em?: (dia: string) => number; prazos: {dias: number; pct: number}[]; prazo_atual: number; custo_capital_mes: number; taxa_repasse: number; saques30?: number};
 
 /** Tudo do radar de custos para uma janela (normalmente os últimos 30 dias). */
 export function radarCustos(e: Entrada, ini: string, fim: string, c: CfgRadar) {
   const r = resumo(e, ini, fim);
   const pagos = pagosDe(r.pedidos);
   const dias = diasEntre(ini, fim).length;
-  const juros = jurosAbsorvidos(r.pedidos, c.juros, c.sem_juros);
+  const juros = jurosAbsorvidos(r.pedidos, c.juros, c.sem_juros_em ?? c.sem_juros);
   const receitaCartao = juros.receitaCartao;
   // Contribuição de um pedido extra: o que sobra do pedido antes dos anúncios, sem os juros (que se somam à parte).
   const contribuicao = pagos.length ? (r.receita - r.custo - r.checkout - (r.gateway - juros.valor) - r.imposto) / pagos.length : 0;
   const jurosMedio = juros.nParcelados ? juros.valor / juros.nParcelados : 0;
   const margemExtra = contribuicao - jurosMedio;
-  const simulacao = simularSemJuros(r.pedidos, c.juros, c.sem_juros).map((x) => ({...x, pedidosParaEquilibrar: margemExtra > 0 ? x.custo / margemExtra : null}));
+  const mix = mixParcelas(r.pedidos);
+  // O que cada cenário custa, quantos compradores passariam a pagar juros e que fatia deles pode desistir antes de a economia se perder.
+  const simulacao = simularSemJuros(r.pedidos, c.juros, c.sem_juros).map((x) => {
+    const afetados = mix.faixas.filter((f) => f.parcelas > x.ate && f.parcelas <= c.sem_juros).reduce((s, f) => s + f.n, 0);
+    const economia = x.economiaVsAtual;
+    const pedidosParaEquilibrar = margemExtra > 0 ? Math.max(0, economia) / margemExtra : null;
+    return {...x, pedidosParaEquilibrar: margemExtra > 0 ? x.custo / margemExtra : null, afetados, economia,
+      equilibrioPedidos: pedidosParaEquilibrar, toleranciaPct: afetados && pedidosParaEquilibrar !== null ? Math.min(100, (pedidosParaEquilibrar / afetados) * 100) : null};
+  });
   const prazos = compararPrazos(receitaCartao * (30 / dias), c.prazos, c.prazo_atual, c.custo_capital_mes);
   const pix = pixVsCartao(r.pedidos, e.taxas);
-  const anual = (r.receita * 365) / dias;
-  const rbtUsado = c.rbt12 > 0 ? c.rbt12 : anual;
-  const das = dasAnexoI(rbtUsado);
   const diasComVenda = new Set(pagos.map((p) => p.dia_pago)).size;
   return {
-    r, dias, juros, simulacao, prazos, pix, margemExtra, contribuicao,
+    r, dias, juros, simulacao, prazos, pix, mix, margemExtra, contribuicao,
     taxaTotalPct: r.receita ? ((r.gateway + r.checkout) / r.receita) * 100 : 0,
     taxaGatewayPct: r.receita ? (r.gateway / r.receita) * 100 : 0,
-    das: {...das, rbt: rbtUsado, anualizado: c.rbt12 <= 0, configurado: c.das_pct},
-    repasse: {diasComVenda, custoMaximo: diasComVenda * c.taxa_repasse},
+    // Cada saque custa a taxa de repasse: dois saques no mesmo dia são duas taxas.
+    repasse: {diasComVenda, saques: c.saques30 ?? diasComVenda, custo: (c.saques30 ?? diasComVenda) * c.taxa_repasse, custoPorSaque: c.taxa_repasse},
   };
 }
 export type Radar = ReturnType<typeof radarCustos>;

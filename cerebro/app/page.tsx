@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Casca from '@/components/Casca';
-import {alertas, entrada, lerConfig, lerMemoria, mesAtual, resumoMes} from '@/lib/dados';
+import {alertas, caixaPrevisto, entrada, lerConfig, lerMemoria, mesAtual, resumoMes} from '@/lib/dados';
 import {dreMes} from '@/lib/financeiro';
 import {usuarioAtual} from '@/lib/usuario';
 import {fmtBRL, fmtNum, fmtPct} from '@/lib/calc';
@@ -25,6 +25,7 @@ export default async function Inicio() {
   const todos = alertas(mes).sort((x, y) => ordem[x.nivel] - ordem[y.nivel]);
   const avisos = todos.slice(0, 7), outros = todos.slice(7);
   const memorias = lerMemoria('', 4);
+  const cx = caixaPrevisto();
   // Só compara com o mês anterior quando ele tem pedidos suficientes (o primeiro mês sincronizado costuma ser parcial).
   const vFat = ant.pagos.n >= 20 ? variacao(r.receita, ant.receita) : null;
   const hora = Number(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false}));
@@ -46,8 +47,18 @@ export default async function Inicio() {
         <div className="kpi"><span className="rot">Pedidos pagos · ticket médio</span><span className="val">{r.pagos.n} · {fmtBRL(r.ticket)}</span><span className="var">{r.pendentes.n} pendentes · {fmtPct(r.conversao)} de conversão</span></div>
         <div className="kpi"><span className="rot">Lucro líquido (DRE)</span><span className={`val ${dre.lucro < 0 ? 'desce' : ''}`}>{fmtBRL(dre.lucro)}</span>
           <span className="var">{dre.pontual > 0 ? `${fmtBRL(dre.lucroRecorrente)} sem a regularização do MEI (${fmtBRL(dre.pontual)})` : dre.totalReceitas ? `${fmtPct(dre.margem)} da receita, com DAS, imposto Meta e despesas` : 'sem receita no mês'}</span></div>
-        <div className="kpi"><span className="rot">ROAS real (com imposto Meta)</span><span className="val">{r.ads.total ? fmtNum(r.receita / (r.ads.total + r.impostoMeta)) : '–'}</span>
-          <span className={`var ${r.impostoMeta ? 'desce' : ''}`}>{r.impostoMeta ? `${fmtBRL(r.impostoMeta)} de imposto Meta` : 'sem anúncios sincronizados'}</span></div>
+        <div className="kpi"><span className="rot">ROAS real (com imposto Meta)</span><span className="val">{r.roasReal === null ? '–' : fmtNum(r.roasReal)}</span>
+          <span className={`var ${r.impostoMeta ? 'desce' : ''}`}>{r.impostoMeta ? `Gerenciador ${fmtNum(r.roas ?? 0)} · CPA real ${r.cpaReal === null ? '–' : fmtBRL(r.cpaReal)} · imposto ${fmtBRL(r.impostoMeta)}` : 'sem anúncios sincronizados'}</span></div>
+      </div>
+
+      <div className="cartao">
+        <div className="topo"><h2>Caixa hoje</h2><Link href="/financeiro/caixa" className="nota">ver os próximos 10 dias</Link></div>
+        <div className="destaque">
+          <div><small>Conta PJ</small><b>{fmtBRL(cx.x.saldoConta)}</b><small>liberado na Cartpanda: {fmtBRL(cx.x.cartpanda.disponivel)}</small></div>
+          <div><small>Fornecedor, 3 dias</small><b>{fmtBRL(cx.x.fornecedor.pendentes + cx.x.fornecedor.porDia * 3)}</b><small>pedidos a comprar</small></div>
+          <div><small>Meta a cobrar</small><b>{fmtBRL(cx.prev.cob.valor)}</b><small>{cx.prev.cob.dia ? `previsto ${cx.prev.cob.dia.slice(8)}/${cx.prev.cob.dia.slice(5, 7)}` : 'sem previsão'}</small></div>
+        </div>
+        <p><b>{cx.prev.recomendacao.titulo}</b> <span className="nota">{cx.prev.recomendacao.detalhe}</span></p>
       </div>
 
       <div className="duas">

@@ -15,7 +15,11 @@ Calculado pedido a pedido, a partir da Shopify (checkout Cartpanda) e da Meta, e
 | DRE | mês pela data de pagamento, com as despesas lançadas e a diferença para o Único Drop |
 | Despesas | lançamentos pagos por fora da conta PJ, com status e repetição mensal |
 | Conta PJ | extrato OFX do banco, fatura do cartão PJ, cartão pessoal e saldo com a Bárbara; repasses da Cartpanda e fornecedor conferidos; compras vinculadas a pedidos; despesas pagas entram sozinhas no DRE |
-| Custos | taxa de pagamento semana a semana, juros de parcelamento que a loja assume e simulação de "sem juros até Nx", prazo de recebimento D+2/5/14, Pix contra cartão, DAS pelo Anexo I e custos fixos; o sistema questiona e mostra o número |
+| Caixa | previsão dos próximos 10 dias: saldo da conta, liberado na Cartpanda, fornecedor a pagar, cobrança prevista da Meta e fatura do cartão PJ; diz se dá para usar o saldo ou se é hora de sacar (R$ 4,90 por saque) sem comprometer o dinheiro dos anúncios; mantém D+5, D+14, saque em lote e Shopify anual no radar até haver folga |
+| Custos | taxa de pagamento semana a semana, juros de parcelamento que a loja assume, parcelamento médio e cenário de "sem juros até Nx" (com a tolerância de pedidos perdidos), prazo de recebimento D+2/5/14, Pix contra cartão (teoria e prática), imposto da Meta e custos fixos; o sistema questiona e mostra o número |
+| Plano de ação | experimentos documentados (hipótese, mudança, critério de sucesso, quando reverter) com antes e depois; alerta e ações a testar quando a conversão cai |
+
+Custo do produto: sempre a média dos pagamentos a fornecedor (valor pago ÷ unidades), vinculando cada pagamento a um produto (com quantidade) ou a um pedido em Conta PJ; os custos do Único Drop são ignorados. CPA, ROAS e ROI aparecem reais (com o imposto da Meta) e como o Gerenciador mostra. Mudar "sem juros até Nx" ou o prazo vale a partir do dia da mudança: pedidos antigos ficam na regra da época.
 
 Diferenças para o Único Drop: desconta o DAS e o imposto da Meta (lá estão em 0%); conta os juros de parcelamento que a loja assume em todos os pedidos (ele reprocessou até 18/10 com cartão 5,99% fixo); marketing por produto pela UTM; despesas mensais automáticas; extrato do banco e cartões; radar de custos; o Claude lê tudo pelo conector.
 Conferido com os prints de 26/10/2026: receita de outubro, checkout, conversão do Pix e o lucro do dia batem (`npm run conferir <pasta com JSON da Shopify>`).

@@ -5,7 +5,7 @@ import {precificar, precoParaMargem, fmtBRL, fmtNum, fmtPct, type Config, type F
 import {salvarProduto, arquivarProduto} from '@/app/acoes';
 
 const CAMPOS: [keyof Produto, string][] = [
-  ['preco', 'Preço de venda (R$)'], ['custo', 'Custo do produto (R$)'], ['custo_usd', 'Custo em US$ (se importado)'], ['frete', 'Frete pago pela loja (R$)'],
+  ['preco', 'Preço de venda (R$)'], ['custo', 'Custo do produto (R$)'], ['frete', 'Frete pago pela loja (R$)'],
   ['embalagem', 'Embalagem e brinde (R$)'], ['outros', 'Outros por pedido (R$)'], ['cpa_alvo', 'CPA alvo no Gerenciador (R$)'],
 ];
 
@@ -25,10 +25,12 @@ export default function Calculadora({produto, cfg, formas}: {produto: Produto; c
           <label htmlFor="nome">Produto<input id="nome" name="nome" value={p.nome} onChange={(e) => set('nome', e.target.value)} /></label>
           <div className="campos">
             {CAMPOS.map(([k, rot]) => (
-              <label key={k} htmlFor={k}>{rot}<input id={k} name={k} type="number" step="0.01" value={(p[k] as number) ?? 0} onChange={(e) => set(k, e.target.value)} /></label>
+              <label key={k} htmlFor={k}>{rot}<input id={k} name={k} type="number" step="0.01" value={(p[k] as number) ?? 0} readOnly={k === 'custo' && p.custo_origem === 'media'} onChange={(e) => set(k, e.target.value)} /></label>
             ))}
           </div>
-          {(p.custo_usd ?? 0) > 0 ? <p className="nota">Custo em dólar: {cfg.cotacao_dolar ? `US$ ${p.custo_usd} × ${cfg.cotacao_dolar.toLocaleString('pt-BR')} = ${fmtBRL((p.custo_usd ?? 0) * cfg.cotacao_dolar)}` : 'informe a cotação do dólar em Taxas e planos para o custo valer'}.</p> : null}
+          {p.custo_origem === 'media'
+            ? <p className="nota">Custo = média dos pagamentos a fornecedor: {p.custo_compras} pagamento(s) para {p.custo_unidades} unidade(s). Muda sozinho quando você vincula novos pagamentos em <Link href="/financeiro/banco">Conta PJ</Link>.</p>
+            : <p className="nota erro">Sem pagamento a fornecedor vinculado a este produto: o custo {p.custo_origem === 'manual' ? 'digitado aqui é só uma estimativa' : 'está zerado e o lucro fica inflado'}. Vincule os pagamentos em <Link href="/financeiro/banco">Conta PJ</Link>.</p>}
           {p.exemplo ? <p className="selo" style={{alignSelf: 'flex-start'}}>valores de exemplo: confira e salve</p> : null}
           <div className="acoes">
             <button type="submit" disabled={!mudou && !p.exemplo}>Salvar</button>
@@ -53,9 +55,10 @@ export default function Calculadora({produto, cfg, formas}: {produto: Produto; c
           {r.linhas.map(([rot, v]) => <div className="linha" key={rot}><span>{rot}</span><span>{fmtBRL(v)}</span></div>)}
           <div className="linha forte"><span>Margem de contribuição</span><span>{fmtBRL(r.mc)}</span></div>
           <div className="linha"><span>Mídia no CPA alvo</span><span>{fmtBRL(-r.cpaAlvo)}</span></div>
-          <div className="linha"><span>Imposto Meta sobre a mídia</span><span>{fmtBRL(-r.impostoMidia)}</span></div>
+          <div className="linha"><span>Imposto da Meta sobre a mídia ({fmtPct(cfg.meta_imposto_pct)})</span><span>{fmtBRL(-r.impostoMidia)}</span></div>
           <div className="linha forte"><span>Lucro por pedido</span><span>{fmtBRL(r.lucro)}</span></div>
         </div>
+        <p className="nota">O Gerenciador mostra o gasto <b>sem</b> o imposto da Meta: um CPA de {fmtBRL(r.cpaAlvo)} no Gerenciador custa {fmtBRL(r.cpaAlvo + r.impostoMidia)} na fatura. Por isso o CPA máximo e o ROAS de break-even acima já estão descontados dele.</p>
         <p className="nota">A taxa de pagamento é a média ponderada pelo que os clientes escolhem. Oferecer 10× sem juros pesa só nos pedidos que usam 10×.</p>
         <form action={arquivarProduto}><input type="hidden" name="id" value={p.id} /><button className="mini" type="submit">Arquivar produto</button></form>
       </div>

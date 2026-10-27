@@ -4,7 +4,7 @@ import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {z} from 'zod';
 import {db} from '../lib/db';
-import {alertas, avisosDeCustos, entrada, faturaCartaoPJ, lerConfig, lerFormas, lerMemoria, lerPlanos, lerProdutos, mesAtual, periodo, radar30, resumoMes, saldoComSocio, saldosBanco, ultimaImportacao, hoje} from '../lib/dados';
+import {alertas, avisosDeCustos, caixaPrevisto, custosDosProdutos, entrada, faturaCartaoPJ, lerConfig, lerFormas, lerMemoria, lerPlanos, lerProdutos, mesAtual, periodo, radar30, resumoMes, saldoComSocio, saldosBanco, ultimaImportacao, hoje} from '../lib/dados';
 import {dreMes, resumo, ranking} from '../lib/financeiro';
 import {CATEGORIAS, ehCategoria, fmtBRL, fmtNum, fmtPct, precificar, taxaMedia, type Produto} from '../lib/calc';
 
@@ -25,7 +25,7 @@ function blocoMes(mes: string) {
     `Receita paga ${fmtBRL(r.receita)} · ${r.pagos.n} pedidos pagos · ${r.pendentes.n} pendentes · ticket ${fmtBRL(r.ticket)} · conversão ${fmtPct(r.conversao)}`,
     `Custo dos produtos ${fmtBRL(r.custo)}${r.semCusto ? ` (${r.semCusto} produto(s) sem custo cadastrado)` : ''} · anúncios ${fmtBRL(r.ads.total)} (Meta ${fmtBRL(r.ads.facebook)})`,
     `Checkout ${fmtBRL(r.checkout)} · gateway ${fmtBRL(r.gateway)} · DAS ${fmtBRL(r.imposto)}${r.impostoEstimado ? ' (estimado)' : ''} · imposto Meta ${fmtBRL(r.impostoMeta)}`,
-    `Lucro ${fmtBRL(r.lucro)} (${fmtPct(r.margem)}) · ROI ${r.roi === null ? '–' : fmtPct(r.roi)} · CPA ${r.cpa === null ? '–' : fmtBRL(r.cpa)} · despesas lançadas ${fmtBRL(r.adicionais)}`,
+    `Lucro ${fmtBRL(r.lucro)} (${fmtPct(r.margem)}) · ROI ${r.roi === null ? '–' : fmtPct(r.roi)} · CPA ${r.cpa === null ? '–' : fmtBRL(r.cpa)} no Gerenciador / ${r.cpaReal === null ? '–' : fmtBRL(r.cpaReal)} real (com imposto Meta) · despesas lançadas ${fmtBRL(r.adicionais)}`,
   ].join('\n');
 }
 
@@ -79,10 +79,35 @@ srv.registerTool('custos', {
     'Custo de assumir os juros até Nx (por mês): ' + x.simulacao.map((s2) => `${s2.ate}x ${fmtBRL(s2.custo)}${s2.atual ? ' (hoje)' : ''}`).join(' · '),
     'Prazo de recebimento: ' + x.prazos.map((p2) => `D+${p2.dias} ${fmtPct(p2.pct)}${p2.atual ? ' (hoje)' : `, economiza ${fmtBRL(p2.economia)}/mês, ${fmtBRL(p2.capital)} parados, líquido ${fmtBRL(p2.liquido)}`}`).join(' | '),
     `Cartão custa ${fmtPct(x.pix.pctCartao)} contra ${fmtPct(x.pix.pctPix)} do Pix; cada pedido que migra economiza ${fmtBRL(x.pix.economiaPorPedido)}; desconto no Pix de até ${fmtPct(x.pix.descontoMax)} ainda compensa.`,
-    `DAS: sistema usa ${fmtPct(x.das.configurado)}; pelo Anexo I (${fmtBRL(x.das.rbt)}${x.das.anualizado ? ', 30 dias anualizados' : ''}) a alíquota efetiva seria ~${fmtPct(x.das.efetiva)}.`,
+    `Parcelamento no cartão: média de ${fmtNum(x.mix.mediaParcelas, 1)}x; ${fmtPct(x.mix.avista)} à vista, ${fmtPct(x.mix.ate3)} até 3x. Compradores afetados e tolerância por cenário: ` + x.simulacao.filter((s2) => s2.ate <= 6).map((s2) => `${s2.ate}x → ${s2.afetados} afetados, economia ${fmtBRL(s2.economia)}${s2.toleranciaPct === null ? '' : `, aguenta perder ${fmtPct(s2.toleranciaPct)} deles`}`).join(' | '),
+    `Pix contra cartão: conversão do Pix ${x.pix.conversaoPix === null ? '–' : fmtPct(x.pix.conversaoPix)}; o cartão recusado não vira pedido, então as conversões não são comparáveis. A economia só é real se o comprador migrar em vez de desistir.`,
+    `Imposto da Meta nos últimos 30 dias: ${fmtBRL(x.r.impostoMeta)} sobre ${fmtBRL(x.r.ads.total)} de anúncios. CPA no Gerenciador ${x.r.cpa === null ? '–' : fmtBRL(x.r.cpa)}, CPA real ${x.r.cpaReal === null ? '–' : fmtBRL(x.r.cpaReal)}; ROAS no Gerenciador ${x.r.roas === null ? '–' : fmtNum(x.r.roas)}, real ${x.r.roasReal === null ? '–' : fmtNum(x.r.roasReal)}.`,
+    `Saques: ${x.repasse.saques} nos últimos 30 dias a ${fmtBRL(x.repasse.custoPorSaque)} cada = ${fmtBRL(x.repasse.custo)}.`,
     '## O que o sistema questiona', ...(avisosDeCustos(x).map((a2) => `- [${a2.onde}] ${a2.texto}`)),
   ].join('\n'));
 });
+
+srv.registerTool('caixa', {
+  description: 'Previsão de caixa dos próximos 10 dias: saldo da conta, liberado na Cartpanda, fornecedor a pagar, cobrança prevista da Meta, se dá para usar o saldo ou é hora de sacar (R$ 4,90 por saque), e as otimizações que esperam por caixa (D+5, D+14, saque em lote, Shopify anual).',
+  inputSchema: {},
+}, async () => {
+  const {x, prev, portoes} = caixaPrevisto();
+  return texto([
+    `Caixa em ${x.hoje}: conta PJ ${fmtBRL(x.saldoConta)}${x.saldoContaEm ? ` (extrato de ${x.saldoContaEm})` : ''}; liberado na Cartpanda ${fmtBRL(x.cartpanda.disponivel)} (${x.origemCartpanda}); colchão ${fmtBRL(x.colchao)}`,
+    `Fornecedor: ${fmtBRL(x.fornecedor.pendentes)} de pedidos recentes sem compra vinculada + ${fmtBRL(x.fornecedor.porDia)} por dia`,
+    `Meta: ${prev.cob.dia ? `cobrança de ~${fmtBRL(prev.cob.valor)} prevista para ${prev.cob.dia}` : 'sem previsão'} (gasto ${fmtBRL(x.meta.gastoDiario)} por dia, saldo devedor ${fmtBRL(x.meta.saldoDevedor)})`,
+    `## Recomendação: ${prev.recomendacao.titulo}`, prev.recomendacao.detalhe,
+    '## Dia a dia', ...prev.dias.map((d) => `${d.dia}: liberações ${fmtBRL(d.entra)}, vendas novas ${fmtBRL(d.vendas)}, fornecedor ${fmtBRL(d.fornecedor)}, Meta ${fmtBRL(d.meta)}, fatura PJ ${fmtBRL(d.fatura)} → saldo ${fmtBRL(d.saldo)}`),
+    `Saques nos últimos 30 dias: ${x.saques} (R$ ${x.saque.taxa.toFixed(2).replace('.', ',')} cada)`,
+    `Folga para otimizações (10 dias): ${fmtBRL(prev.folgaTotal10)} depois de fornecedor, Meta, fatura do cartão PJ (${fmtBRL(prev.comprometido10.fatura)}) e do que a empresa deve à Bárbara (${fmtBRL(prev.comprometido10.socio)})`,
+    '## Aguardando caixa', ...portoes.map((q) => `- ${q.nome}: ${q.capital ? `${fmtBRL(q.capital)} parados` : 'sem valor'}, ${q.aberto ? 'JÁ DÁ PARA FAZER' : `faltam ${fmtBRL(q.falta)} de folga`}. ${q.ganho}`),
+  ].join('\n'));
+});
+
+srv.registerTool('custo_produtos', {
+  description: 'Custo de cada produto: média dos pagamentos a fornecedor (valor pago ÷ unidades), com quantos pagamentos e unidades a sustentam.',
+  inputSchema: {},
+}, async () => texto(custosDosProdutos().map((c) => `- ${c.nome}: ${c.custo ? fmtBRL(c.custo) : 'sem custo'} (${c.origem === 'media' ? `média de ${c.compras} pagamento(s) para ${c.unidades} unidade(s)` : c.origem === 'manual' ? 'estimativa digitada' : 'sem pagamento vinculado'})`).join('\n')));
 
 srv.registerTool('buscar_memoria', {
   description: 'Busca decisões, aprendizados e regras gravados na memória da Rocco.',
@@ -140,7 +165,7 @@ srv.registerTool('financeiro', {
     `Período ${per.ini} a ${per.fim}`,
     `Receita ${fmtBRL(r.receita)} · ${r.pagos.n} pagos · ${r.pendentes.n} pendentes (${fmtBRL(r.pendentes.v)}) · conversão ${fmtPct(r.conversao)} · ticket ${fmtBRL(r.ticket)}`,
     `Custo ${fmtBRL(r.custo)} · anúncios ${fmtBRL(r.ads.total)} · checkout ${fmtBRL(r.checkout)} · gateway ${fmtBRL(r.gateway)} · DAS ${fmtBRL(r.imposto)} · imposto Meta ${fmtBRL(r.impostoMeta)}`,
-    `Lucro ${fmtBRL(r.lucro)} (${fmtPct(r.margem)}) · CPA ${r.cpa === null ? '–' : fmtBRL(r.cpa)} · ROAS ${r.roas === null ? '–' : fmtNum(r.roas)} · ROI ${r.roi === null ? '–' : fmtPct(r.roi)}`,
+    `Lucro ${fmtBRL(r.lucro)} (${fmtPct(r.margem)}) · CPA ${r.cpa === null ? '–' : fmtBRL(r.cpa)} (real ${r.cpaReal === null ? '–' : fmtBRL(r.cpaReal)}) · ROAS ${r.roas === null ? '–' : fmtNum(r.roas)} (real ${r.roasReal === null ? '–' : fmtNum(r.roasReal)}) · ROI ${r.roi === null ? '–' : fmtPct(r.roi)}`,
     'Produtos (lucro):', ...rk.map((x) => `- ${x.nome}: receita ${fmtBRL(x.receita)}, custo ${x.semCusto ? 'SEM CUSTO' : fmtBRL(x.custo)}, marketing ${fmtBRL(x.marketing)}, lucro ${fmtBRL(x.lucro)} (${fmtPct(x.margem)})`),
   ].join('\n'));
 });
