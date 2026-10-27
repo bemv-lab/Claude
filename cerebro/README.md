@@ -47,6 +47,10 @@ Conector MCP `rocco-cerebro` (9 ferramentas): `contexto_rocco`, `financeiro`, `c
 
 Tecnologia: Next.js 15 + SQLite embutido no Node 22 (um arquivo, `dados/cerebro.db`; backup é copiar o arquivo). Para duas pessoas e milhares de lançamentos, SQLite sobra; se um dia precisar, a troca por Postgres fica só em `lib/db.ts`.
 
+## Jeito mais fácil: dois cliques
+
+Com o Node 22.13+ instalado e (se quiser a demonstração) o `cerebro-demo.db` copiado para `data/cerebro.db`: no Mac, dois cliques em `iniciar.command` (da primeira vez: botão direito > Abrir); no Windows, dois cliques em `iniciar.bat`. O script instala, constrói e abre http://localhost:3000.
+
 ## Ver rápido com os dados de outubro (demonstração)
 
 Para só olhar: use o arquivo `cerebro-demo.db` (pedidos reais da Shopify de outubro, extrato do Inter e cartões; os **anúncios da Meta são simulados** com o total do Único Drop, R$ 3.751,45).
