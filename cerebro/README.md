@@ -85,6 +85,16 @@ Os dados ficam em `cerebro/data/cerebro.db`.
    `0 3 * * * cd ~/Claude/cerebro && docker compose exec -T cerebro npm run -s backup`
    As cópias ficam em `dados/backups` (as 30 últimas). Para mandar ao Google Drive, use o `rclone` com uma pasta "Rocco/Backups".
 
+## Alternativa sem domínio: Tailscale
+
+O Cérebro fica acessível só para os aparelhos que você e o Lucas ligarem à sua rede privada do Tailscale (grátis).
+
+1. Na VM: `curl -fsSL https://tailscale.com/install.sh | sh` e `sudo tailscale up` (abra o link que aparecer e entre com sua conta).
+2. No painel do Tailscale, ative *MagicDNS* e *HTTPS Certificates* (aba DNS).
+3. Na VM: `sudo tailscale serve --bg 3000`. O endereço `https://NOME-DA-VM.SUA-REDE.ts.net` abre o Cérebro (com https, que o login exige).
+4. No celular e no computador, instale o app do Tailscale e entre com a mesma conta. Para o Lucas: no painel, *Machines > ... da VM > Share* e envie o convite.
+5. No `.env`, deixe `CEREBRO_COOKIE_SEGURO=1` e `TUNNEL_TOKEN` vazio. Suba com `docker compose up -d --build` (o túnel da Cloudflare só sobe com `--profile cloudflare`).
+
 ## Ligar o Claude ao Cérebro (fim dos chats soltos)
 
 No Claude Code, no computador onde o banco está:

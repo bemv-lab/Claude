@@ -1,4 +1,6 @@
 # Servidor (Oracle ou qualquer VPS): docker compose up -d --build
+# Com Tailscale (sem domínio): o Cérebro fica só em 127.0.0.1:3000 e o `tailscale serve` publica na sua rede privada.
+# Com Cloudflare Tunnel (domínio próprio): docker compose --profile cloudflare up -d --build
 services:
   cerebro:
     build: .
@@ -9,6 +11,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000" # só a própria máquina; o acesso de fora vem pelo túnel
   tunel:
+    profiles: ["cloudflare"]
     image: cloudflare/cloudflared:2024.12.2
     restart: unless-stopped
     command: tunnel --no-autoupdate run
