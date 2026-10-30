@@ -124,6 +124,8 @@ def do_mes(con, mes: str) -> dict:
             a["status"] = "cancelado"
         elif x and x["status"] == "realizado":
             a["status"] = "realizado"
+            if x["valor"]:                       # o valor que de fato saiu ou entrou, digitado em "Já pago/recebido"
+                a["valor"] = x["valor"]
         elif a.get("renda_status"):
             st = a["renda_status"]
             a["status"] = "realizado" if st == "recebido" else "previsto" if st == "a_receber" else st

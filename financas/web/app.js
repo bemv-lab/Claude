@@ -364,12 +364,12 @@ function editarPrevisto(i, depois) {
     <form id="f-aj" class="grade-form"><label class="campo">Valor esperado neste mês (R$)<input name="valor" inputmode="decimal" value="${paraInput(Math.abs(i.valor))}"></label></form>
     <div class="modal-acoes" style="justify-content:flex-start;flex-wrap:wrap">
       <button class="btn btn-primario" id="aj-valor">Usar este valor</button>
-      <button class="btn" id="aj-feito">Já ${entrada ? "recebido" : "pago"}</button>
+      <button class="btn" id="aj-feito">Já ${entrada ? "recebido" : "pago"} (pelo valor acima)</button>
       <button class="btn" id="aj-nao">Não vai acontecer este mês</button>
       <button class="btn" id="aj-nunca">Parar de prever</button>
       ${i.ajuste_id ? `<button class="btn-texto" id="aj-desfazer">Desfazer ajuste</button>` : ""}</div>`, (m) => {
     $("#aj-valor", m).addEventListener("click", () => salvar({ valor: $("[name=valor]", m).value, sentido: entrada ? "entrada" : "saida" }));
-    $("#aj-feito", m).addEventListener("click", () => salvar({ valor: i.valor, status: "realizado" }));
+    $("#aj-feito", m).addEventListener("click", () => salvar({ valor: $("[name=valor]", m).value, sentido: entrada ? "entrada" : "saida", status: "realizado" }));
     $("#aj-nao", m).addEventListener("click", () => salvar({ valor: 0, status: "cancelado" }));
     $("#aj-nunca", m).addEventListener("click", () => salvar({ valor: 0, status: "cancelado", mes: "*" }));
     $("#aj-desfazer", m)?.addEventListener("click", async () => { await api(`/api/previstos/${i.ajuste_id}`, { metodo: "DELETE" }); $("#modal").close(); depois(); });
