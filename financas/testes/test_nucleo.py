@@ -643,6 +643,8 @@ class TestResolvidosContam(BaseBanco):
         depois = resumo.home(con, mes)
         self.assertEqual(depois["entradas"]["recebido"], antes["entradas"]["recebido"] + 100000)
         self.assertEqual(depois["saldo_previsto"], antes["saldo_previsto"])
+        ligada = [x for x in rendas.do_mes(con, mes) if x["id"] == rid][0]
+        self.assertEqual((ligada["status"], ligada["recebido"]), ("recebido", 100000))
 
 
 class TestCompartilhado(unittest.TestCase):

@@ -104,10 +104,14 @@ def do_mes(con, mes: str) -> list[dict]:
             f = min(cands, key=lambda f: abs(f["dia"] - dia))
             ligados[f["id"]].append(t)
     atual = _mes_atual()
+    marcados = _marcados(con, mes)
     out = []
     for f in fixas:
         txs = ligados[f["id"]]
-        recebido = sum(t["valor"] for t in txs)
+        extrato = sum(t["valor"] for t in txs)
+        # marcado como recebido no Previstos (sem lançamento no extrato) também conta como recebido
+        marcado = f["id"] in marcados
+        recebido = f["valor"] if marcado else extrato
         if recebido >= f["valor"] * 0.97:
             st = "recebido"
         elif mes >= atual:
@@ -116,7 +120,22 @@ def do_mes(con, mes: str) -> list[dict]:
             st = "parcial"
         else:
             st = "nao_entrou"
-        out.append({**f, "recebido": recebido, "falta": max(0, f["valor"] - recebido) if st == "a_receber" else 0,
-                    "status": st, "lancamentos": [{"data": t["data"], "descricao": t["descricao"], "valor": t["valor"]}
-                                                  for t in txs]})
+        out.append({**f, "recebido": recebido, "recebido_extrato": extrato,
+                    "falta": max(0, f["valor"] - recebido) if st == "a_receber" else 0,
+                    "status": st, "marcado": marcado,
+                    "lancamentos": [{"data": t["data"], "descricao": t["descricao"], "valor": t["valor"]}
+                                    for t in txs]})
+    return out
+
+
+def _marcados(con, mes: str) -> set[int]:
+    """Entradas que vocês marcaram como recebidas neste mês (ajuste em Previstos, mês ou "sempre")."""
+    out = set()
+    for r in con.execute("SELECT chave_auto, status, mes FROM previstos WHERE chave_auto LIKE 'renda:%' "
+                         "AND (mes = ? OR mes = '*') ORDER BY mes = '*' DESC, id", (mes,)):
+        rid = int(r["chave_auto"].split(":")[1])
+        if r["status"] == "realizado":
+            out.add(rid)
+        else:
+            out.discard(rid)
     return out

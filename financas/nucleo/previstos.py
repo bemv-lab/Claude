@@ -65,7 +65,7 @@ def automaticos(con, mes: str) -> list[dict]:
     # entradas fixas (editáveis em Início > Entradas fixas)
     for f in rendas.do_mes(con, mes):
         itens.append({"chave_auto": f"renda:{f['id']}", "origem": "renda", "descricao": f["descricao"],
-                      "valor": f["valor"], "dia": f["dia"], "categoria": "Salário", "realizado": f["recebido"],
+                      "valor": f["valor"], "dia": f["dia"], "categoria": "Salário", "realizado": f["recebido_extrato"],
                       "renda_status": f["status"]})
     # contratos de dívida
     painel = dividas.painel(con)
