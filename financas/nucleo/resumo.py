@@ -87,8 +87,15 @@ def home(con, mes: str | None = None) -> dict:
     painel = dividas.painel(con)
     orc = orcamento(con, mes)
     prev = previstos.do_mes(con, mes)
-    entradas_prev = tot["receitas"] + prev["a_receber"]
-    saidas_prev = tot["despesas"] + prev["a_pagar"]
+    # marcado como já resolvido sem lançamento no extrato (ex.: recebi e não caiu como transação): conta como feito
+    # pela parte que o extrato não mostrou, para não sumir do total
+    feitos = [i for i in prev["itens"] if i.get("ajuste_id") and i["status"] == "realizado"]
+    recebido_fora = sum(max(0, abs(i["valor"]) - abs(i["realizado"])) for i in feitos if i["valor"] > 0)
+    pago_fora = sum(max(0, abs(i["valor"]) - abs(i["realizado"])) for i in feitos if i["valor"] < 0)
+    recebido = tot["receitas"] + recebido_fora
+    pago = tot["despesas"] + pago_fora
+    entradas_prev = recebido + prev["a_receber"]
+    saidas_prev = pago + prev["a_pagar"]
     saldo_prev = entradas_prev - saidas_prev
     serie = []
     for k in range(5, -1, -1):
@@ -110,8 +117,8 @@ def home(con, mes: str | None = None) -> dict:
         "saldo_mes_anterior": ant["receitas"] - ant["despesas"], "despesas_mes_anterior": ant["despesas"],
         "entradas_pendentes": tot["entradas_pendentes"], "negocio": tot["negocio"],
         "orcamento": orc,
-        "entradas": {"recebido": tot["receitas"], "a_receber": prev["a_receber"], "previsto": entradas_prev},
-        "saidas": {"pago": tot["despesas"], "a_pagar": prev["a_pagar"], "previsto": saidas_prev,
+        "entradas": {"recebido": recebido, "a_receber": prev["a_receber"], "previsto": entradas_prev},
+        "saidas": {"pago": pago, "a_pagar": prev["a_pagar"], "previsto": saidas_prev,
                    "dividas": tot["dividas"]},
         "provisionado": {"entradas": prev["a_receber"], "saidas": prev["a_pagar"],
                          "manuais": prev["manuais_entradas"] + prev["manuais_saidas"]},

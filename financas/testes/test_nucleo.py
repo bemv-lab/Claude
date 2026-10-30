@@ -629,6 +629,22 @@ class TestRendas(BaseBanco):
         self.assertEqual(rendas.valor_mes(self.con, "2026-11"), 700000)
 
 
+class TestResolvidosContam(BaseBanco):
+    """Marcar uma entrada como recebida (sem lançamento no extrato) não pode fazê-la sumir do resultado."""
+
+    def test_recebido_sem_extrato_entra_nas_entradas(self):
+        mes = "2026-10"
+        con = self.con
+        rid = rendas.criar(con, {"descricao": "Salário Teste", "padrao": "NAO EXISTE", "valor": 100000, "dia": 15,
+                                 "a_partir": mes})
+        antes = resumo.home(con, mes)
+        previstos.salvar(con, {"mes": mes, "chave_auto": f"renda:{rid}", "status": "realizado",
+                               "descricao": "Salário Teste", "valor": 100000})
+        depois = resumo.home(con, mes)
+        self.assertEqual(depois["entradas"]["recebido"], antes["entradas"]["recebido"] + 100000)
+        self.assertEqual(depois["saldo_previsto"], antes["saldo_previsto"])
+
+
 class TestCompartilhado(unittest.TestCase):
     """Dois computadores na mesma pasta do Drive: só um edita; o outro consulta uma cópia."""
 
