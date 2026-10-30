@@ -101,6 +101,8 @@ def home(con, mes: str | None = None) -> dict:
     for k in range(5, -1, -1):
         m = somar_meses(mes, -k)
         t = analises.totais_mes(con, m)
+        if m == mes:      # o mês atual usa os mesmos totais do Resultado do Início (recebido + a receber, etc.)
+            t = {"receitas": entradas_prev, "despesas": saidas_prev}
         if t["receitas"] or t["despesas"]:
             serie.append({"mes": m, "entradas": t["receitas"], "saidas": t["despesas"],
                           "saldo": t["receitas"] - t["despesas"]})
