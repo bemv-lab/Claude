@@ -112,7 +112,6 @@ def home(con, mes: str | None = None) -> dict:
     # a fatura do mês já está inteira nas saídas: o que falta pagar dela sai do "pago" e vai para o "a pagar"
     cartao_falta = sum(c["a_pagar"] for c in analises.cartao_a_pagar(con, mes)) if mes >= hoje().strftime("%Y-%m") else 0
     prev["a_pagar"] = prev["a_pagar"] - no_cartao + cartao_falta
-    tot["despesas"] -= cartao_falta
     # marcado como já resolvido sem lançamento no extrato (ex.: recebi e não caiu como transação): conta como feito
     # pela parte que o extrato não mostrou, para não sumir do total
     feitos = [i for i in prev["itens"] if i.get("ajuste_id") and i["status"] == "realizado"]
@@ -152,7 +151,11 @@ def home(con, mes: str | None = None) -> dict:
                          "manuais": prev["manuais_entradas"] + prev["manuais_saidas"]},
         "saldo_previsto": saldo_prev,
         "saldo_contas": config_int(con, "saldo_contas_atual"),
-        "fechamento": config_int(con, "saldo_contas_atual") + prev["a_receber"] - prev["a_pagar"],
+        # resultado realizado: o que já entrou menos o que já saiu no mês (o que de fato mexeu nas contas)
+        "resultado_realizado": recebido - pago,
+        # fechamento das contas: saldo no início do mês (Ajustes) + o realizado; a previsão soma o provisionado
+        "fechamento": config_int(con, "saldo_contas_atual") + recebido - pago,
+        "fechamento_previsto": config_int(con, "saldo_contas_atual") + recebido - pago + prev["a_receber"] - prev["a_pagar"],
         "cartao_a_pagar": cartao_falta,
         "saude": saude(entradas_prev, saldo_prev, orc) if mes >= hoje().strftime("%Y-%m") else
                  saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),

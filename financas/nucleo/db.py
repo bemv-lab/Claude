@@ -622,8 +622,8 @@ def fatura_paga_por(data_iso: str, dia_vencimento: int) -> str:
 
 
 def alinhar_antecipacoes(con, contas: dict | None = None) -> int:
-    """A entrada que pagou (antecipou) uma fatura conta no mês dessa fatura. Ex.: Pix recebido em 31/10 e usado
-    em 01/11 para antecipar a fatura de novembro: conta em novembro. Reconhece a entrada pelo mesmo valor, na
+    """A entrada que pagou (antecipou) uma fatura conta no mês em que esse pagamento saiu. Ex.: Pix recebido em
+    31/10 e usado em 01/11 para antecipar a fatura de novembro: conta em novembro, junto com o pagamento. Reconhece a entrada pelo mesmo valor, na
     mesma conta, até 3 dias antes do pagamento. Não mexe no que vocês escolheram à mão (competência)."""
     contas = contas or {r["id"]: r for r in con.execute("SELECT * FROM contas")}
     venc = {}
@@ -639,7 +639,7 @@ def alinhar_antecipacoes(con, contas: dict | None = None) -> int:
         dia = venc.get(contas[e["conta_id"]]["instituicao"])
         if not dia:
             continue
-        alvo = fatura_paga_por(e["pago_em"], dia)
+        alvo = e["pago_em"][:7]          # a entrada acompanha o mês do pagamento que ela cobriu
         if alvo != e["data"][:7]:
             con.execute("UPDATE transacoes SET mes_ref = ? WHERE id = ?", (alvo, e["id"]))
             n += 1

@@ -14,10 +14,10 @@ FILTRO_REAL = "t.tipo = 'normal' AND c.tipo != 'beneficio'"
 # Modelo combinado com vocês:
 # - Entradas: tudo o que entra positivo nas contas E na fatura (salário, Pix, estorno, crédito/estorno no cartão,
 #   ajuste). O pagamento lançado na fatura não conta: é o mesmo dinheiro que saiu da conta.
-# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + a fatura do cartão no mês dela (fecha dia 13,
-#   vence dia 20), pelo valor bruto das compras: os créditos da fatura já entraram como entrada. Não importa
-#   quando foi paga: antecipação só muda quanto falta pagar. A entrada usada para antecipar uma fatura vai para
-#   o mês dessa fatura (db.alinhar_antecipacoes).
+# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + o cartão pelo que foi pago a ele no mês (inclusive
+#   antecipações) + os créditos da fatura (que já entraram como entrada; assim o desconto não conta duas vezes).
+#   O que falta pagar da fatura vai para o "a pagar". A entrada usada para antecipar uma fatura vai para o mês
+#   do pagamento que ela cobriu (db.alinhar_antecipacoes).
 # - Fora dos dois lados: transferência entre as contas de vocês (com par), aplicação/resgate, o estorno de um
 #   pagamento de fatura e o Flash.
 _ESTORNO_DE_PAGAMENTO = ("UPPER(t.descricao) LIKE '%ESTORNO%' AND EXISTS (SELECT 1 FROM transacoes f WHERE "
@@ -54,7 +54,7 @@ def totais_mes(con, mes: str) -> dict:
         WHERE c.tipo IN ('corrente','cartao') AND t.mes_ref = ?""", (mes,)).fetchone()
     out = dict(r)
     out["cartao_bruto"] = out["cartao"] + out["cartao_creditos"]      # compras da fatura, sem descontar créditos
-    out["despesas"] = out["fora_cartao"] + out["cartao_bruto"]
+    out["despesas"] = out["fora_cartao"] + out["cartao_pago"] + out["cartao_creditos"]
     return out
 
 

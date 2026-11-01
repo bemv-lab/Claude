@@ -217,14 +217,15 @@ TELAS.inicio = async (el) => {
   el.innerHTML = `<div class="pilha">
     <section class="painel-heroi">
       <div class="heroi-topo">
-        <div><span class="rotulo-claro">Resultado de ${esc(nome)}</span><div class="valor-heroi">${brl(h.saldo_previsto, true)}</div></div>
+        <div><span class="rotulo-claro">Resultado de ${esc(nome)} · realizado</span><div class="valor-heroi">${brl(h.resultado_realizado, true)}</div></div>
         <span class="saude-chip ${sa.nivel}"><i aria-hidden="true"></i>${esc(sa.titulo)}</span>
       </div>
       <div class="fluxo">
         ${fluxoHTML("Entradas", E.recebido, E.a_receber, E.previsto, "entrada", "recebido", "a receber")}
         ${fluxoHTML("Saídas", X.pago, X.a_pagar, X.previsto, "saida", "pago", "a pagar")}
       </div>
-      <div class="fech"><span>Fechamento das contas</span><b class="num">${brl(h.fechamento, true)}</b></div>
+      <div class="fech"><span>Fechamento das contas <small class="mudo">saldo do início do mês + realizado</small></span><b class="num">${brl(h.fechamento, true)}</b></div>
+      <div class="fech" style="border-top:0;padding-top:0"><span class="mudo">Previsão para o fim do mês <small>(+ provisionado)</small></span><b class="num mudo">${brl(h.fechamento_previsto, true)}</b></div>
     </section>
 
     <div class="kpis">
@@ -1104,7 +1105,8 @@ const MANUAL = [
       <dt>Resultado do mês</dt><dd>Entradas do mês (recebido + a receber) menos saídas do mês (pago + a pagar). Mostra se o mês, sozinho, se paga.</dd>
       <dt>Saúde do mês</dt><dd>Leitura do resultado: <b>Saudável</b> (sobra 10% ou mais do que entra), <b>Fecha no zero</b> (perto de zero), <b>Saídas maiores que entradas</b> (falta mais de 2% do que entra).</dd>
       <dt>Barras de entradas e saídas</dt><dd>A parte cheia é o que já aconteceu; a parte vazia é o que ainda falta no mês.</dd>
-      <dt>Fechamento das contas</dt><dd>Saldo das contas hoje + o que vai entrar − o que vai sair. É quanto deve sobrar nas contas no fim do mês. O saldo de hoje é informado em <b>Ajustes</b>.</dd>
+      <dt>Resultado do mês</dt><dd>O que já entrou menos o que já saiu no mês, pelos extratos e faturas.</dd>
+      <dt>Fechamento das contas</dt><dd>Saldo das contas no início do mês (informado em <b>Ajustes</b>) + o resultado realizado. Logo abaixo, a previsão para o fim do mês soma o provisionado (o que ainda vai entrar menos o que ainda vai sair).</dd>
       <dt>Quadros Entradas, Saídas, Provisionado e Ainda podem gastar</dt><dd>Resumo do mês. <b>Ajustar</b> abre a lista do que está previsto para mudar um valor. <b>Provisionado</b> é o que falta receber menos o que falta pagar. <b>Ainda podem gastar</b> é o orçamento do mês menos o que já foi gasto.</dd>
       <dt>Entradas fixas</dt><dd>Salários e rendas que se repetem. <b>Editar</b> tem: <i>Nome</i>; <i>Texto no extrato</i> (como o banco escreve, para o sistema achar o crédito sozinho); <i>Dia do mês</i>; <i>Valor</i>; <i>Vale a partir de</i> (o mês em que a mudança começa, os anteriores ficam como estavam). <b>Encerrar a partir de</b> para de prever aquela entrada. Estado: recebido, a receber, entrou parcial ou não entrou.</dd>
       <dt>Previstos do mês</dt><dd>O que ainda vai sair ou entrar: parcelas de dívida, contas que se repetem e o que vocês lançaram. Em cada linha, <b>Ajustar</b> permite: usar outro valor neste mês, marcar como já resolvido, dizer que não vai acontecer neste mês ou parar de prever de vez.</dd>
@@ -1164,7 +1166,7 @@ const MANUAL = [
     </dl>`],
   ["Ajustes", `
     <dl>
-      <dt>Saldo das contas hoje</dt><dd>Soma do que tem hoje no Inter, BB e Itaú. Usado no fechamento das contas do Início.</dd>
+      <dt>Saldo das contas no início do mês</dt><dd>Soma do que tinha no Inter, BB e Itaú quando o mês começou (o fechamento do mês anterior). O Início soma a ele o que já entrou e saiu no mês.</dd>
       <dt>Outros campos</dt><dd><i>Guardar por mês</i>, <i>Limite combinado no cartão</i>, <i>Juros do rotativo</i> (só simulações), <i>Nomes de vocês nos extratos</i> (para achar transferências entre vocês).</dd>
       <dt>Categorias e orçado</dt><dd>Toquem numa categoria para mudar o orçado do mês.</dd>
       <dt>Regras aprendidas</dt><dd>Cada classificação vira regra. <b>+ Regra</b> cria uma à mão; <i>apagar</i> remove.</dd>
@@ -1429,7 +1431,7 @@ TELAS.ajustes = async (el) => {
     <h2 style="font-size:22px">Ajustes</h2>
     <div class="cartao"><div class="cartao-cab"><h2>Orçamento do mês</h2></div>
       <form id="f-cfg" class="grade-form">
-        <label class="campo">Saldo das contas hoje <small>Inter + BB + Itaú, somados</small><input name="saldo_contas_atual" value="${paraInput(+cfg.saldo_contas_atual || 0)}" inputmode="decimal" placeholder="0,00"></label>
+        <label class="campo">Saldo das contas no início do mês <small>Inter + BB + Itaú, somados</small><input name="saldo_contas_atual" value="${paraInput(+cfg.saldo_contas_atual || 0)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Renda mensal esperada <small>vazio = média dos últimos meses</small><input name="renda_mensal_esperada" value="${paraInput(+cfg.renda_mensal_esperada || null)}" inputmode="decimal" placeholder="automático"></label>
         <label class="campo">Guardar por mês<input name="meta_poupanca_mensal" value="${paraInput(+cfg.meta_poupanca_mensal || null)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Limite combinado no cartão/mês<input name="limite_fatura_mensal" value="${paraInput(+cfg.limite_fatura_mensal || null)}" inputmode="decimal" placeholder="sem limite"></label>
