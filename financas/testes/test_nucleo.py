@@ -693,8 +693,7 @@ class TestContasAPagar(BaseBanco):
         self.assertEqual(analises.totais_mes(self.con, "2026-10")["receitas"], 100000)
 
     def test_entrada_e_tudo_que_entra_positivo(self):
-        """Entrada é tudo o que entra positivo nas contas; crédito na fatura abate a fatura; pagamento de fatura
-        conta como saída pelo lado da conta."""
+        """Entrada é tudo o que entra positivo na conta e na fatura; o pagamento da fatura sai pelo lado da conta."""
         n = [0]
         def tx(conta, valor, tipo="normal", desc="X"):
             n[0] += 1
@@ -702,14 +701,15 @@ class TestContasAPagar(BaseBanco):
                                 hash, mes_ref, criado_em) VALUES (?, '2026-10-10', ?, 'X', ?, ?, 'manual', ?, '2026-10',
                                 '2026-01-01')""", (self.conta(conta), desc, valor, tipo, f"z{n[0]}"))
         tx("inter-cartao", -5000)                    # compra
-        tx("inter-cartao", 2000)                     # estorno na fatura: abate a fatura, não é entrada
+        tx("inter-cartao", 2000)                     # estorno na fatura: é entrada (e a fatura sai pelo bruto)
         tx("inter-cartao", 3000, "fatura")           # pagamento lançado na fatura: não conta
         tx("inter-conta", -3000, "fatura")           # o mesmo pagamento saindo da conta: é a saída do cartão
         tx("inter-conta", 30000)                     # Pix recebido: entrada
         tx("inter-conta", -1000)                     # boleto pago na conta: saída
         self.con.commit()
         tot = analises.totais_mes(self.con, "2026-10")
-        self.assertEqual((tot["receitas"], tot["despesas"]), (30000, 4000))
+        self.assertEqual((tot["receitas"], tot["despesas"]), (32000, 6000))
+        self.assertEqual(tot["receitas"] - tot["despesas"], 26000)     # o resultado não muda com o estorno
 
 
 class TestExcluir(BaseBanco):

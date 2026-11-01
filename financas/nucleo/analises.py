@@ -12,10 +12,11 @@ FILTRO_REAL = "t.tipo = 'normal' AND c.tipo != 'beneficio'"
 
 
 # Modelo combinado com vocês:
-# - Entradas: tudo o que entra positivo nas CONTAS (salário, Pix, estorno, ajuste). Créditos e estornos da fatura
-#   abatem a própria fatura; não viram entrada.
-# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + o que foi pago ao cartão no mês (inclusive
-#   antecipações). As compras do cartão não entram uma a uma: entram pela fatura.
+# - Entradas: tudo o que entra positivo nas contas E na fatura (salário, Pix, estorno, crédito/estorno no cartão,
+#   ajuste). O pagamento lançado na fatura não conta: é o mesmo dinheiro que saiu da conta.
+# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + o cartão pelo valor bruto da fatura no regime
+#   de caixa: o que foi pago no mês (inclusive antecipações) + os créditos da fatura (que já entraram como entrada,
+#   para não contar o desconto duas vezes). As compras do cartão não entram uma a uma.
 # - Fora dos dois lados: transferência entre as contas de vocês (com par), aplicação/resgate, o estorno de um
 #   pagamento de fatura e o Flash.
 _ESTORNO_DE_PAGAMENTO = ("UPPER(t.descricao) LIKE '%ESTORNO%' AND EXISTS (SELECT 1 FROM transacoes f WHERE "
@@ -28,7 +29,11 @@ def totais_mes(con, mes: str) -> dict:
     """Totais do mês pelo modelo acima. `cartao` continua sendo o total de compras da fatura do mês (alertas)."""
     r = con.execute(f"""
         SELECT
-          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 THEN t.valor END), 0) AS receitas,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 THEN t.valor END), 0)
+            + COALESCE(SUM(CASE WHEN c.tipo = 'cartao' AND t.tipo = 'normal' AND t.valor > 0 THEN t.valor END), 0)
+            AS receitas,
+          COALESCE(SUM(CASE WHEN c.tipo = 'cartao' AND t.tipo = 'normal' AND t.valor > 0 THEN t.valor END), 0)
+            AS cartao_creditos,
           COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 AND (cat.tipo IS NULL OR cat.tipo != 'receita')
                        THEN t.valor END), 0) AS entradas_de_fora,
           COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor < 0 THEN -t.valor END), 0) AS fora_cartao,
@@ -47,7 +52,7 @@ def totais_mes(con, mes: str) -> dict:
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
         WHERE c.tipo IN ('corrente','cartao') AND t.mes_ref = ?""", (mes,)).fetchone()
     out = dict(r)
-    out["despesas"] = out["fora_cartao"] + out["cartao_pago"]
+    out["despesas"] = out["fora_cartao"] + out["cartao_pago"] + out["cartao_creditos"]
     return out
 
 
