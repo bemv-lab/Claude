@@ -663,6 +663,26 @@ class TestAjusteDeEntradaNoMes(BaseBanco):
         self.assertEqual(nov["valor"], 141500)
 
 
+class TestContasAPagar(BaseBanco):
+    """Dashboard de contas: uma linha por cartão, pelo valor a pagar (compras menos o que já foi antecipado)."""
+
+    def tx(self, mes_ref, data, valor, tipo="normal"):
+        n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
+        self.con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, tipo, classificacao, hash,
+                            mes_ref, criado_em) VALUES (?,?,?,?,?,?, 'manual', ?, ?, '2026-01-01')""",
+                         (self.conta("inter-cartao"), data, "X", "X", valor, tipo, f"c{n}", mes_ref))
+        self.con.commit()
+
+    def test_cartao_numa_linha_descontando_antecipacao(self):
+        self.tx("2026-10", "2026-10-01", -400000)                 # fatura de outubro: 4.000
+        self.tx("2026-11", "2026-10-20", -300000)                 # compras da fatura de novembro: 3.000 + 2.000
+        self.tx("2026-11", "2026-10-25", -200000)
+        self.tx("2026-11", "2026-10-19", 450000, tipo="fatura")   # pagou 4.500: 4.000 quitam outubro, 500 antecipam
+        cartoes = [c for c in resumo.contas_a_pagar(self.con, "2026-11", []) if c["cartao"]]
+        self.assertEqual(len(cartoes), 1)
+        self.assertEqual((cartoes[0]["valor"], cartoes[0]["compras"], cartoes[0]["antecipado"]), (450000, 500000, 50000))
+
+
 class TestCompartilhado(unittest.TestCase):
     """Dois computadores na mesma pasta do Drive: só um edita; o outro consulta uma cópia."""
 

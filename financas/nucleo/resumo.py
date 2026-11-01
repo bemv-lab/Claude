@@ -67,6 +67,34 @@ def _alertas_atuais(con) -> list[dict]:
     return out
 
 
+def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
+    """Visão de boletos do mês: uma linha por conta (energia, aluguel, empréstimo...) e uma só por cartão,
+    com o total da fatura do mês. O detalhe das compras fica em Lançamentos."""
+    out = []
+    for c in con.execute(f"""
+            SELECT c.id, c.nome, c.dia_vencimento, -SUM(t.valor) AS total, COUNT(*) AS qtd
+            FROM transacoes t JOIN contas c ON c.id = t.conta_id
+            WHERE {analises.FILTRO_REAL} AND c.tipo = 'cartao' AND t.mes_ref = ?
+            GROUP BY c.id HAVING total > 0 ORDER BY total DESC""", (mes,)):
+        # pagamentos lançados nesta fatura quitam primeiro a fatura anterior; o que sobra foi antecipado
+        def soma(m, cond):
+            return con.execute(f"SELECT COALESCE(SUM(t.valor), 0) FROM transacoes t WHERE t.conta_id = ? "
+                               f"AND t.mes_ref = ? AND {cond}", (c["id"], m)).fetchone()[0]
+        anterior = -soma(somar_meses(mes, -1), "t.tipo = 'normal'")
+        antecipado = max(0, soma(mes, "t.tipo = 'fatura' AND t.valor > 0") - max(0, anterior))
+        a_pagar = max(0, c["total"] - antecipado)
+        out.append({"descricao": f"Fatura · {c['nome']}", "valor": a_pagar, "compras": c["total"],
+                    "antecipado": min(antecipado, c["total"]), "dia": c["dia_vencimento"], "status": "fatura",
+                    "falta": a_pagar, "cartao": True, "qtd": c["qtd"], "conta_id": c["id"]})
+    for i in itens:
+        if i["valor"] >= 0 or i["status"] == "cancelado" or i.get("forma") in ("Cartão", "Pix no crédito"):
+            continue
+        out.append({"descricao": i["descricao"], "valor": abs(i["valor"]), "dia": i.get("dia"),
+                    "status": i["status"], "falta": abs(i.get("falta") or 0), "cartao": False})
+    out.sort(key=lambda x: (x["dia"] or 99, -x["valor"]))
+    return out
+
+
 def home(con, mes: str | None = None) -> dict:
     mes = mes or hoje().strftime("%Y-%m")
     tot = analises.totais_mes(con, mes)
@@ -130,6 +158,7 @@ def home(con, mes: str | None = None) -> dict:
         "saude": saude(entradas_prev, saldo_prev, orc) if mes >= hoje().strftime("%Y-%m") else
                  saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),
         "previstos": prev["itens"],
+        "contas_a_pagar": contas_a_pagar(con, mes, prev["itens"]),
         "rendas": rendas.do_mes(con, mes),
         "serie": serie,
         "parcelas_mes": agenda,

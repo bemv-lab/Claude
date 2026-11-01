@@ -312,20 +312,18 @@ TELAS.inicio = async (el) => {
     if (tipo === "previstos") return novoPrevisto({ mes: S.mes }, render);
     const lista = h.previstos.filter((i) => (tipo === "entrada" ? i.valor > 0 : i.valor < 0));
     if (tipo === "saida") {
-      // visão consolidada: só os grupos; o detalhe de cada conta fica em Lançamentos
-      const cartao = lista.filter((i) => i.forma === "Cartão" || i.forma === "Pix no crédito");
-      const contas = lista.filter((i) => !cartao.includes(i) && i.status !== "cancelado");
-      const grupo = (nome, itens) => {
-        const aberto = itens.filter((i) => i.status === "previsto");
-        const pagos = itens.filter((i) => i.status === "realizado");
-        return `<div class="linha-ajuste"><div><b>${nome}</b>
-          <p>${aberto.length} a pagar · ${brl(aberto.reduce((t, i) => t + Math.abs(i.falta || i.valor), 0))}
-             · ${pagos.length} ${pagos.length === 1 ? "paga" : "pagas"} · ${brl(pagos.reduce((t, i) => t + Math.abs(i.valor), 0))}</p></div></div>`;
-      };
-      abrirModal(`<h3>Saídas previstas de ${esc(nome)}</h3>
-        <p class="mudo" style="margin:-6px 0 0">Já saíram ${brl(X.pago)} nos extratos. Abaixo, o resumo por grupo; cada lançamento está em Lançamentos.</p>
-        <div class="previstos">${grupo("Fatura de cartão", cartao)}${grupo("Contas fixas e boletos", contas)}</div>
-        <div class="modal-acoes"><button class="btn" data-fechar>Fechar</button><a class="btn" href="#/lancamentos" data-fechar>Ver em Lançamentos</a><button class="btn btn-primario" id="novo-no-modal">+ Lançar saída</button></div>`, (m) => {
+      // uma linha por boleto (energia, aluguel, empréstimo...) e uma só por cartão; o detalhe fica em Lançamentos
+      const contas = h.contas_a_pagar || [];
+      const total = contas.reduce((t, c) => t + c.valor, 0);
+      const linha = (c) => `<div class="linha-ajuste"><div><b>${esc(c.descricao)}</b>
+          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.qtd} lançamentos${c.antecipado ? ` · compras ${brl(c.compras)}, já antecipados ${brl(c.antecipado)}` : ""} · <a href="#/lancamentos" data-fechar>ver compras</a>`
+            : c.status === "realizado" ? "✓ pago" : c.falta && c.falta < c.valor ? `falta ${brl(c.falta)}` : "a pagar"}</p></div>
+          <b class="num">${brl(c.valor)}</b></div>`;
+      abrirModal(`<h3>Contas de ${esc(nome)}</h3>
+        <p class="mudo" style="margin:-6px 0 0">Cada conta numa linha; o cartão aparece pelo total da fatura. As compras de cada um ficam em Lançamentos.</p>
+        <div class="previstos">${contas.map(linha).join("") || `<p class="mudo">Nenhuma conta neste mês.</p>`}</div>
+        <div class="linha-ajuste"><div><b>Total</b></div><b class="num">${brl(total)}</b></div>
+        <div class="modal-acoes"><button class="btn" data-fechar>Fechar</button><button class="btn btn-primario" id="novo-no-modal">+ Lançar saída</button></div>`, (m) => {
         $("#novo-no-modal", m).addEventListener("click", () => novoPrevisto({ mes: S.mes, sentido: tipo }, render));
       });
       return;
