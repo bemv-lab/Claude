@@ -75,7 +75,9 @@ def cartao_a_pagar(con, mes: str) -> list[dict]:
         if fatura <= 0:
             continue
         ant = somar_meses(mes, -1)
-        antecipado = min(fatura, max(0, pagos(ant) - compras(ant)))
+        # pago a mais na fatura anterior = antecipado; pago a menos = saldo que passa para esta (com sinal, para
+        # que mudar um lançamento de uma fatura para a outra não altere o total a pagar)
+        antecipado = min(fatura, pagos(ant) - compras(ant)) if compras(ant) > 0 else 0
         pago_no_mes = pagos(mes)
         out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "compras": fatura,
                     "antecipado": antecipado, "pago_no_mes": pago_no_mes,

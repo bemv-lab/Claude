@@ -596,6 +596,9 @@ def atualizar_mes_ref(con, so_vazios: bool = False) -> None:
     resto no mês da data, salvo competência escolhida. A entrada que antecipou uma fatura vai para o mês dela."""
     contas = {r["id"]: r for r in con.execute("SELECT * FROM contas")}
     filtro = "WHERE mes_ref IS NULL" if so_vazios else ""
+    # desfaz o alinhamento de estornos feito pela versão anterior (estorno de débito não paga fatura)
+    con.execute("UPDATE transacoes SET mes_ref = NULL WHERE UPPER(descricao) LIKE '%ESTORNO%' AND competencia IS NULL "
+                "AND mes_ref != substr(data, 1, 7) AND conta_id IN (SELECT id FROM contas WHERE tipo = 'corrente')")
     # linhas de fatura: contam no mês do vencimento da fatura de onde vieram (ex.: venc-2026-10-20 -> outubro)
     for imp_id, arq in con.execute("SELECT id, arquivo FROM importacoes").fetchall():
         m = re.search(r"venc-(\d{4}-\d{2})-\d{2}", arq or "")
@@ -635,7 +638,8 @@ def alinhar_antecipacoes(con, contas: dict | None = None) -> int:
             SELECT t.id, t.data, t.conta_id, f.data AS pago_em FROM transacoes t
             JOIN transacoes f ON f.conta_id = t.conta_id AND f.tipo = 'fatura' AND f.valor = -t.valor
                  AND julianday(f.data) - julianday(t.data) BETWEEN 0 AND 3
-            WHERE t.valor > 0 AND t.competencia IS NULL AND t.tipo IN ('normal','transferencia')""").fetchall():
+            WHERE t.valor > 0 AND t.competencia IS NULL AND t.tipo IN ('normal','transferencia')
+              AND UPPER(t.descricao) NOT LIKE '%ESTORNO%'""").fetchall():
         dia = venc.get(contas[e["conta_id"]]["instituicao"])
         if not dia:
             continue
