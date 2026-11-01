@@ -681,8 +681,8 @@ class TestContasAPagar(BaseBanco):
         self.tx("2026-11", "2026-11-01", -100000, "fatura", "inter-conta")  # já pagou 1.000 em novembro
         c = analises.cartao_a_pagar(self.con, "2026-11")[0]
         self.assertEqual((c["compras"], c["antecipado"], c["pago_no_mes"], c["a_pagar"]), (500000, 50000, 100000, 350000))
-        tot = analises.totais_mes(self.con, "2026-10")            # caixa: em outubro saíram os 4.500 pagos
-        self.assertEqual(tot["despesas"], 450000)
+        tot = analises.totais_mes(self.con, "2026-10")            # saída é a compra; o pagamento da fatura não conta
+        self.assertEqual(tot["despesas"], 400000)
 
     def test_entrada_de_fora_conta_como_entrada(self):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
@@ -691,6 +691,23 @@ class TestContasAPagar(BaseBanco):
                             'transferencia', 'heuristica', ?, '2026-10', '2026-01-01')""", (self.conta("inter-conta"), f"e{n}"))
         self.con.commit()
         self.assertEqual(analises.totais_mes(self.con, "2026-10")["receitas"], 100000)
+
+    def test_entrada_e_tudo_que_entra_positivo(self):
+        """Regra de vocês: estorno e crédito na fatura também são entrada; pagamento de fatura não."""
+        n = [0]
+        def tx(conta, valor, tipo="normal", desc="X"):
+            n[0] += 1
+            self.con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, tipo, classificacao,
+                                hash, mes_ref, criado_em) VALUES (?, '2026-10-10', ?, 'X', ?, ?, 'manual', ?, '2026-10',
+                                '2026-01-01')""", (self.conta(conta), desc, valor, tipo, f"z{n[0]}"))
+        tx("inter-cartao", -5000)                    # compra
+        tx("inter-cartao", 2000)                     # estorno na fatura: entrada
+        tx("inter-cartao", 400000, "fatura")         # pagamento lançado na fatura: não conta
+        tx("inter-conta", -400000, "fatura")         # o mesmo pagamento saindo da conta: não conta
+        tx("inter-conta", 30000)                     # Pix recebido: entrada
+        self.con.commit()
+        tot = analises.totais_mes(self.con, "2026-10")
+        self.assertEqual((tot["receitas"], tot["despesas"]), (32000, 5000))
 
 
 class TestExcluir(BaseBanco):
