@@ -149,6 +149,16 @@ class Lote:
             self.arquivos.append(res)
             return res
         conta = self.contas.get(conta_id) if conta_id else None
+        # extrato de conta (OFX sem cartão) enviado para um cartão: vai para a conta corrente do mesmo banco
+        if conta and conta["tipo"] == "cartao" and dados.get("formato") == "ofx" and not dados.get("cartao"):
+            corrente = [c for c in self.contas.values() if c["tipo"] == "corrente" and c["instituicao"] == conta["instituicao"]]
+            if len(corrente) != 1:
+                res.update(status="erro", mensagem="Este arquivo é extrato de conta, não fatura de cartão. "
+                                                   "Escolha a conta corrente no envio.")
+                self.arquivos.append(res)
+                return res
+            conta, conta_id = corrente[0], corrente[0]["id"]
+            res["mensagem"] = f"Era extrato de conta: entrou em {conta['nome']}, não no cartão."
         res["conta"] = conta["nome"] if conta else "várias (planilha)"
 
         # cartão: no CSV as compras vêm positivas; padroniza saída = negativo

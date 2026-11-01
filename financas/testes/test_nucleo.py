@@ -681,8 +681,8 @@ class TestContasAPagar(BaseBanco):
         self.tx("2026-11", "2026-11-01", -100000, "fatura", "inter-conta")  # já pagou 1.000 em novembro
         c = analises.cartao_a_pagar(self.con, "2026-11")[0]
         self.assertEqual((c["compras"], c["antecipado"], c["pago_no_mes"], c["a_pagar"]), (500000, 50000, 100000, 350000))
-        tot = analises.totais_mes(self.con, "2026-10")            # saída é a compra; o pagamento da fatura não conta
-        self.assertEqual(tot["despesas"], 400000)
+        tot = analises.totais_mes(self.con, "2026-10")            # o cartão sai pelo que foi pago no mês (4.500)
+        self.assertEqual(tot["despesas"], 450000)
 
     def test_entrada_de_fora_conta_como_entrada(self):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
@@ -693,7 +693,8 @@ class TestContasAPagar(BaseBanco):
         self.assertEqual(analises.totais_mes(self.con, "2026-10")["receitas"], 100000)
 
     def test_entrada_e_tudo_que_entra_positivo(self):
-        """Regra de vocês: estorno e crédito na fatura também são entrada; pagamento de fatura não."""
+        """Entrada é tudo o que entra positivo nas contas; crédito na fatura abate a fatura; pagamento de fatura
+        conta como saída pelo lado da conta."""
         n = [0]
         def tx(conta, valor, tipo="normal", desc="X"):
             n[0] += 1
@@ -701,17 +702,29 @@ class TestContasAPagar(BaseBanco):
                                 hash, mes_ref, criado_em) VALUES (?, '2026-10-10', ?, 'X', ?, ?, 'manual', ?, '2026-10',
                                 '2026-01-01')""", (self.conta(conta), desc, valor, tipo, f"z{n[0]}"))
         tx("inter-cartao", -5000)                    # compra
-        tx("inter-cartao", 2000)                     # estorno na fatura: entrada
-        tx("inter-cartao", 400000, "fatura")         # pagamento lançado na fatura: não conta
-        tx("inter-conta", -400000, "fatura")         # o mesmo pagamento saindo da conta: não conta
+        tx("inter-cartao", 2000)                     # estorno na fatura: abate a fatura, não é entrada
+        tx("inter-cartao", 3000, "fatura")           # pagamento lançado na fatura: não conta
+        tx("inter-conta", -3000, "fatura")           # o mesmo pagamento saindo da conta: é a saída do cartão
         tx("inter-conta", 30000)                     # Pix recebido: entrada
+        tx("inter-conta", -1000)                     # boleto pago na conta: saída
         self.con.commit()
         tot = analises.totais_mes(self.con, "2026-10")
-        self.assertEqual((tot["receitas"], tot["despesas"]), (32000, 5000))
+        self.assertEqual((tot["receitas"], tot["despesas"]), (30000, 4000))
 
 
 class TestExcluir(BaseBanco):
     """Lançamento excluído some e não volta ao reimportar o mesmo extrato."""
+
+    def test_extrato_de_conta_enviado_ao_cartao_vai_para_a_conta(self):
+        ofx = b"""OFXHEADER:100
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><BANKID>077<ACCTID>999</BANKACCTFROM><BANKTRANLIST>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20261015<TRNAMT>3500.00<FITID>a1<MEMO>Pix recebido salario</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20261016<TRNAMT>-50.00<FITID>a2<MEMO>Pix enviado</STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>"""
+        lote = Lote(self.con); r = lote.arquivo(ofx, "extrato.ofx", self.conta("inter-cartao")); lote.finalizar()
+        self.assertEqual(r["conta"], "Inter · Conta PF")
+        v = dict(self.con.execute("SELECT descricao, valor FROM transacoes").fetchall())
+        self.assertEqual(sorted(v.values()), [-5000, 350000])
 
     def test_excluir_e_reimportar(self):
         import app

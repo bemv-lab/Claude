@@ -11,40 +11,44 @@ from .util import hoje, limites_mes, normalizar, somar_meses
 FILTRO_REAL = "t.tipo = 'normal' AND c.tipo != 'beneficio'"
 
 
-# Regra de vocês: entrada é tudo o que entrou positivo na conta e na fatura; saída, tudo o que saiu.
-# Ficam fora só os movimentos que não são dinheiro novo: transferência entre as contas de vocês (com par),
-# pagamento de fatura (sai da conta e entra na fatura), aplicação/resgate e o estorno de um pagamento de fatura.
+# Modelo combinado com vocês:
+# - Entradas: tudo o que entra positivo nas CONTAS (salário, Pix, estorno, ajuste). Créditos e estornos da fatura
+#   abatem a própria fatura; não viram entrada.
+# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + o que foi pago ao cartão no mês (inclusive
+#   antecipações). As compras do cartão não entram uma a uma: entram pela fatura.
+# - Fora dos dois lados: transferência entre as contas de vocês (com par), aplicação/resgate, o estorno de um
+#   pagamento de fatura e o Flash.
 _ESTORNO_DE_PAGAMENTO = ("UPPER(t.descricao) LIKE '%ESTORNO%' AND EXISTS (SELECT 1 FROM transacoes f WHERE "
                          "f.conta_id = t.conta_id AND f.tipo = 'fatura' AND f.valor = -t.valor AND f.mes_ref = t.mes_ref)")
-_CONTA = (f"t.tipo IN ('normal','transferencia') AND NOT (t.tipo = 'transferencia' AND t.par_id IS NOT NULL) "
-          f"AND NOT ({_ESTORNO_DE_PAGAMENTO})")
+_MOVIMENTO_DA_CONTA = (f"c.tipo = 'corrente' AND t.tipo IN ('normal','transferencia') "
+                       f"AND NOT (t.tipo = 'transferencia' AND t.par_id IS NOT NULL) AND NOT ({_ESTORNO_DE_PAGAMENTO})")
 
 
 def totais_mes(con, mes: str) -> dict:
-    """Totais do mês. Entradas: todo valor positivo nas contas e nas faturas (salário, Pix recebido, estorno,
-    crédito na fatura, ajuste...). Saídas: todo valor negativo (compras do cartão pelo mês da fatura).
-    Não entram: transferências entre as contas de vocês, pagamentos de fatura e o Flash."""
+    """Totais do mês pelo modelo acima. `cartao` continua sendo o total de compras da fatura do mês (alertas)."""
     r = con.execute(f"""
         SELECT
-          COALESCE(SUM(CASE WHEN {_CONTA} AND t.valor > 0 THEN t.valor END), 0) AS receitas,
-          COALESCE(SUM(CASE WHEN {_CONTA} AND t.valor < 0 THEN -t.valor END), 0) AS despesas,
-          COALESCE(SUM(CASE WHEN {_CONTA} AND t.valor > 0 AND (cat.tipo IS NULL OR cat.tipo != 'receita')
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 THEN t.valor END), 0) AS receitas,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 AND (cat.tipo IS NULL OR cat.tipo != 'receita')
                        THEN t.valor END), 0) AS entradas_de_fora,
-          COALESCE(SUM(CASE WHEN {_CONTA} AND t.valor < 0 AND c.tipo != 'cartao' THEN -t.valor END), 0) AS fora_cartao,
-          COALESCE(SUM(CASE WHEN {_CONTA} AND t.valor < 0 AND c.tipo != 'cartao' AND cat.tipo = 'divida'
-                       THEN -t.valor END), 0) AS dividas_fora_cartao,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor < 0 THEN -t.valor END), 0) AS fora_cartao,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor < 0 AND cat.tipo = 'divida' THEN -t.valor END), 0)
+            AS dividas_fora_cartao,
           COALESCE(SUM(CASE WHEN t.tipo = 'fatura' AND c.tipo = 'corrente' AND t.valor < 0 THEN -t.valor END), 0)
+            - COALESCE(SUM(CASE WHEN c.tipo = 'corrente' AND t.valor > 0 AND {_ESTORNO_DE_PAGAMENTO} THEN t.valor END), 0)
             AS cartao_pago,
           COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND cat.tipo = 'divida' THEN -t.valor END), 0) AS dividas,
           COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.escopo = 'negocio' AND cat.tipo = 'despesa' THEN -t.valor END), 0)
             AS negocio,
           COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.categoria_id IS NULL AND t.valor > 0 THEN t.valor END), 0)
             AS entradas_pendentes,
-          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND c.tipo = 'cartao' AND t.valor < 0 THEN -t.valor END), 0) AS cartao
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND c.tipo = 'cartao' THEN -t.valor END), 0) AS cartao
         FROM transacoes t JOIN contas c ON c.id = t.conta_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
         WHERE c.tipo IN ('corrente','cartao') AND t.mes_ref = ?""", (mes,)).fetchone()
-    return dict(r)
+    out = dict(r)
+    out["despesas"] = out["fora_cartao"] + out["cartao_pago"]
+    return out
 
 
 def cartao_a_pagar(con, mes: str) -> list[dict]:
