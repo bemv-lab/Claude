@@ -608,8 +608,9 @@ class TestRendas(BaseBanco):
         self.entrada("2026-08-31", 123058, "REMUNERACAO/SALARIO HP01")
         por_dia = {r["dia"]: r for r in rendas.do_mes(self.con, "2026-08")}
         self.assertEqual(por_dia[15]["status"], "recebido")
-        self.assertEqual(por_dia[30]["status"], "parcial")          # mês passado, recebeu menos
+        self.assertEqual(por_dia[30]["status"], "recebido")         # caiu menos: é abatimento, não pendência
         self.assertEqual(por_dia[30]["recebido"], 123058)
+        self.assertEqual(por_dia[30]["abatimento"], 141500 - 123058)
 
     def test_mes_futuro_mostra_o_que_falta(self):
         mes = somar_meses(hoje().strftime("%Y-%m"), 1)
@@ -645,6 +646,21 @@ class TestResolvidosContam(BaseBanco):
         self.assertEqual(depois["saldo_previsto"], antes["saldo_previsto"])
         ligada = [x for x in rendas.do_mes(con, mes) if x["id"] == rid][0]
         self.assertEqual((ligada["status"], ligada["recebido"]), ("recebido", 100000))
+
+
+class TestAjusteDeEntradaNoMes(BaseBanco):
+    """Ajustar o valor de uma entrada fixa num mês (ex.: dezembro) vale para esse mês e não muda os outros."""
+
+    def test_valor_ajustado_so_no_mes(self):
+        con = self.con
+        rid = rendas.criar(con, {"descricao": "Salário Teste", "padrao": "NAO EXISTE", "valor": 141500, "dia": 30,
+                                 "inicio": "2026-11"})
+        previstos.salvar(con, {"mes": "2026-12", "chave_auto": f"renda:{rid}", "status": "previsto",
+                               "descricao": "Salário Teste", "valor": 130000})
+        dez = [i for i in previstos.do_mes(con, "2026-12")["itens"] if i["chave_auto"] == f"renda:{rid}"][0]
+        nov = [i for i in previstos.do_mes(con, "2026-11")["itens"] if i["chave_auto"] == f"renda:{rid}"][0]
+        self.assertEqual(dez["valor"], 130000)
+        self.assertEqual(nov["valor"], 141500)
 
 
 class TestCompartilhado(unittest.TestCase):

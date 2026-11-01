@@ -112,16 +112,16 @@ def do_mes(con, mes: str) -> list[dict]:
         # marcado como recebido no Previstos (sem lançamento no extrato) também conta como recebido
         marcado = f["id"] in marcados
         recebido = f["valor"] if marcado else extrato
-        if recebido >= f["valor"] * 0.97:
+        # o valor fixo é a base; o que cai de fato pode ser menor (abatimento, ex.: plano de saúde)
+        if marcado or extrato > 0:
             st = "recebido"
         elif mes >= atual:
             st = "a_receber"
-        elif recebido > 0:
-            st = "parcial"
         else:
             st = "nao_entrou"
-        out.append({**f, "recebido": recebido, "recebido_extrato": extrato,
-                    "falta": max(0, f["valor"] - recebido) if st == "a_receber" else 0,
+        abatimento = max(0, f["valor"] - recebido) if st == "recebido" and not marcado else 0
+        out.append({**f, "recebido": recebido, "recebido_extrato": extrato, "abatimento": abatimento,
+                    "falta": f["valor"] if st == "a_receber" else 0,
                     "status": st, "marcado": marcado,
                     "lancamentos": [{"data": t["data"], "descricao": t["descricao"], "valor": t["valor"]}
                                     for t in txs]})

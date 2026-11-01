@@ -311,6 +311,25 @@ TELAS.inicio = async (el) => {
     const tipo = b.dataset.ajustar;
     if (tipo === "previstos") return novoPrevisto({ mes: S.mes }, render);
     const lista = h.previstos.filter((i) => (tipo === "entrada" ? i.valor > 0 : i.valor < 0));
+    if (tipo === "saida") {
+      // visão consolidada: só os grupos; o detalhe de cada conta fica em Lançamentos
+      const cartao = lista.filter((i) => i.forma === "Cartão" || i.forma === "Pix no crédito");
+      const contas = lista.filter((i) => !cartao.includes(i) && i.status !== "cancelado");
+      const grupo = (nome, itens) => {
+        const aberto = itens.filter((i) => i.status === "previsto");
+        const pagos = itens.filter((i) => i.status === "realizado");
+        return `<div class="linha-ajuste"><div><b>${nome}</b>
+          <p>${aberto.length} a pagar · ${brl(aberto.reduce((t, i) => t + Math.abs(i.falta || i.valor), 0))}
+             · ${pagos.length} ${pagos.length === 1 ? "paga" : "pagas"} · ${brl(pagos.reduce((t, i) => t + Math.abs(i.valor), 0))}</p></div></div>`;
+      };
+      abrirModal(`<h3>Saídas previstas de ${esc(nome)}</h3>
+        <p class="mudo" style="margin:-6px 0 0">Já saíram ${brl(X.pago)} nos extratos. Abaixo, o resumo por grupo; cada lançamento está em Lançamentos.</p>
+        <div class="previstos">${grupo("Fatura de cartão", cartao)}${grupo("Contas fixas e boletos", contas)}</div>
+        <div class="modal-acoes"><button class="btn" data-fechar>Fechar</button><a class="btn" href="#/lancamentos" data-fechar>Ver em Lançamentos</a><button class="btn btn-primario" id="novo-no-modal">+ Lançar saída</button></div>`, (m) => {
+        $("#novo-no-modal", m).addEventListener("click", () => novoPrevisto({ mes: S.mes, sentido: tipo }, render));
+      });
+      return;
+    }
     abrirModal(`<h3>${tipo === "entrada" ? "Entradas" : "Saídas"} previstas de ${esc(nome)}</h3>
       <p class="mudo" style="margin:-6px 0 0">${tipo === "entrada" ? `Já entraram ${brl(E.recebido)} nos extratos.` : `Já saíram ${brl(X.pago)} nos extratos.`} Ajustem o que ainda vai ${tipo === "entrada" ? "entrar" : "sair"}, ou lancem algo fora da rotina.</p>
       <div class="previstos">${lista.map(previstoHTML).join("") || `<p class="mudo">Nada previsto.</p>`}</div>

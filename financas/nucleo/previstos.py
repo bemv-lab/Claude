@@ -129,6 +129,9 @@ def do_mes(con, mes: str) -> dict:
         elif a.get("renda_status"):
             st = a["renda_status"]
             a["status"] = "realizado" if st == "recebido" else "previsto" if st == "a_receber" else st
+            if x:                                   # valor ajustado neste mês (ex.: dezembro)
+                a["valor"] = x["valor"]
+                a["ajustado"] = True
         else:
             if x:
                 a["valor"] = x["valor"]
