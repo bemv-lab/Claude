@@ -681,8 +681,19 @@ class TestContasAPagar(BaseBanco):
         self.tx("2026-11", "2026-11-01", -100000, "fatura", "inter-conta")  # já pagou 1.000 em novembro
         c = analises.cartao_a_pagar(self.con, "2026-11")[0]
         self.assertEqual((c["compras"], c["antecipado"], c["pago_no_mes"], c["a_pagar"]), (500000, 50000, 100000, 350000))
-        tot = analises.totais_mes(self.con, "2026-10")            # o cartão sai pelo que foi pago no mês (4.500)
-        self.assertEqual(tot["despesas"], 450000)
+        tot = analises.totais_mes(self.con, "2026-10")            # o cartão sai pela fatura do mês (4.000)
+        self.assertEqual(tot["despesas"], 400000)
+
+    def test_entrada_que_antecipou_a_fatura_vai_para_o_mes_dela(self):
+        """Pix recebido em 31/10 e usado em 01/11 para antecipar a fatura de novembro conta em novembro."""
+        self.tx("2026-10", "2026-10-31", 341812, "transferencia", "inter-conta")
+        self.tx("2026-11", "2026-11-01", -341812, "fatura", "inter-conta")
+        self.tx("2026-10", "2026-10-15", 100000, "normal", "inter-conta")     # outra entrada: fica em outubro
+        db.atualizar_mes_ref(self.con)
+        meses = [r[0] for r in self.con.execute("SELECT mes_ref FROM transacoes WHERE valor > 0 ORDER BY valor")]
+        self.assertEqual(meses, ["2026-10", "2026-11"])
+        self.assertEqual(db.fatura_paga_por("2026-10-19", 20), "2026-10")
+        self.assertEqual(db.fatura_paga_por("2026-10-25", 20), "2026-11")
 
     def test_entrada_de_fora_conta_como_entrada(self):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]

@@ -592,8 +592,8 @@ def mes_da_fatura(conta, data_iso: str) -> str:
 
 
 def atualizar_mes_ref(con, so_vazios: bool = False) -> None:
-    """Regime de caixa, como a planilha de vocês: o cartão conta no mês em que a fatura é paga; o resto no mês
-    da data, a não ser que vocês tenham escolhido outro (competência)."""
+    """Regime de caixa, como a planilha de vocês: o cartão conta no mês da fatura (fecha dia 13, vence dia 20); o
+    resto no mês da data, salvo competência escolhida. A entrada que antecipou uma fatura vai para o mês dela."""
     contas = {r["id"]: r for r in con.execute("SELECT * FROM contas")}
     filtro = "WHERE mes_ref IS NULL" if so_vazios else ""
     # linhas de fatura: contam no mês do vencimento da fatura de onde vieram (ex.: venc-2026-10-20 -> outubro)
@@ -608,4 +608,39 @@ def atualizar_mes_ref(con, so_vazios: bool = False) -> None:
     # dinheiro liberado pelo cartão (Pix no crédito) não é renda nem gasto: a saída é o Pix que sai da conta
     con.execute("UPDATE transacoes SET tipo = 'transferencia' WHERE valor > 0 AND descricao LIKE 'Pix No Cr%' "
                 "AND tipo = 'normal'")
+    alinhar_antecipacoes(con, contas)
     con.commit()
+
+
+def fatura_paga_por(data_iso: str, dia_vencimento: int) -> str:
+    """Mês da fatura que um pagamento quita: até o vencimento, a do próprio mês; depois, a do mês seguinte
+    (antecipação)."""
+    y, m, d = int(data_iso[:4]), int(data_iso[5:7]), int(data_iso[8:10])
+    if d > dia_vencimento:
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return f"{y}-{m:02d}"
+
+
+def alinhar_antecipacoes(con, contas: dict | None = None) -> int:
+    """A entrada que pagou (antecipou) uma fatura conta no mês dessa fatura. Ex.: Pix recebido em 31/10 e usado
+    em 01/11 para antecipar a fatura de novembro: conta em novembro. Reconhece a entrada pelo mesmo valor, na
+    mesma conta, até 3 dias antes do pagamento. Não mexe no que vocês escolheram à mão (competência)."""
+    contas = contas or {r["id"]: r for r in con.execute("SELECT * FROM contas")}
+    venc = {}
+    for c in contas.values():
+        if c["tipo"] == "cartao" and c["dia_vencimento"]:
+            venc.setdefault(c["instituicao"], c["dia_vencimento"])
+    n = 0
+    for e in con.execute("""
+            SELECT t.id, t.data, t.conta_id, f.data AS pago_em FROM transacoes t
+            JOIN transacoes f ON f.conta_id = t.conta_id AND f.tipo = 'fatura' AND f.valor = -t.valor
+                 AND julianday(f.data) - julianday(t.data) BETWEEN 0 AND 3
+            WHERE t.valor > 0 AND t.competencia IS NULL AND t.tipo IN ('normal','transferencia')""").fetchall():
+        dia = venc.get(contas[e["conta_id"]]["instituicao"])
+        if not dia:
+            continue
+        alvo = fatura_paga_por(e["pago_em"], dia)
+        if alvo != e["data"][:7]:
+            con.execute("UPDATE transacoes SET mes_ref = ? WHERE id = ?", (alvo, e["id"]))
+            n += 1
+    return n

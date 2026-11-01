@@ -109,9 +109,10 @@ def home(con, mes: str | None = None) -> dict:
     # regime de caixa no cartão: o que conta é o pagamento da fatura (já no extrato) e o que falta pagar dela;
     # as assinaturas previstas no cartão já estão dentro da fatura e saem do "a pagar"
     no_cartao = -sum(i["falta"] for i in prev["itens"] if i["falta"] < 0 and i.get("forma") in ("Cartão", "Pix no crédito"))
-    # o cartão entra pela fatura: o já pago está nas saídas; o que falta pagar dela vai para o "a pagar"
+    # a fatura do mês já está inteira nas saídas: o que falta pagar dela sai do "pago" e vai para o "a pagar"
     cartao_falta = sum(c["a_pagar"] for c in analises.cartao_a_pagar(con, mes)) if mes >= hoje().strftime("%Y-%m") else 0
     prev["a_pagar"] = prev["a_pagar"] - no_cartao + cartao_falta
+    tot["despesas"] -= cartao_falta
     # marcado como já resolvido sem lançamento no extrato (ex.: recebi e não caiu como transação): conta como feito
     # pela parte que o extrato não mostrou, para não sumir do total
     feitos = [i for i in prev["itens"] if i.get("ajuste_id") and i["status"] == "realizado"]
