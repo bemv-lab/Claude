@@ -743,6 +743,7 @@ TELAS.lancamentos = async (el) => {
       <select id="f-conta_id">${opcoes(S.cad.contas, f.conta_id, "Todas as contas")}</select>
       <select id="f-categoria_id"><option value="">Todas as categorias</option><option value="0" ${f.categoria_id === "0" ? "selected" : ""}>A classificar</option>${opcoes(S.cad.categorias, f.categoria_id)}</select>
       <select id="f-pessoa_id">${opcoes(S.cad.pessoas, f.pessoa_id, "Todas as pessoas")}</select>
+      <select id="f-sentido"><option value="">Receitas e despesas</option><option value="receita" ${f.sentido === "receita" ? "selected" : ""}>Só receitas (entradas)</option><option value="despesa" ${f.sentido === "despesa" ? "selected" : ""}>Só despesas (saídas)</option></select>
       <select id="f-escopo"><option value="">Pessoal e negócio</option><option value="pessoal" ${f.escopo === "pessoal" ? "selected" : ""}>Só pessoal</option><option value="negocio" ${f.escopo === "negocio" ? "selected" : ""}>Só negócio</option></select>
     </div><div id="lista-tx"></div></div>`;
   let tm;
@@ -750,8 +751,10 @@ TELAS.lancamentos = async (el) => {
     clearTimeout(tm); tm = setTimeout(() => { S.filtros[i.id.slice(2)] = i.value; listar(); }, 250);
   }));
   const listar = async () => {
-    const q = new URLSearchParams({ mes: S.mes, ...Object.fromEntries(Object.entries(S.filtros).filter(([, v]) => v)) });
-    const { itens } = await api(`/api/transacoes?${q}`);
+    const { sentido, ...resto } = S.filtros;
+    const q = new URLSearchParams({ mes: S.mes, ...Object.fromEntries(Object.entries(resto).filter(([, v]) => v)) });
+    // receita = tudo o que entrou positivo; despesa = tudo o que saiu (regra de vocês)
+    const itens = (await api(`/api/transacoes?${q}`)).itens.filter((t) => !sentido || (sentido === "receita" ? t.valor > 0 : t.valor < 0));
     const reais = itens.filter((t) => t.tipo === "normal");
     const ent = reais.filter((t) => t.valor > 0).reduce((s, t) => s + t.valor, 0);
     const sai = reais.filter((t) => t.valor < 0).reduce((s, t) => s + t.valor, 0);
