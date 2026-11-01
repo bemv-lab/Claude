@@ -666,21 +666,31 @@ class TestAjusteDeEntradaNoMes(BaseBanco):
 class TestContasAPagar(BaseBanco):
     """Dashboard de contas: uma linha por cartão, pelo valor a pagar (compras menos o que já foi antecipado)."""
 
-    def tx(self, mes_ref, data, valor, tipo="normal"):
+    def tx(self, mes_ref, data, valor, tipo="normal", conta="inter-cartao"):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
         self.con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, tipo, classificacao, hash,
                             mes_ref, criado_em) VALUES (?,?,?,?,?,?, 'manual', ?, ?, '2026-01-01')""",
-                         (self.conta("inter-cartao"), data, "X", "X", valor, tipo, f"c{n}", mes_ref))
+                         (self.conta(conta), data, "X", "X", valor, tipo, f"c{n}", mes_ref))
         self.con.commit()
 
     def test_cartao_numa_linha_descontando_antecipacao(self):
         self.tx("2026-10", "2026-10-01", -400000)                 # fatura de outubro: 4.000
-        self.tx("2026-11", "2026-10-20", -300000)                 # compras da fatura de novembro: 3.000 + 2.000
+        self.tx("2026-10", "2026-10-19", -450000, "fatura", "inter-conta")  # pagou 4.500 em out: 500 antecipados
+        self.tx("2026-11", "2026-10-20", -300000)                 # fatura de novembro: 3.000 + 2.000
         self.tx("2026-11", "2026-10-25", -200000)
-        self.tx("2026-11", "2026-10-19", 450000, tipo="fatura")   # pagou 4.500: 4.000 quitam outubro, 500 antecipam
-        cartoes = [c for c in resumo.contas_a_pagar(self.con, "2026-11", []) if c["cartao"]]
-        self.assertEqual(len(cartoes), 1)
-        self.assertEqual((cartoes[0]["valor"], cartoes[0]["compras"], cartoes[0]["antecipado"]), (450000, 500000, 50000))
+        self.tx("2026-11", "2026-11-01", -100000, "fatura", "inter-conta")  # já pagou 1.000 em novembro
+        c = analises.cartao_a_pagar(self.con, "2026-11")[0]
+        self.assertEqual((c["compras"], c["antecipado"], c["pago_no_mes"], c["a_pagar"]), (500000, 50000, 100000, 350000))
+        tot = analises.totais_mes(self.con, "2026-10")            # caixa: em outubro saíram os 4.500 pagos
+        self.assertEqual(tot["despesas"], 450000)
+
+    def test_entrada_de_fora_conta_como_entrada(self):
+        n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
+        self.con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, tipo, classificacao, hash,
+                            mes_ref, criado_em) VALUES (?, '2026-10-19', 'Pix recebido: empresa', 'X', 100000,
+                            'transferencia', 'heuristica', ?, '2026-10', '2026-01-01')""", (self.conta("inter-conta"), f"e{n}"))
+        self.con.commit()
+        self.assertEqual(analises.totais_mes(self.con, "2026-10")["receitas"], 100000)
 
 
 class TestCompartilhado(unittest.TestCase):

@@ -71,21 +71,12 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
     """Visão de boletos do mês: uma linha por conta (energia, aluguel, empréstimo...) e uma só por cartão,
     com o total da fatura do mês. O detalhe das compras fica em Lançamentos."""
     out = []
-    for c in con.execute(f"""
-            SELECT c.id, c.nome, c.dia_vencimento, -SUM(t.valor) AS total, COUNT(*) AS qtd
-            FROM transacoes t JOIN contas c ON c.id = t.conta_id
-            WHERE {analises.FILTRO_REAL} AND c.tipo = 'cartao' AND t.mes_ref = ?
-            GROUP BY c.id HAVING total > 0 ORDER BY total DESC""", (mes,)):
-        # pagamentos lançados nesta fatura quitam primeiro a fatura anterior; o que sobra foi antecipado
-        def soma(m, cond):
-            return con.execute(f"SELECT COALESCE(SUM(t.valor), 0) FROM transacoes t WHERE t.conta_id = ? "
-                               f"AND t.mes_ref = ? AND {cond}", (c["id"], m)).fetchone()[0]
-        anterior = -soma(somar_meses(mes, -1), "t.tipo = 'normal'")
-        antecipado = max(0, soma(mes, "t.tipo = 'fatura' AND t.valor > 0") - max(0, anterior))
-        a_pagar = max(0, c["total"] - antecipado)
-        out.append({"descricao": f"Fatura · {c['nome']}", "valor": a_pagar, "compras": c["total"],
-                    "antecipado": min(antecipado, c["total"]), "dia": c["dia_vencimento"], "status": "fatura",
-                    "falta": a_pagar, "cartao": True, "qtd": c["qtd"], "conta_id": c["id"]})
+    for c in analises.cartao_a_pagar(con, mes):
+        pago = c["a_pagar"] == 0
+        out.append({"descricao": f"Fatura · {c['nome']}", "valor": c["a_pagar"] or c["pago_no_mes"],
+                    "compras": c["compras"], "antecipado": c["antecipado"], "pago_no_mes": c["pago_no_mes"],
+                    "dia": c["dia"], "status": "realizado" if pago else "previsto", "falta": c["a_pagar"],
+                    "cartao": True, "qtd": c["qtd"], "conta_id": c["conta_id"]})
     for i in itens:
         if i["valor"] >= 0 or i["status"] == "cancelado" or i.get("forma") in ("Cartão", "Pix no crédito"):
             continue
@@ -115,6 +106,11 @@ def home(con, mes: str | None = None) -> dict:
     painel = dividas.painel(con)
     orc = orcamento(con, mes)
     prev = previstos.do_mes(con, mes)
+    # regime de caixa no cartão: o que conta é o pagamento da fatura (já no extrato) e o que falta pagar dela;
+    # as assinaturas previstas no cartão já estão dentro da fatura e saem do "a pagar"
+    no_cartao = -sum(i["falta"] for i in prev["itens"] if i["falta"] < 0 and i.get("forma") in ("Cartão", "Pix no crédito"))
+    cartao_falta = sum(c["a_pagar"] for c in analises.cartao_a_pagar(con, mes)) if mes >= hoje().strftime("%Y-%m") else 0
+    prev["a_pagar"] = prev["a_pagar"] - no_cartao + cartao_falta
     # marcado como já resolvido sem lançamento no extrato (ex.: recebi e não caiu como transação): conta como feito
     # pela parte que o extrato não mostrou, para não sumir do total
     feitos = [i for i in prev["itens"] if i.get("ajuste_id") and i["status"] == "realizado"]

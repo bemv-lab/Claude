@@ -11,21 +11,72 @@ from .util import hoje, limites_mes, normalizar, somar_meses
 FILTRO_REAL = "t.tipo = 'normal' AND c.tipo != 'beneficio'"
 
 
+# entradas de fora das contas de vocês (sem par): contam como entrada, menos estorno e crédito do Pix no crédito
+_ENTRADA_DE_FORA = ("t.tipo = 'transferencia' AND t.par_id IS NULL AND t.valor > 0 AND c.tipo = 'corrente' "
+                    "AND UPPER(t.descricao) NOT LIKE '%ESTORNO%' AND UPPER(t.descricao) NOT LIKE 'PIX NO CR%'")
+
+
 def totais_mes(con, mes: str) -> dict:
-    """Totais do mês em regime de caixa: cartão pelo mês da fatura (t.mes_ref)."""
+    """Totais do mês em regime de caixa. Entradas: tudo o que entrou nas contas e não é transferência entre
+    elas (salário, Pix de fora, entradas ainda sem categoria). Saídas: gastos fora do cartão + o que foi pago
+    ao cartão no mês (pagamentos de fatura no extrato, inclusive antecipações). As compras do cartão seguem
+    pelo mês da fatura em `cartao` e nas categorias."""
     r = con.execute(f"""
         SELECT
-          COALESCE(SUM(CASE WHEN t.valor > 0 AND cat.tipo = 'receita' THEN t.valor END), 0) AS receitas,
-          COALESCE(SUM(CASE WHEN (cat.tipo IN ('despesa','divida')) OR (t.categoria_id IS NULL AND t.valor < 0)
-                       THEN -t.valor END), 0) AS despesas,
-          COALESCE(SUM(CASE WHEN cat.tipo = 'divida' THEN -t.valor END), 0) AS dividas,
-          COALESCE(SUM(CASE WHEN t.escopo = 'negocio' AND cat.tipo = 'despesa' THEN -t.valor END), 0) AS negocio,
-          COALESCE(SUM(CASE WHEN t.categoria_id IS NULL AND t.valor > 0 THEN t.valor END), 0) AS entradas_pendentes,
-          COALESCE(SUM(CASE WHEN c.tipo = 'cartao' AND t.valor < 0 THEN -t.valor END), 0) AS cartao
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.valor > 0 AND (cat.tipo = 'receita'
+                                 OR (t.categoria_id IS NULL AND c.tipo = 'corrente')) THEN t.valor END), 0)
+            + COALESCE(SUM(CASE WHEN {_ENTRADA_DE_FORA} THEN t.valor END), 0) AS receitas,
+          COALESCE(SUM(CASE WHEN {_ENTRADA_DE_FORA} THEN t.valor END), 0) AS entradas_de_fora,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND c.tipo NOT IN ('cartao','beneficio')
+                             AND ((cat.tipo IN ('despesa','divida')) OR (t.categoria_id IS NULL AND t.valor < 0))
+                       THEN -t.valor END), 0) AS fora_cartao,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND c.tipo NOT IN ('cartao','beneficio') AND cat.tipo = 'divida'
+                       THEN -t.valor END), 0) AS dividas_fora_cartao,
+          COALESCE(SUM(CASE WHEN t.tipo = 'fatura' AND c.tipo = 'corrente' AND t.valor < 0 THEN -t.valor END), 0)
+            - COALESCE(SUM(CASE WHEN t.tipo = 'transferencia' AND c.tipo = 'corrente' AND t.valor > 0
+                                 AND UPPER(t.descricao) LIKE '%ESTORNO%' AND EXISTS (
+                                   SELECT 1 FROM transacoes f WHERE f.conta_id = t.conta_id AND f.tipo = 'fatura'
+                                   AND f.valor = -t.valor AND f.mes_ref = t.mes_ref) THEN t.valor END), 0)
+            AS cartao_pago,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND cat.tipo = 'divida' THEN -t.valor END), 0) AS dividas,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.escopo = 'negocio' AND cat.tipo = 'despesa' THEN -t.valor END), 0)
+            AS negocio,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.categoria_id IS NULL AND t.valor > 0 THEN t.valor END), 0)
+            AS entradas_pendentes,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND c.tipo = 'cartao' AND t.valor < 0 THEN -t.valor END), 0) AS cartao
         FROM transacoes t JOIN contas c ON c.id = t.conta_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
-        WHERE {FILTRO_REAL} AND t.mes_ref = ?""", (mes,)).fetchone()
-    return dict(r)
+        WHERE c.tipo != 'beneficio' AND t.mes_ref = ?""", (mes,)).fetchone()
+    out = dict(r)
+    out["despesas"] = out["fora_cartao"] + out["cartao_pago"]
+    return out
+
+
+def cartao_a_pagar(con, mes: str) -> list[dict]:
+    """Por cartão: compras da fatura do mês, o que já foi antecipado (pago no mês anterior além da fatura de
+    lá) e o que ainda falta pagar, descontados os pagamentos já feitos neste mês."""
+    out = []
+    for c in con.execute("SELECT * FROM contas WHERE tipo = 'cartao' AND ativa = 1"):
+        def compras(m):
+            return con.execute("SELECT COALESCE(-SUM(valor), 0) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
+                               "AND mes_ref = ?", (c["id"], m)).fetchone()[0]
+
+        def pagos(m):    # pagamentos de fatura nas contas do mesmo banco do cartão
+            return con.execute("""SELECT COALESCE(-SUM(t.valor), 0) FROM transacoes t JOIN contas k ON k.id = t.conta_id
+                                  WHERE t.tipo = 'fatura' AND k.tipo = 'corrente' AND k.instituicao = ? AND t.mes_ref = ?""",
+                               (c["instituicao"], m)).fetchone()[0]
+        fatura = compras(mes)
+        if fatura <= 0:
+            continue
+        ant = somar_meses(mes, -1)
+        antecipado = min(fatura, max(0, pagos(ant) - compras(ant)))
+        pago_no_mes = pagos(mes)
+        out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "compras": fatura,
+                    "antecipado": antecipado, "pago_no_mes": pago_no_mes,
+                    "a_pagar": max(0, fatura - antecipado - pago_no_mes),
+                    "qtd": con.execute("SELECT COUNT(*) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
+                                       "AND mes_ref = ?", (c["id"], mes)).fetchone()[0]})
+    return out
 
 
 def gasto_por_categoria(con, mes: str) -> list[dict]:

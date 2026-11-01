@@ -316,7 +316,7 @@ TELAS.inicio = async (el) => {
       const contas = h.contas_a_pagar || [];
       const total = contas.reduce((t, c) => t + c.valor, 0);
       const linha = (c) => `<div class="linha-ajuste"><div><b>${esc(c.descricao)}</b>
-          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.qtd} lançamentos${c.antecipado ? ` · compras ${brl(c.compras)}, já antecipados ${brl(c.antecipado)}` : ""} · <a href="#/lancamentos" data-fechar>ver compras</a>`
+          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : ""}compras ${brl(c.compras)}${c.antecipado ? ` · antecipado no mês anterior ${brl(c.antecipado)}` : ""}${c.pago_no_mes ? ` · pago neste mês ${brl(c.pago_no_mes)}` : ""} · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>`
             : c.status === "realizado" ? "✓ pago" : c.falta && c.falta < c.valor ? `falta ${brl(c.falta)}` : "a pagar"}</p></div>
           <b class="num">${brl(c.valor)}</b></div>`;
       abrirModal(`<h3>Contas de ${esc(nome)}</h3>

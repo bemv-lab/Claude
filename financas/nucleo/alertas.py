@@ -214,7 +214,7 @@ def _saldo_negativo(con, p, mes):
 def folga_do_mes(con, mes: str) -> int:
     """Estimativa do que sobra para pagar a fatura: renda − parcelas de dívida − gastos fora do cartão."""
     tot = analises.totais_mes(con, mes)
-    fora_cartao = tot["despesas"] - tot["cartao"] - tot["dividas"]
+    fora_cartao = tot["fora_cartao"] - tot["dividas_fora_cartao"]
     return renda_referencia(con, mes) - dividas.mensal_comprometido(con) - max(0, fora_cartao)
 
 
