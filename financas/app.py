@@ -385,6 +385,33 @@ def r_flash_recarga(con, q, corpo):
     return {"ok": True}
 
 
+@rota("POST", "/api/transacoes")
+def r_transacao_nova(con, q, corpo):
+    """Lançamento digitado à mão: um gasto em dinheiro, um Pix que não veio no extrato, uma entrada avulsa."""
+    valor = _centavos(corpo.get("valor"))
+    if not valor:
+        raise Erro("Informe o valor")
+    valor = -abs(valor) if corpo.get("sentido") == "saida" else abs(valor)
+    descricao = (corpo.get("descricao") or "").strip()
+    if not descricao:
+        raise Erro("Informe a descrição")
+    data = corpo.get("data") or hoje().isoformat()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data):
+        raise Erro("Data inválida")
+    conta = con.execute("SELECT * FROM contas WHERE id = ?", (_int(corpo.get("conta_id"), "conta"),)).fetchone()
+    if not conta:
+        raise Erro("Escolha a conta")
+    mes = db.mes_da_fatura(conta, data)
+    h = hashlib.sha1(f"manual|{conta['id']}|{data}|{valor}|{descricao}|{agora_iso()}".encode()).hexdigest()
+    con.execute("""INSERT INTO transacoes (conta_id, data, descricao, chave, valor, pessoa_id, categoria_id, escopo, tipo,
+                   classificacao, hash, mes_ref, criado_em)
+                   VALUES (?,?,?,?,?,?,?, 'pessoal', 'normal', 'manual', ?, ?, ?)""",
+                (conta["id"], data, descricao, normalizar(descricao).upper(), valor,
+                 _int(corpo.get("pessoa_id"), "pessoa"), _int(corpo.get("categoria_id"), "categoria"), h, mes, agora_iso()))
+    con.commit()
+    return {"ok": True}
+
+
 @rota("POST", "/api/flash/saldo")
 def r_flash_saldo(con, q, corpo):
     """O casal informa o saldo do cartão quando recarrega: conta a partir dessa data."""

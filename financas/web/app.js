@@ -693,8 +693,30 @@ TELAS.lancamentos = async (el) => {
   if (location.hash.includes("parcelados")) S.segLanc = "parcelados";
   el.innerHTML = `<div class="pilha"><div class="cartao-cab" style="margin:0"><div class="segmentos" id="seg">
       ${[["todos", "Lançamentos"], ["recorrentes", "Recorrentes"], ["parcelados", "Parcelados"]].map(([k, n]) =>
-        `<button data-s="${k}" class="${S.segLanc === k ? "ativo" : ""}">${n}</button>`).join("")}</div></div><div id="lanc-corpo"></div></div>`;
+        `<button data-s="${k}" class="${S.segLanc === k ? "ativo" : ""}">${n}</button>`).join("")}</div>
+      <button class="btn btn-primario" id="lanc-novo">+ Lançar</button></div><div id="lanc-corpo"></div></div>`;
   $$("#seg button", el).forEach((b) => b.addEventListener("click", () => { S.segLanc = b.dataset.s; history.replaceState(null, "", "#/lancamentos"); TELAS.lancamentos(el); }));
+  $("#lanc-novo", el).addEventListener("click", () => abrirModal(`<h3>Lançar à mão</h3>
+    <p class="mudo" style="margin:-6px 0 0">Para o que não veio no extrato: um gasto em dinheiro, um Pix avulso, uma entrada. Depois de salvo, aparece como qualquer lançamento.</p>
+    <form id="f-lanc" class="grade-form">
+      <div class="segmentos" style="grid-column:1/-1;justify-self:start" id="seg-lanc-sentido">
+        <button type="button" data-s="saida" class="ativo">Saída</button><button type="button" data-s="entrada">Entrada</button></div>
+      <input type="hidden" name="sentido" value="saida">
+      <label class="campo" style="grid-column:1/-1">Descrição<input name="descricao" placeholder="Ex.: Feira, Pix para a diarista"></label>
+      <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00"></label>
+      <label class="campo">Data<input type="date" name="data" value="${esc(S.hoje || "")}"></label>
+      <label class="campo">Conta<select name="conta_id">${opcoes(S.cad.contas, "", "Escolha a conta")}</select></label>
+      <label class="campo">Categoria <small>opcional</small><select name="categoria_id">${opcoes(S.cad.categorias, "", "—")}</select></label>
+      <label class="campo">Quem <small>opcional</small><select name="pessoa_id">${opcoes(S.cad.pessoas, "", "—")}</select></label>
+    </form>
+    <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="ok-lanc">Salvar</button></div>`, (m) => {
+    $$("#seg-lanc-sentido button", m).forEach((b) => b.addEventListener("click", () => {
+      $$("#seg-lanc-sentido button", m).forEach((x) => x.classList.toggle("ativo", x === b)); $("[name=sentido]", m).value = b.dataset.s; }));
+    $("#ok-lanc", m).addEventListener("click", async () => {
+      await api("/api/transacoes", { metodo: "POST", corpo: form($("#f-lanc", m)) });
+      $("#modal").close(); toast("Lançamento salvo"); TELAS.lancamentos(el);
+    });
+  }));
   const corpo = $("#lanc-corpo", el);
   if (S.segLanc === "recorrentes") return recorrentes(corpo);
   if (S.segLanc === "parcelados") return parcelados(corpo);

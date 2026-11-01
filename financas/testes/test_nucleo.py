@@ -633,10 +633,10 @@ class TestResolvidosContam(BaseBanco):
     """Marcar uma entrada como recebida (sem lançamento no extrato) não pode fazê-la sumir do resultado."""
 
     def test_recebido_sem_extrato_entra_nas_entradas(self):
-        mes = "2026-10"
+        mes = hoje().strftime("%Y-%m")       # mês corrente: a entrada ainda está a receber antes de marcar
         con = self.con
         rid = rendas.criar(con, {"descricao": "Salário Teste", "padrao": "NAO EXISTE", "valor": 100000, "dia": 15,
-                                 "a_partir": mes})
+                                 "inicio": mes})
         antes = resumo.home(con, mes)
         previstos.salvar(con, {"mes": mes, "chave_auto": f"renda:{rid}", "status": "realizado",
                                "descricao": "Salário Teste", "valor": 100000})
