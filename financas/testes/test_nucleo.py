@@ -693,6 +693,21 @@ class TestContasAPagar(BaseBanco):
         self.assertEqual(analises.totais_mes(self.con, "2026-10")["receitas"], 100000)
 
 
+class TestExcluir(BaseBanco):
+    """Lançamento excluído some e não volta ao reimportar o mesmo extrato."""
+
+    def test_excluir_e_reimportar(self):
+        import app
+        csv = "Data;Descricao;Valor\n10/10/2026;PADARIA X;-12,50\n11/10/2026;MERCADO Y;-30,00\n".encode()
+        lote = Lote(self.con); lote.arquivo(csv, "a.csv", self.conta("inter-conta")); lote.finalizar()
+        tid = self.con.execute("SELECT id FROM transacoes WHERE descricao LIKE 'PADARIA%'").fetchone()[0]
+        app.r_tx_apagar(self.con, {}, {}, str(tid))
+        csv2 = csv + "12/10/2026;FARMACIA Z;-8,00\n".encode()     # arquivo novo com as mesmas linhas + uma
+        lote = Lote(self.con); r = lote.arquivo(csv2, "b.csv", self.conta("inter-conta")); lote.finalizar()
+        self.assertEqual(r["novas"], 1)
+        self.assertEqual(self.con.execute("SELECT COUNT(*) FROM transacoes WHERE descricao LIKE 'PADARIA%'").fetchone()[0], 0)
+
+
 class TestCompartilhado(unittest.TestCase):
     """Dois computadores na mesma pasta do Drive: só um edita; o outro consulta uma cópia."""
 

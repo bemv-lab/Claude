@@ -790,7 +790,12 @@ function editarTx(t, depois) {
       <label class="campo" style="grid-column:1/-1">Observação<input type="text" name="observacao" value="${esc(t.observacao || "")}"></label>
       <label style="display:flex;gap:10px;align-items:center;grid-column:1/-1;font-size:14px"><span class="chave"><input type="checkbox" name="lembrar" checked><span></span></span> Aplicar aos próximos parecidos (${esc(t.chave || "—")})</label>
     </form>
-    <div class="modal-acoes"><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="salvar-tx">Salvar</button></div>`, (m) => {
+    <div class="modal-acoes"><button class="btn" id="apagar-tx" style="margin-right:auto;color:var(--critico)">Excluir</button><button class="btn" data-fechar>Cancelar</button><button class="btn btn-primario" id="salvar-tx">Salvar</button></div>`, (m) => {
+    $("#apagar-tx", m).addEventListener("click", async () => {
+      if (!confirm(`Excluir "${t.descricao}" (${brl(t.valor, true)})? Ele some dos totais e não volta ao reimportar o extrato.`)) return;
+      await api(`/api/transacoes/${t.id}`, { metodo: "DELETE" });
+      $("#modal").close(); toast("Lançamento excluído"); depois(); atualizarContador();
+    });
     $("#salvar-tx", m).addEventListener("click", async () => {
       const v = form($("#f-tx", m));
       if (String(v.categoria_id) !== String(t.categoria_id ?? "")) {

@@ -142,6 +142,9 @@ CREATE TABLE IF NOT EXISTS dividas (
   urgencia INTEGER DEFAULT 0,            -- 0 normal, 1 atenção, 2 urgente (negativação, cobrança)
   observacao TEXT, ordem INTEGER DEFAULT 100, criado_em TEXT
 );
+CREATE TABLE IF NOT EXISTS excluidos (            -- lançamentos apagados à mão: a importação não traz de volta
+  hash TEXT PRIMARY KEY, descricao TEXT, valor INTEGER, data TEXT, excluido_em TEXT
+);
 CREATE TABLE IF NOT EXISTS pagamentos_divida (
   id INTEGER PRIMARY KEY,
   divida_id INTEGER NOT NULL REFERENCES dividas(id),

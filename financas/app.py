@@ -385,6 +385,26 @@ def r_flash_recarga(con, q, corpo):
     return {"ok": True}
 
 
+@rota("DELETE", r"/api/transacoes/(\d+)")
+def r_tx_apagar(con, q, corpo, tid):
+    """Apaga um lançamento. Se veio de extrato, fica anotado para não voltar ao importar o mesmo arquivo."""
+    t = con.execute("SELECT * FROM transacoes WHERE id = ?", (int(tid),)).fetchone()
+    if not t:
+        raise Erro("Lançamento não encontrado", 404)
+    if t["hash"] and t["classificacao"] != "manual":
+        con.execute("INSERT OR IGNORE INTO excluidos (hash, descricao, valor, data, excluido_em) VALUES (?,?,?,?,?)",
+                    (t["hash"], t["descricao"], t["valor"], t["data"], agora_iso()))
+    if t["par_id"]:             # a outra ponta da transferência volta a ser lançamento comum
+        con.execute("UPDATE transacoes SET par_id = NULL, tipo = 'normal', categoria_id = NULL, classificacao = 'duvida' "
+                    "WHERE id = ?", (t["par_id"],))
+    con.execute("DELETE FROM pagamentos_divida WHERE transacao_id = ?", (t["id"],))
+    con.execute("UPDATE alertas SET transacao_id = NULL WHERE transacao_id = ?", (t["id"],))
+    con.execute("DELETE FROM transacoes WHERE id = ?", (t["id"],))
+    con.commit()
+    alertas.gerar(con)
+    return {"ok": True}
+
+
 @rota("POST", "/api/transacoes")
 def r_transacao_nova(con, q, corpo):
     """Lançamento digitado à mão: um gasto em dinheiro, um Pix que não veio no extrato, uma entrada avulsa."""

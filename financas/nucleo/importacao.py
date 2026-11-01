@@ -174,7 +174,8 @@ class Lote:
             n = ocorrencias.get(k, 0)
             ocorrencias[k] = n + 1
             hash_tx = hashlib.sha1(f"{c['id']}|{t['data']}|{t['valor']}|{k[3] or ''}|{n}".encode()).hexdigest()
-            if con.execute("SELECT 1 FROM transacoes WHERE hash = ?", (hash_tx,)).fetchone():
+            if con.execute("SELECT 1 FROM transacoes WHERE hash = ? UNION SELECT 1 FROM excluidos WHERE hash = ?",
+                           (hash_tx, hash_tx)).fetchone():
                 res["duplicadas"] += 1
                 continue
             chave = chave_estabelecimento(t["descricao"])
