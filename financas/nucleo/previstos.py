@@ -143,7 +143,9 @@ def do_mes(con, mes: str) -> dict:
         itens.append(a)
     for m in _manuais(con, mes):
         x = aj.get(f"manual:{m['id']}")          # ajuste só deste mês num previsto que se repete
-        status, valor = (x["status"], x["valor"] if x["status"] == "previsto" else m["valor"]) if x else (m["status"], m["valor"])
+        # ajuste do mês: outro valor, ou "paga" pelo valor que de fato saiu (cancelado mantém o valor original)
+        usa_ajuste = x and (x["status"] == "previsto" or (x["status"] == "realizado" and x["valor"]))
+        status, valor = (x["status"], x["valor"] if usa_ajuste else m["valor"]) if x else (m["status"], m["valor"])
         # um previsto com categoria se resolve sozinho quando o extrato traz o gasto (ex.: o boleto do aluguel)
         feito = _realizado(con, "categoria_id", m["categoria_id"], mes, 1 if valor > 0 else -1) if m["categoria_id"] else 0
         if status == "previsto" and feito >= abs(valor) * 0.97:

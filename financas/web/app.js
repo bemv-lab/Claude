@@ -21,6 +21,7 @@ const somarMes = (m, n) => { const [y, mm] = m.split("-").map(Number); const t =
 const diaSemana = (iso) => new Date(iso + "T12:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 
 const ICONES = {
+  contas: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
   inicio: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
   lancamentos: '<path d="M4 6h16M4 12h16M4 18h10"/>',
   duvidas: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
@@ -39,8 +40,8 @@ const ICONES = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
-const NAV = [["inicio", "Início"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"], ["manual", "Manual"]];
-const NAV_CELULAR = ["inicio", "plano", "lancamentos", "encontros"];
+const NAV = [["inicio", "Início"], ["contas", "Contas"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"], ["manual", "Manual"]];
+const NAV_CELULAR = ["inicio", "contas", "lancamentos", "plano"];
 
 /* ------------------------------------------------------------------ infraestrutura */
 async function api(caminho, { metodo = "GET", corpo, bruto, silencioso } = {}) {
@@ -120,7 +121,7 @@ async function render() {
   const tela = TELAS[nome] ? nome : "inicio";
   if ($("#modal").open) $("#modal").close();
   montarNav();
-  montarMes(["inicio", "lancamentos"].includes(tela));
+  montarMes(["inicio", "lancamentos", "contas"].includes(tela));
   const el = $("#tela");
   el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
   try { await TELAS[tela](el); } catch (e) { if (e.message !== "PIN") el.innerHTML = `<div class="cartao vazio"><h3>Não consegui carregar</h3><p>${esc(e.message)}</p></div>`; }
@@ -317,7 +318,7 @@ TELAS.inicio = async (el) => {
       const contas = h.contas_a_pagar || [];
       const total = contas.reduce((t, c) => t + c.valor, 0);
       const linha = (c) => `<div class="linha-ajuste"><div><b>${esc(c.descricao)}</b>
-          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : ""}compras ${brl(c.compras)}${c.antecipado ? ` · antecipado no mês anterior ${brl(c.antecipado)}` : ""}${c.pago_no_mes ? ` · pago neste mês ${brl(c.pago_no_mes)}` : ""} · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>`
+          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : ""}compras ${brl(c.compras)}${c.antecipado > 0 ? ` · antecipado no mês anterior ${brl(c.antecipado)}` : c.antecipado < 0 ? ` · ficou da fatura anterior ${brl(-c.antecipado)}` : ""}${c.pago_no_mes ? ` · pago neste mês ${brl(c.pago_no_mes)}` : ""} · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>`
             : c.status === "realizado" ? "✓ pago" : c.falta && c.falta < c.valor ? `falta ${brl(c.falta)}` : "a pagar"}</p></div>
           <b class="num">${brl(c.valor)}</b></div>`;
       abrirModal(`<h3>Contas de ${esc(nome)}</h3>
@@ -438,6 +439,66 @@ const compacto = (c, sinal = false) => {
   return (c < 0 ? "−" : sinal && c > 0 ? "+" : "") + s;
 };
 const passoBonito = (v) => { const e = 10 ** Math.floor(Math.log10(Math.max(v, 1))); const f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; };
+
+// Contas do mês: uma linha por boleto (aluguel, energia, empréstimos...) e uma por cartão. Usa os mesmos
+// previstos do Início: o que muda aqui muda Início, Plano e fechamento na hora.
+TELAS.contas = async (el) => {
+  const h = await api(`/api/home?mes=${S.mes}`);
+  const nome = h.mes_nome;
+  const contas = h.contas_a_pagar || [];
+  const porChave = Object.fromEntries(h.previstos.map((i) => [i.chave_auto || `manual:${i.id}`, i]));
+  const total = contas.reduce((t, c) => t + c.valor, 0);
+  const falta = contas.reduce((t, c) => t + (c.status === "previsto" ? c.falta : 0), 0);
+  const recarregar = () => TELAS.contas(el);
+  const linha = (c, k) => {
+    const pago = c.status === "realizado";
+    const situacao = pago ? `<span class="tag ok">✓ paga</span>` : c.falta && c.falta < c.valor ? `<span class="tag duv">falta ${brl(c.falta)}</span>` : `<span class="tag duv">a pagar</span>`;
+    if (c.cartao) return `<tr><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">compras ${brl(c.compras)}${c.antecipado > 0 ? ` · antecipado ${brl(c.antecipado)}` : c.antecipado < 0 ? ` · ficou da fatura anterior ${brl(-c.antecipado)}` : ""}${c.pago_no_mes ? ` · pago neste mês ${brl(c.pago_no_mes)}` : ""} · vem da fatura importada</small><br><a class="btn-texto" href="#/lancamentos">ver compras</a></td>
+      <td class="num"><b>${brl(c.valor)}</b></td><td>${situacao}</td></tr>`;
+    return `<tr data-k="${k}"><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">${c.manual ? (c.repete ? "todo mês" : "só neste mês") : ORIGEM[c.origem] || ""}${c.ajuste_id && !pago ? " · valor ajustado neste mês" : ""}</small>
+        <div class="acoes-conta">${pago ? (c.ajuste_id ? `<button class="btn-texto" data-desfazer>desfazer</button>` : "") : `<button class="btn-texto" data-pagar>marcar paga</button>`}<button class="btn-texto" data-editar>editar</button></div></td>
+      <td class="num"><input class="valor-conta" inputmode="decimal" value="${paraInput(c.valor)}" aria-label="Valor de ${esc(c.descricao)}" ${pago ? "disabled" : ""}></td><td>${situacao}</td></tr>`;
+  };
+  el.innerHTML = `<div class="pilha">
+    <div class="kpis">
+      <div class="kpi"><span class="rotulo">Contas de ${esc(nome)}</span><b class="num">${brl(total)}</b><small>${contas.length} conta(s)</small></div>
+      <div class="kpi"><span class="rotulo">Já pagas</span><b class="num">${brl(total - falta)}</b><small>${contas.filter((c) => c.status === "realizado").length} conta(s)</small></div>
+      <div class="kpi"><span class="rotulo">Falta pagar</span><b class="num">${brl(falta)}</b><small>${contas.filter((c) => c.status === "previsto").length} conta(s)</small></div>
+    </div>
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Contas do mês</h2><span class="mudo" style="font-size:13px">Mudem o valor e apertem Enter: vale para ${esc(nome)}.</span></div>
+      <div style="overflow-x:auto"><table class="tabela tabela-contas"><thead><tr><th>Vence</th><th>Conta</th><th class="num">Valor</th><th>Situação</th></tr></thead>
+        <tbody>${contas.map(linha).join("") || `<tr><td colspan="4" class="mudo">Nenhuma conta neste mês. Adicionem a primeira abaixo.</td></tr>`}</tbody></table></div>
+    </div>
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Adicionar conta</h2></div>
+      <form id="f-conta" class="grade-form">
+        <label class="campo" style="grid-column:1/-1">Conta<input name="descricao" placeholder="Ex.: Internet fixa, condomínio, água" required></label>
+        <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00" required></label>
+        <label class="campo">Dia do vencimento <small>opcional</small><input type="number" name="dia" min="1" max="31"></label>
+        <label class="campo">Repetir<select name="repetir"><option value="sempre">Todo mês</option><option value="">Só em ${esc(nome)}</option></select></label>
+        <div style="grid-column:1/-1"><button class="btn btn-primario">Adicionar</button></div>
+      </form>
+    </div></div>`;
+  const ajustar = async (c, corpo, msg) => {
+    await api("/api/previstos", { metodo: "POST", corpo: { chave_auto: c.chave, mes: S.mes, descricao: c.descricao, sentido: "saida", ...corpo } });
+    toast(msg); recarregar();
+  };
+  $$("tr[data-k]", el).forEach((tr) => {
+    const c = contas[+tr.dataset.k], campo = $(".valor-conta", tr);
+    campo.addEventListener("change", () => { if (campo.value.trim() && campo.value !== paraInput(c.valor)) ajustar(c, { valor: campo.value }, "Valor atualizado"); });
+    campo.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); campo.blur(); } });
+    $("[data-pagar]", tr)?.addEventListener("click", () => ajustar(c, { valor: campo.value || paraInput(c.valor), status: "realizado" }, "Marcada como paga"));
+    $("[data-desfazer]", tr)?.addEventListener("click", async () => { await api(`/api/previstos/${c.ajuste_id}`, { metodo: "DELETE" }); toast("Desfeito"); recarregar(); });
+    $("[data-editar]", tr).addEventListener("click", () => editarPrevisto(porChave[c.chave], recarregar));
+  });
+  $("#f-conta", el).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = form(e.target);
+    await api("/api/previstos", { metodo: "POST", corpo: { mes: S.mes, descricao: v.descricao, valor: v.valor, sentido: "saida", dia: v.dia, ate: v.repetir === "sempre" ? "9999-12" : null, no_plano: false } });
+    toast("Conta adicionada"); recarregar();
+  });
+};
 
 TELAS.plano = async (el) => {
   const P = S.plano;
@@ -1114,6 +1175,16 @@ const MANUAL = [
       <dt>Orçamento do mês</dt><dd>Soma do orçado de cada categoria (incluindo o que é pago com o Flash). A marca na barra mostra quanto do mês já passou.</dd>
       <dt>Gráfico mês a mês</dt><dd>Entradas e saídas de cada mês. Toquem numa barra para ver os valores.</dd>
       <dt>O que merece atenção</dt><dd>Alertas do mês atual e dos próximos. O X dispensa o alerta.</dd>
+    </dl>`],
+  ["Contas", `
+    <p>As contas que vocês têm para pagar no mês, uma por linha: fatura do cartão, aluguel, energia, internet, empréstimos.</p>
+    <dl>
+      <dt>Valor</dt><dd>Mudem o número e apertem Enter. Vale para o mês que está na tela; os outros meses ficam como estavam.</dd>
+      <dt>Marcar paga</dt><dd>Usa o valor que estiver no campo (o que de fato saiu). Quando o extrato traz o pagamento, a conta se marca sozinha. <i>Desfazer</i> volta para "a pagar".</dd>
+      <dt>Editar</dt><dd>Muda nome, dia, repetição e valor de todos os meses, ou apaga a conta.</dd>
+      <dt>Adicionar conta</dt><dd><i>Conta</i>, <i>Valor</i>, <i>Dia do vencimento</i> e <i>Repetir</i> (todo mês ou só neste).</dd>
+      <dt>Fatura do cartão</dt><dd>Não se edita aqui: o valor vem da fatura importada, menos o que já foi pago ou antecipado.</dd>
+      <dt>Integração</dt><dd>É a mesma lista de Saídas do Início. O que mudar aqui muda na hora o "a pagar", o provisionado, a previsão de fechamento e o Plano.</dd>
     </dl>`],
   ["Plano", `
     <dl>

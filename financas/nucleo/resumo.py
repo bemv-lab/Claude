@@ -81,7 +81,10 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
         if i["valor"] >= 0 or i["status"] == "cancelado" or i.get("forma") in ("Cartão", "Pix no crédito"):
             continue
         out.append({"descricao": i["descricao"], "valor": abs(i["valor"]), "dia": i.get("dia"),
-                    "status": i["status"], "falta": abs(i.get("falta") or 0), "cartao": False})
+                    "status": i["status"], "falta": abs(i.get("falta") or 0), "cartao": False,
+                    # para a tela Contas: como achar e ajustar este item
+                    "chave": i["chave_auto"] or f"manual:{i['id']}", "manual": i["manual"],
+                    "ajuste_id": i.get("ajuste_id"), "repete": bool(i.get("repete")), "origem": i["origem"]})
     out.sort(key=lambda x: (x["dia"] or 99, -x["valor"]))
     return out
 

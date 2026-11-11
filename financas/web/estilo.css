@@ -484,3 +484,11 @@ textarea { resize: vertical; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
 .selo-consulta { background: var(--sup-2); color: var(--texto-2); border: 1px solid var(--linha); cursor: pointer; }
+
+.tabela-contas td { vertical-align: middle; }
+.valor-conta { width: 110px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; padding: 6px 8px; border: 1px solid var(--linha); border-radius: 8px; background: var(--sup-2); color: inherit; }
+.valor-conta:disabled { border-color: transparent; background: transparent; }
+.tabela-contas th, .tabela-contas td { text-align: left; }
+.tabela-contas .num { text-align: right; }
+.acoes-conta { display: flex; gap: 14px; margin-top: 4px; }
+.tabela-contas { width: 100%; }
