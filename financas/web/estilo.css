@@ -498,3 +498,12 @@ textarea { resize: vertical; }
 .tabela-contas input.dia-linha { width: 64px; text-align: center; border-color: var(--linha); }
 .tabela-contas td:first-child, .tabela-contas th:first-child { width: 84px; }
 .tabela-contas td:nth-child(3), .tabela-contas td:nth-child(4) { width: 1%; white-space: nowrap; }
+
+/* dica ao parar o mouse (Início) */
+[data-dica] { cursor: help; text-decoration: underline dotted rgba(127,127,127,.6); text-underline-offset: 3px; }
+#balao-dica { position: fixed; z-index: 1000; max-width: 340px; padding: 12px 14px; border-radius: 10px; background: #14201d;
+  color: #f2f5f4; font-size: 13px; line-height: 1.45; box-shadow: 0 8px 24px rgba(0,0,0,.28); pointer-events: none;
+  opacity: 0; transform: translateY(-4px); transition: opacity .12s, transform .12s; left: -9999px; top: 0; }
+#balao-dica.on { opacity: 1; transform: none; }
+#balao-dica b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #8fd9c4; font-weight: 600; }
+#balao-dica p { margin: 2px 0 8px; } #balao-dica p:last-child { margin-bottom: 0; }

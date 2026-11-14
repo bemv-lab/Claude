@@ -133,12 +133,34 @@ const mesAtual = () => (S.hoje || new Date().toISOString()).slice(0, 7);
 const ORIGEM = { renda: "entrada fixa", contrato: "contrato", conta_fixa: "conta fixa", variavel: "estimativa", manual: "lançado por vocês" };
 const pct = (v) => `${Math.round(v * 100)}%`;
 
-function fluxoHTML(rotulo, feito, falta, total, cls, nomeFeito, nomeFalta) {
+// Dica ao parar o mouse: "o que é" + a conta com os números da tela. Uso: <span ${dica("...", "...")}>
+const dica = (oQueE, conta) => `data-dica="${esc(oQueE)}" data-dica-conta="${esc(conta || "")}" tabindex="0"`;
+(() => {
+  const b = document.createElement("div"); b.id = "balao-dica"; b.setAttribute("role", "tooltip"); document.body.appendChild(b);
+  let alvo = null;
+  const mostrar = (el) => {
+    alvo = el;
+    b.innerHTML = `<b>O que é</b><p>${esc(el.dataset.dica)}</p>${el.dataset.dicaConta ? `<b>A conta deste mês</b><p class="num">${esc(el.dataset.dicaConta)}</p>` : ""}`;
+    b.classList.add("on");
+    const r = el.getBoundingClientRect(), w = b.offsetWidth, hB = b.offsetHeight;
+    let x = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
+    let y = r.bottom + 8;
+    if (y + hB > innerHeight - 8) y = Math.max(8, r.top - hB - 8);
+    b.style.left = `${x}px`; b.style.top = `${y}px`;
+  };
+  const esconder = () => { alvo = null; b.classList.remove("on"); };
+  document.addEventListener("mouseover", (e) => { const el = e.target.closest?.("[data-dica]"); if (el && el !== alvo) mostrar(el); else if (!el && alvo) esconder(); });
+  document.addEventListener("focusin", (e) => { const el = e.target.closest?.("[data-dica]"); el ? mostrar(el) : esconder(); });
+  document.addEventListener("scroll", esconder, true);
+  addEventListener("hashchange", esconder);
+})();
+
+function fluxoHTML(rotulo, feito, falta, total, cls, nomeFeito, nomeFalta, dicas = {}) {
   const p = total ? Math.min(1, feito / total) : 0;
   return `<div class="fluxo-item">
-    <div class="fluxo-cab"><span>${rotulo}</span><b class="num">${brl(total)}</b></div>
+    <div class="fluxo-cab"><span ${dicas.total || ""}>${rotulo}</span><b class="num">${brl(total)}</b></div>
     <div class="fluxo-barra ${cls}" role="img" aria-label="${rotulo}: ${nomeFeito} ${brl(feito)}, ${nomeFalta} ${brl(falta)}"><i style="width:${p * 100}%"></i></div>
-    <div class="fluxo-leg"><span><i class="tecla ${cls}"></i>${nomeFeito} <b class="num">${brl(feito)}</b></span><span><i class="tecla ${cls} vazia"></i>${nomeFalta} <b class="num">${brl(falta)}</b></span></div>
+    <div class="fluxo-leg"><span ${dicas.feito || ""}><i class="tecla ${cls}"></i>${nomeFeito} <b class="num">${brl(feito)}</b></span><span ${dicas.falta || ""}><i class="tecla ${cls} vazia"></i>${nomeFalta} <b class="num">${brl(falta)}</b></span></div>
   </div>`;
 }
 
@@ -216,28 +238,53 @@ TELAS.inicio = async (el) => {
   const cancel = fora.filter((i) => i.status === "cancelado");
   h.categorias.forEach((c) => { c.ref = c.orcamento || c.media; c.refNome = c.orcamento ? "orçado" : "média"; });
   const maxCat = Math.max(1, ...h.categorias.map((c) => Math.max(c.total, c.ref || 0)));
+  const v = (x) => brl(x).replace("R$ ", "");
+  const aPagarItens = (h.contas_a_pagar || []).filter((c) => c.status !== "realizado" && (c.falta || c.valor))
+    .map((c) => `${c.descricao.replace(/^Fatura · /, "fatura ").replace(/ · Cartão de crédito$/, "")} ${v(c.falta || c.valor)}`);
+  const aReceberItens = h.previstos.filter((i) => i.valor > 0 && i.status !== "realizado" && i.status !== "cancelado" && Math.abs(i.falta || 0))
+    .map((i) => `${i.descricao} ${v(Math.abs(i.falta))}`);
+  const D = {
+    resultado: dica("O que já entrou menos o que já saiu das contas no mês. Não conta o que ainda vai entrar ou sair.",
+      `${v(E.recebido)} recebido − ${v(X.pago)} pago = ${brl(h.resultado_realizado, true)}`),
+    selo: dica("Olha a previsão do mês (tudo o que vai entrar contra tudo o que vai sair), não o realizado.",
+      `${v(X.previsto)} de saídas contra ${v(E.previsto)} de entradas`),
+    entradas: dica("Recebido + a receber: tudo o que entra no mês.", `${v(E.recebido)} + ${v(E.a_receber)} = ${v(E.previsto)}`),
+    recebido: dica("O que já caiu nas contas neste mês (salários, Pix, estornos na conta). Crédito no cartão não entra aqui: só abate a fatura."),
+    a_receber: dica("O que ainda vai entrar neste mês.", aReceberItens.join(" + ") || "nada previsto"),
+    saidas: dica("Pago + a pagar: tudo o que sai no mês.", `${v(X.pago)} + ${v(X.a_pagar)} = ${v(X.previsto)}`),
+    pago: dica("O que já saiu das contas neste mês, incluindo o que foi pago ao cartão. Pagamento feito com um Pix que entrou só para isso (repasse) não conta."),
+    a_pagar: dica("O que ainda falta pagar no mês. O cartão entra pelo valor que a fatura fecha.", aPagarItens.join(" + ") || "nada a pagar"),
+    fechamento: dica("Saldo das contas no começo do mês (informado em Ajustes ou em \"editar saldo\") + o resultado realizado. É o que deveria haver em conta hoje.",
+      `${v(h.saldo_contas)} + ${v(h.resultado_realizado)} = ${brl(h.fechamento, true)}`),
+    previsao: dica("Fechamento + o que ainda vai entrar − o que ainda vai sair. É como as contas terminam o mês se tudo acontecer como previsto.",
+      `${v(h.fechamento)} + ${v(E.a_receber)} − ${v(X.a_pagar)} = ${brl(h.fechamento_previsto, true)}`),
+    provisionado: dica("O que ainda vai entrar menos o que ainda vai sair no mês.",
+      `${v(h.provisionado.entradas)} − ${v(h.provisionado.saidas)} = ${brl(h.provisionado.entradas - h.provisionado.saidas, true)}`),
+    podem: dica("Quanto ainda sobra do orçamento de gastos do mês (Plano). Quando passa do limite, mostra 0.",
+      o.restante < 0 ? `já passou ${v(-o.restante)}, então mostra 0` : `${v(o.restante)} até o fim do mês`),
+  };
   el.innerHTML = `<div class="pilha">
     <section class="painel-heroi">
       <div class="heroi-topo">
-        <div><span class="rotulo-claro">Resultado de ${esc(nome)} · realizado</span><div class="valor-heroi">${brl(h.resultado_realizado, true)}</div></div>
-        <span class="saude-chip ${sa.nivel}"><i aria-hidden="true"></i>${esc(sa.titulo)}</span>
+        <div><span class="rotulo-claro" ${D.resultado}>Resultado de ${esc(nome)} · realizado</span><div class="valor-heroi">${brl(h.resultado_realizado, true)}</div></div>
+        <span class="saude-chip ${sa.nivel}" ${D.selo}><i aria-hidden="true"></i>${esc(sa.titulo)}</span>
       </div>
       <div class="fluxo">
-        ${fluxoHTML("Entradas", E.recebido, E.a_receber, E.previsto, "entrada", "recebido", "a receber")}
-        ${fluxoHTML("Saídas", X.pago, X.a_pagar, X.previsto, "saida", "pago", "a pagar")}
+        ${fluxoHTML("Entradas", E.recebido, E.a_receber, E.previsto, "entrada", "recebido", "a receber", { total: D.entradas, feito: D.recebido, falta: D.a_receber })}
+        ${fluxoHTML("Saídas", X.pago, X.a_pagar, X.previsto, "saida", "pago", "a pagar", { total: D.saidas, feito: D.pago, falta: D.a_pagar })}
       </div>
-      <div class="fech"><span>Fechamento das contas <small class="mudo">saldo do início do mês (${brl(h.saldo_contas)}) + realizado · <button class="btn-texto" id="editar-saldo" style="color:inherit;text-decoration:underline;padding:0;font-size:inherit">editar saldo</button></small></span><b class="num">${brl(h.fechamento, true)}</b></div>
-      <div class="fech" style="border-top:0;padding-top:0"><span class="mudo">Previsão para o fim do mês <small>(+ provisionado)</small></span><b class="num mudo">${brl(h.fechamento_previsto, true)}</b></div>
+      <div class="fech"><span><span ${D.fechamento}>Fechamento das contas</span> <small class="mudo">saldo do início do mês (${brl(h.saldo_contas)}) + realizado · <button class="btn-texto" id="editar-saldo" style="color:inherit;text-decoration:underline;padding:0;font-size:inherit">editar saldo</button></small></span><b class="num">${brl(h.fechamento, true)}</b></div>
+      <div class="fech" style="border-top:0;padding-top:0"><span class="mudo" ${D.previsao}>Previsão para o fim do mês <small>(+ provisionado)</small></span><b class="num mudo">${brl(h.fechamento_previsto, true)}</b></div>
     </section>
 
     <div class="kpis">
-      <button class="kpi" data-ajustar="entrada"><span class="rotulo">Entradas</span><b class="num">${brl(E.previsto)}</b>
+      <button class="kpi" data-ajustar="entrada"><span class="rotulo" ${D.entradas}>Entradas</span><b class="num">${brl(E.previsto)}</b>
         <small>${brl(E.recebido)} recebido · ${brl(E.a_receber)} a receber</small><span class="kpi-acao">Ajustar</span></button>
-      <button class="kpi" data-ajustar="saida"><span class="rotulo">Saídas</span><b class="num">${brl(X.previsto)}</b>
+      <button class="kpi" data-ajustar="saida"><span class="rotulo" ${D.saidas}>Saídas</span><b class="num">${brl(X.previsto)}</b>
         <small>${brl(X.pago)} pago · ${brl(X.a_pagar)} a pagar</small><span class="kpi-acao">Ajustar</span></button>
-      <button class="kpi" data-ajustar="previstos"><span class="rotulo">Provisionado (líquido)</span><b class="num">${brl(h.provisionado.entradas - h.provisionado.saidas, true)}</b>
+      <button class="kpi" data-ajustar="previstos"><span class="rotulo" ${D.provisionado}>Provisionado (líquido)</span><b class="num">${brl(h.provisionado.entradas - h.provisionado.saidas, true)}</b>
         <small>${brl(h.provisionado.saidas)} a pagar · ${brl(h.provisionado.entradas)} a receber</small><span class="kpi-acao">Lançar</span></button>
-      <a class="kpi" href="#/plano"><span class="rotulo">Ainda podem gastar</span><b class="num">${brl(Math.max(0, o.restante))}</b>
+      <a class="kpi" href="#/plano"><span class="rotulo" ${D.podem}>Ainda podem gastar</span><b class="num">${brl(Math.max(0, o.restante))}</b>
         <small>${o.restante < 0 ? `passou ${brl(-o.restante)} do orçamento` : o.dias_restantes ? `${brl(o.por_dia)} por dia · ${o.dias_restantes} dias` : "do orçamento do mês"}</small><span class="kpi-acao">Orçamento</span></a>
     </div>
 
