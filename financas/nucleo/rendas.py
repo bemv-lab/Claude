@@ -111,7 +111,7 @@ def do_mes(con, mes: str) -> list[dict]:
         extrato = sum(t["valor"] for t in txs)
         # marcado como recebido no Previstos (sem lançamento no extrato) também conta como recebido
         marcado = f["id"] in marcados
-        recebido = f["valor"] if marcado else extrato
+        recebido = (marcados[f["id"]] or f["valor"]) if marcado else extrato
         # o valor fixo é a base; o que cai de fato pode ser menor (abatimento, ex.: plano de saúde)
         if marcado or extrato > 0:
             st = "recebido"
@@ -128,14 +128,15 @@ def do_mes(con, mes: str) -> list[dict]:
     return out
 
 
-def _marcados(con, mes: str) -> set[int]:
-    """Entradas que vocês marcaram como recebidas neste mês (ajuste em Previstos, mês ou "sempre")."""
-    out = set()
-    for r in con.execute("SELECT chave_auto, status, mes FROM previstos WHERE chave_auto LIKE 'renda:%' "
+def _marcados(con, mes: str) -> dict[int, int]:
+    """Entradas que vocês marcaram como recebidas neste mês (ajuste em Previstos, mês ou "sempre"): id -> valor
+    informado (0 = usar o valor base)."""
+    out = {}
+    for r in con.execute("SELECT chave_auto, status, mes, valor FROM previstos WHERE chave_auto LIKE 'renda:%' "
                          "AND (mes = ? OR mes = '*') ORDER BY mes = '*' DESC, id", (mes,)):
         rid = int(r["chave_auto"].split(":")[1])
         if r["status"] == "realizado":
-            out.add(rid)
+            out[rid] = abs(r["valor"] or 0)
         else:
-            out.discard(rid)
+            out.pop(rid, None)
     return out

@@ -21,6 +21,7 @@ const somarMes = (m, n) => { const [y, mm] = m.split("-").map(Number); const t =
 const diaSemana = (iso) => new Date(iso + "T12:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 
 const ICONES = {
+  entradas: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 20h16"/>',
   contas: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
   inicio: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
   lancamentos: '<path d="M4 6h16M4 12h16M4 18h10"/>',
@@ -40,7 +41,7 @@ const ICONES = {
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
 };
 const icone = (n) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONES[n]}</svg>`;
-const NAV = [["inicio", "Início"], ["contas", "Contas"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"], ["manual", "Manual"]];
+const NAV = [["inicio", "Início"], ["entradas", "Entradas"], ["contas", "Contas"], ["plano", "Plano"], ["encontros", "Ações"], ["lancamentos", "Lançamentos"], ["flash", "Flash"], ["duvidas", "Dúvidas"], ["dividas", "Dívidas"], ["importar", "Importar"], ["ajustes", "Ajustes"], ["manual", "Manual"]];
 const NAV_CELULAR = ["inicio", "contas", "lancamentos", "plano"];
 
 /* ------------------------------------------------------------------ infraestrutura */
@@ -121,7 +122,7 @@ async function render() {
   const tela = TELAS[nome] ? nome : "inicio";
   if ($("#modal").open) $("#modal").close();
   montarNav();
-  montarMes(["inicio", "lancamentos", "contas"].includes(tela));
+  montarMes(["inicio", "lancamentos", "contas", "entradas"].includes(tela));
   const el = $("#tela");
   el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
   try { await TELAS[tela](el); } catch (e) { if (e.message !== "PIN") el.innerHTML = `<div class="cartao vazio"><h3>Não consegui carregar</h3><p>${esc(e.message)}</p></div>`; }
@@ -497,6 +498,88 @@ TELAS.contas = async (el) => {
     const v = form(e.target);
     await api("/api/previstos", { metodo: "POST", corpo: { mes: S.mes, descricao: v.descricao, valor: v.valor, sentido: "saida", dia: v.dia, ate: v.repetir === "sempre" ? "9999-12" : null, no_plano: false } });
     toast("Conta adicionada"); recarregar();
+  });
+};
+
+// Entradas do mês: salários (fixas) e extras, editáveis na linha. Usa as mesmas entradas fixas e previstos do
+// Início: o que muda aqui muda Início, Plano, provisionado e fechamento na hora.
+TELAS.entradas = async (el) => {
+  const h = await api(`/api/home?mes=${S.mes}`);
+  const nome = h.mes_nome, E = h.entradas;
+  const ajusteDe = Object.fromEntries(h.previstos.map((i) => [i.chave_auto || `manual:${i.id}`, i.ajuste_id]));
+  const fixas = h.rendas.map((r) => ({ tipo: "fixa", id: r.id, chave: `renda:${r.id}`, descricao: r.descricao, padrao: r.padrao, dia: r.dia, valor: r.valor,
+    recebida: r.status === "recebido", recebido: r.recebido, abatimento: r.abatimento, marcada: r.marcado, status: r.status }));
+  const extras = h.previstos.filter((i) => i.manual && i.valor > 0 && i.status !== "cancelado").map((i) => ({ tipo: "extra", id: i.id, chave: `manual:${i.id}`,
+    descricao: i.descricao, dia: i.dia, valor: i.valor, recebida: i.status === "realizado", recebido: i.valor, marcada: !!i.ajuste_id && i.status === "realizado", repete: i.repete }));
+  const linhas = [...fixas, ...extras].sort((a, b) => (a.dia || 99) - (b.dia || 99));
+  const outras = Math.max(0, E.recebido - linhas.filter((l) => l.recebida).reduce((t, l) => t + l.recebido, 0));
+  const recarregar = () => TELAS.entradas(el);
+  const linha = (l, k) => {
+    const sit = l.recebida ? `<span class="tag ok">✓ recebida</span>` : l.status === "nao_entrou" ? `<span class="tag duv">não entrou</span>` : `<span class="tag duv">a receber</span>`;
+    const detalhe = l.tipo === "fixa" ? `fixa, todo mês${l.recebida && !l.marcada ? ` · caiu ${brl(l.recebido)} no extrato${l.abatimento ? ` (abatimento de ${brl(l.abatimento)})` : ""}` : ""}${l.marcada ? ` · marcada por vocês: ${brl(l.recebido)}` : ""}`
+      : `extra${l.repete ? ", todo mês" : ", só neste mês"}`;
+    return `<tr data-k="${k}"><td><input class="campo-linha dia-linha" type="number" min="1" max="31" value="${esc(l.dia ?? "")}" aria-label="Dia de ${esc(l.descricao)}"></td>
+      <td><input class="campo-linha nome-linha" value="${esc(l.descricao)}" aria-label="Nome da entrada"><br><small class="mudo">${detalhe}</small>
+        <div class="acoes-conta">${l.recebida ? (l.marcada ? `<button class="btn-texto" data-desfazer>desfazer</button>` : "") : `<button class="btn-texto" data-receber>marcar recebida</button>`}<button class="btn-texto" data-apagar>${l.tipo === "fixa" ? "encerrar a partir deste mês" : "apagar"}</button></div></td>
+      <td class="num"><input class="valor-conta" inputmode="decimal" value="${paraInput(l.valor)}" aria-label="Valor de ${esc(l.descricao)}"></td><td>${sit}</td></tr>`;
+  };
+  el.innerHTML = `<div class="pilha">
+    <div class="kpis">
+      <div class="kpi"><span class="rotulo">Entradas de ${esc(nome)}</span><b class="num">${brl(E.previsto)}</b><small>recebido + a receber</small></div>
+      <div class="kpi"><span class="rotulo">Já recebido</span><b class="num">${brl(E.recebido)}</b><small>pelos extratos e pelo que vocês marcaram</small></div>
+      <div class="kpi"><span class="rotulo">Falta receber</span><b class="num">${brl(E.a_receber)}</b><small>${linhas.filter((l) => !l.recebida).length} entrada(s)</small></div>
+    </div>
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Salários e extras</h2><span class="mudo" style="font-size:13px">Mudem dia, nome ou valor e apertem Enter.</span></div>
+      <div style="overflow-x:auto"><table class="tabela tabela-contas"><thead><tr><th>Dia</th><th>Entrada</th><th class="num">Valor</th><th>Situação</th></tr></thead>
+        <tbody>${linhas.map(linha).join("") || `<tr><td colspan="4" class="mudo">Nenhuma entrada neste mês. Adicionem a primeira abaixo.</td></tr>`}
+        ${outras ? `<tr><td>—</td><td><b>Outras entradas do extrato</b><br><small class="mudo">Pix recebidos, estornos e créditos que não são salário nem extra lançado</small><div class="acoes-conta"><a class="btn-texto" href="#/lancamentos" id="ver-receitas">ver em Lançamentos</a></div></td><td class="num"><b>${brl(outras)}</b></td><td><span class="tag ok">✓ recebida</span></td></tr>` : ""}</tbody></table></div>
+    </div>
+    <div class="cartao">
+      <div class="cartao-cab"><h2>Adicionar entrada</h2></div>
+      <form id="f-entrada" class="grade-form">
+        <label class="campo" style="grid-column:1/-1">Nome<input name="descricao" placeholder="Ex.: Salário, freela, venda, reembolso" required></label>
+        <label class="campo">Valor (R$)<input name="valor" inputmode="decimal" placeholder="0,00" required></label>
+        <label class="campo">Dia do mês<input type="number" name="dia" min="1" max="31" required></label>
+        <label class="campo">Tipo<select name="tipo"><option value="fixa">Fixa (salário, todo mês)</option><option value="extra">Extra (só em ${esc(nome)})</option></select></label>
+        <label class="campo" id="campo-padrao">Texto no extrato <small>opcional: como o banco escreve</small><input name="padrao" placeholder="Ex.: REMUNERACAO/SALARIO"></label>
+        <div style="grid-column:1/-1"><button class="btn btn-primario">Adicionar</button></div>
+      </form>
+    </div></div>`;
+  $("#ver-receitas", el)?.addEventListener("click", () => { S.filtros.sentido = "receita"; });
+  $("[name=tipo]", el).addEventListener("change", (e) => { $("#campo-padrao", el).hidden = e.target.value !== "fixa"; });
+  $$("tr[data-k]", el).forEach((tr) => {
+    const l = linhas[+tr.dataset.k];
+    const campos = { dia: $(".dia-linha", tr), descricao: $(".nome-linha", tr), valor: $(".valor-conta", tr) };
+    const salvar = async () => {
+      const v = { descricao: campos.descricao.value.trim() || l.descricao, dia: campos.dia.value, valor: campos.valor.value || paraInput(l.valor) };
+      if (v.descricao === l.descricao && String(v.dia) === String(l.dia ?? "") && v.valor === paraInput(l.valor)) return;
+      if (l.tipo === "fixa") await api(`/api/rendas/${l.id}`, { metodo: "PATCH", corpo: { ...v, a_partir: S.mes } });
+      else await api(`/api/previstos/${l.id}`, { metodo: "PATCH", corpo: { ...v, sentido: "entrada" } });
+      toast("Entrada atualizada"); recarregar();
+    };
+    Object.values(campos).forEach((c) => {
+      c.addEventListener("change", salvar);
+      c.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); c.blur(); } });
+    });
+    $("[data-receber]", tr)?.addEventListener("click", async () => {
+      await api("/api/previstos", { metodo: "POST", corpo: { chave_auto: l.chave, mes: S.mes, descricao: l.descricao, sentido: "entrada", valor: campos.valor.value || paraInput(l.valor), status: "realizado" } });
+      toast("Marcada como recebida"); recarregar();
+    });
+    $("[data-desfazer]", tr)?.addEventListener("click", async () => { await api(`/api/previstos/${ajusteDe[l.chave]}`, { metodo: "DELETE" }); toast("Desfeito"); recarregar(); });
+    $("[data-apagar]", tr).addEventListener("click", async () => {
+      if (!confirm(l.tipo === "fixa" ? `Encerrar "${l.descricao}" a partir de ${nome}? Os meses anteriores ficam como estão.` : `Apagar "${l.descricao}"?`)) return;
+      if (l.tipo === "fixa") await api(`/api/rendas/${l.id}/encerrar`, { metodo: "POST", corpo: { a_partir: S.mes } });
+      else await api(`/api/previstos/${l.id}`, { metodo: "DELETE" });
+      toast(l.tipo === "fixa" ? "Entrada encerrada" : "Entrada apagada"); recarregar();
+    });
+  });
+  $("#f-entrada", el).addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = form(e.target);
+    if (v.tipo === "fixa") await api("/api/rendas", { metodo: "POST", corpo: { descricao: v.descricao, padrao: v.padrao || v.descricao, dia: v.dia, valor: v.valor, inicio: S.mes } });
+    else await api("/api/previstos", { metodo: "POST", corpo: { mes: S.mes, descricao: v.descricao, valor: v.valor, sentido: "entrada", dia: v.dia, no_plano: true } });
+    toast("Entrada adicionada"); recarregar();
   });
 };
 
@@ -1175,6 +1258,16 @@ const MANUAL = [
       <dt>Orçamento do mês</dt><dd>Soma do orçado de cada categoria (incluindo o que é pago com o Flash). A marca na barra mostra quanto do mês já passou.</dd>
       <dt>Gráfico mês a mês</dt><dd>Entradas e saídas de cada mês. Toquem numa barra para ver os valores.</dd>
       <dt>O que merece atenção</dt><dd>Alertas do mês atual e dos próximos. O X dispensa o alerta.</dd>
+    </dl>`],
+  ["Entradas", `
+    <p>Os salários e as entradas extras do mês, uma por linha.</p>
+    <dl>
+      <dt>Dia, nome e valor</dt><dd>Mudem direto na linha e apertem Enter. Numa entrada <b>fixa</b> (salário), a mudança vale deste mês em diante; os meses anteriores ficam como estavam. Numa <b>extra</b>, vale para ela.</dd>
+      <dt>Marcar recebida</dt><dd>Usa o valor que estiver no campo. Quando o extrato traz o crédito, a entrada fixa se marca sozinha (pelo "texto no extrato"); se cair menos, a diferença aparece como abatimento. <i>Desfazer</i> volta para "a receber".</dd>
+      <dt>Encerrar / apagar</dt><dd>A fixa deixa de ser prevista a partir do mês da tela. A extra é apagada.</dd>
+      <dt>Adicionar entrada</dt><dd><i>Nome</i>, <i>Valor</i>, <i>Dia</i> e <i>Tipo</i>: fixa (todo mês) ou extra (só neste mês). Na fixa, o <i>Texto no extrato</i> é como o banco escreve o crédito.</dd>
+      <dt>Outras entradas do extrato</dt><dd>Pix recebidos, estornos e créditos que vieram nos extratos. Só leitura: o detalhe está em Lançamentos.</dd>
+      <dt>Integração</dt><dd>São as mesmas Entradas fixas e previstos do Início. O que mudar aqui muda na hora o "a receber", o provisionado, a previsão de fechamento e o Plano.</dd>
     </dl>`],
   ["Contas", `
     <p>As contas que vocês têm para pagar no mês, uma por linha: fatura do cartão, aluguel, energia, internet, empréstimos.</p>

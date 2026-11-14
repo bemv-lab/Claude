@@ -492,3 +492,9 @@ textarea { resize: vertical; }
 .tabela-contas .num { text-align: right; }
 .acoes-conta { display: flex; gap: 14px; margin-top: 4px; }
 .tabela-contas { width: 100%; }
+.campo-linha { font: inherit; color: inherit; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; }
+.campo-linha:hover, .campo-linha:focus { border-color: var(--linha); background: var(--sup-2); }
+.tabela-contas input.nome-linha { font-weight: 600; width: 100%; min-width: 180px; margin-left: -8px; text-align: left; box-sizing: border-box; }
+.tabela-contas input.dia-linha { width: 64px; text-align: center; border-color: var(--linha); }
+.tabela-contas td:first-child, .tabela-contas th:first-child { width: 84px; }
+.tabela-contas td:nth-child(3), .tabela-contas td:nth-child(4) { width: 1%; white-space: nowrap; }
