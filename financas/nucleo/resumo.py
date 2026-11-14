@@ -108,6 +108,66 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
     return out
 
 
+def fluxo_diario(con, mes: str, saldo_inicial: int, itens: list[dict], contas: list[dict]) -> list[dict]:
+    """Saldo das contas dia a dia: o realizado (extrato) até hoje e, daí em diante, a previsão com o que ainda
+    vai entrar e sair no dia de cada conta. Cada ponto: {dia, saldo, previsto, entrou, saiu, eventos}."""
+    ultimo = calendar.monthrange(int(mes[:4]), int(mes[5:7]))[1]
+    atual = hoje().strftime("%Y-%m")
+    corte = ultimo if mes < atual else 0 if mes > atual else hoje().day      # até onde vale o realizado
+    mov: dict[int, dict] = {}
+    for data, m in analises.movimento_diario(con, mes).items():      # lançamento de outro mês que conta neste: na borda
+        d = 1 if data < f"{mes}-01" else ultimo if data[:7] > mes else int(data[8:10])
+        d = min(d, corte) if corte else d
+        mov.setdefault(d, {"entrou": 0, "saiu": 0})
+        mov[d]["entrou"] += m["entrou"]
+        mov[d]["saiu"] += m["saiu"]
+    for i in itens:      # marcado como resolvido sem lançamento no extrato: conta no dia dele
+        if i.get("ajuste_id") and i["status"] == "realizado":
+            fora = max(0, abs(i["valor"]) - abs(i["realizado"]))
+            if fora:
+                d = min(max(1, i.get("dia") or 1), corte or ultimo, ultimo)
+                mov.setdefault(d, {"entrou": 0, "saiu": 0})
+                mov[d]["entrou" if i["valor"] > 0 else "saiu"] += fora
+    futuro: dict[int, list] = {}
+
+    def agenda(dia, nome, valor):
+        d = min(ultimo, max(corte + 1 if corte < ultimo else ultimo, dia or ultimo))
+        futuro.setdefault(d, []).append((nome, valor))
+    if mes >= atual:
+        for i in itens:      # o que ainda vai entrar
+            if i["valor"] > 0 and i["status"] not in ("realizado", "cancelado") and (i.get("falta") or 0) > 0:
+                agenda(i.get("dia"), i["descricao"], i["falta"])
+        for c in contas:     # o que ainda vai sair (o cartão pelo que falta da fatura)
+            if c["status"] != "realizado" and c["falta"]:
+                agenda(c.get("dia"), c["descricao"], -c["falta"])
+    out, saldo = [{"dia": 0, "saldo": saldo_inicial, "previsto": False, "entrou": 0, "saiu": 0, "eventos": []}], saldo_inicial
+    for d in range(1, ultimo + 1):
+        previsto = d > corte
+        m = mov.get(d, {"entrou": 0, "saiu": 0})
+        entrou, saiu, eventos = m["entrou"], m["saiu"], []
+        for nome, valor in futuro.get(d, []) if previsto else []:
+            entrou += max(0, valor)
+            saiu += max(0, -valor)
+            eventos.append({"nome": nome, "valor": valor})
+        saldo += entrou - saiu
+        out.append({"dia": d, "saldo": saldo, "previsto": previsto, "entrou": entrou, "saiu": saiu, "eventos": eventos})
+    return out
+
+
+def faturas_futuras(con, mes: str, meses: int = 8) -> list[dict]:
+    """Cartão nos próximos meses: a fatura deste mês e a previsão das seguintes (parcelas + assinaturas)."""
+    out = []
+    for k in range(meses):
+        m = somar_meses(mes, k)
+        linhas = [c for c in contas_a_pagar(con, m, previstos.do_mes(con, m)["itens"]) if c["cartao"]]
+        total = sum(c["valor"] for c in linhas)
+        assin = sum(c.get("assinaturas") or 0 for c in linhas)
+        previsao = any(c.get("previsao") for c in linhas)
+        out.append({"mes": m, "total": total, "assinaturas": assin if previsao else 0,
+                    "parcelas": total - assin if previsao else 0, "previsao": previsao})
+    return out
+
+
 def home(con, mes: str | None = None) -> dict:
     mes = mes or hoje().strftime("%Y-%m")
     tot = analises.totais_mes(con, mes)
@@ -184,6 +244,9 @@ def home(con, mes: str | None = None) -> dict:
                  saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),
         "previstos": prev["itens"],
         "contas_a_pagar": contas,
+        "fluxo_diario": fluxo_diario(con, mes, config_int(con, "saldo_contas_atual"), prev["itens"], contas),
+        "faturas_futuras": faturas_futuras(con, mes),
+        "gasto_total": sum(c["total"] for c in cats),
         "rendas": rendas.do_mes(con, mes),
         "serie": serie,
         "parcelas_mes": agenda,

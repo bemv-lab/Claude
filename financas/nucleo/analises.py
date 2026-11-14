@@ -144,6 +144,24 @@ def cartao_a_pagar(con, mes: str) -> list[dict]:
     return out
 
 
+def movimento_diario(con, mes: str) -> dict[str, dict]:
+    """O que entrou e saiu das contas em cada dia do mês, pelas mesmas regras de `totais_mes` (sem repasse, com o
+    que foi pago ao cartão). Devolve {data: {"entrou", "saiu"}}."""
+    out: dict[str, dict] = {}
+    for r in con.execute(f"""
+        SELECT t.data,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 AND NOT ({_ENTRADA_DE_REPASSE}) THEN t.valor END), 0)
+          + COALESCE(SUM(CASE WHEN t.valor > 0 AND {_ESTORNO_DE_PAGAMENTO} THEN t.valor END), 0) AS entrou,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor < 0 THEN -t.valor END), 0)
+          + COALESCE(SUM(CASE WHEN t.tipo = 'fatura' AND c.tipo = 'corrente' AND NOT ({_PAGAMENTO_DE_REPASSE})
+                         AND t.valor < 0 THEN -t.valor END), 0) AS saiu
+        FROM transacoes t JOIN contas c ON c.id = t.conta_id
+        WHERE c.tipo = 'corrente' AND t.mes_ref = ? GROUP BY t.data""", (mes,)):
+        if r["entrou"] or r["saiu"]:
+            out[r["data"]] = {"entrou": r["entrou"], "saiu": r["saiu"]}
+    return out
+
+
 def gasto_por_categoria(con, mes: str) -> list[dict]:
     return [dict(r) for r in con.execute(f"""
         SELECT COALESCE(cat.id, 0) AS id, COALESCE(cat.nome, 'A classificar') AS nome,

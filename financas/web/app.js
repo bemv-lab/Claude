@@ -288,6 +288,20 @@ TELAS.inicio = async (el) => {
         <small>${o.restante < 0 ? `passou ${brl(-o.restante)} do orçamento` : o.dias_restantes ? `${brl(o.por_dia)} por dia · ${o.dias_restantes} dias` : "do orçamento do mês"}</small><span class="kpi-acao">Orçamento</span></a>
     </div>
 
+    <div class="grade g-graf">
+      <div class="cartao cartao-graf">
+        <div class="cartao-cab"><div><h2>Saldo das contas em ${esc(nome)}</h2><p class="sub">Dia a dia: o que já aconteceu e como o mês termina se tudo sair como previsto.</p></div>
+          <div class="legenda"><span><i class="tecla-linha"></i>Realizado</span><span><i class="tecla-linha tracejada"></i>Previsão</span></div></div>
+        <div class="destaques" id="destaques-saldo"></div>
+        <div class="grafico" id="graf-saldo"></div>
+      </div>
+      <div class="cartao cartao-graf">
+        <div class="cartao-cab"><div><h2>Cartão nos próximos meses</h2><p class="sub">A fatura deste mês e o que já está comprometido nas seguintes.</p></div></div>
+        <div class="grafico" id="graf-faturas"></div>
+        <div class="legenda"><span><i class="tecla" style="background:var(--serie-neutra)"></i>Fatura do mês</span><span><i class="tecla" style="background:var(--cat-3)"></i>Parcelas</span><span><i class="tecla" style="background:var(--cat-4)"></i>Assinaturas</span></div>
+      </div>
+    </div>
+
     <div class="cartao">
       <div class="cartao-cab"><h2>Entradas fixas</h2><button class="btn" data-nova-renda>+ Nova entrada</button></div>
       <div class="previstos">${h.rendas.map(rendaHTML).join("") || `<p class="mudo">Nenhuma entrada fixa cadastrada.</p>`}</div>
@@ -312,28 +326,23 @@ TELAS.inicio = async (el) => {
       </div>
     </div>
 
-    <div class="cartao">
-      <div class="cartao-cab"><h2>Entradas e saídas, mês a mês</h2>
-        <div class="legenda"><span><i class="tecla entrada"></i>Entradas</span><span><i class="tecla saida"></i>Saídas</span></div></div>
-      <div class="grafico" id="graf-meses"></div>
-      <details class="mais"><summary>Ver os números</summary><div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Mês</th><th class="num">Entradas</th><th class="num">Saídas</th><th class="num">Saldo</th></tr></thead>
-        <tbody>${h.serie.map((m) => `<tr><td>${nomeMesCurto(m.mes)}</td><td class="num">${brl(m.entradas)}</td><td class="num">${brl(m.saidas)}</td><td class="num">${brl(m.saldo, true)}</td></tr>`).join("")}</tbody></table></div></details>
+    <div class="grade g-graf">
+      <div class="cartao cartao-graf">
+        <div class="cartao-cab"><div><h2>Entradas e saídas, mês a mês</h2><p class="sub">O mês atual usa o previsto (recebido + a receber, pago + a pagar).</p></div>
+          <div class="legenda"><span><i class="tecla entrada"></i>Entradas</span><span><i class="tecla saida"></i>Saídas</span></div></div>
+        <div class="grafico" id="graf-meses"></div>
+        <details class="mais"><summary>Ver os números</summary><div class="tabela-rolagem"><table class="tabela"><thead><tr><th>Mês</th><th class="num">Entradas</th><th class="num">Saídas</th><th class="num">Saldo</th></tr></thead>
+          <tbody>${h.serie.map((m) => `<tr><td>${nomeMesCurto(m.mes)}</td><td class="num">${brl(m.entradas)}</td><td class="num">${brl(m.saidas)}</td><td class="num">${brl(m.saldo, true)}</td></tr>`).join("")}</tbody></table></div></details>
+      </div>
+      <div class="cartao cartao-graf">
+        <div class="cartao-cab"><div><h2>Para onde foi o dinheiro</h2><p class="sub">Gastos de ${esc(nome)} por categoria.</p></div><a class="btn-texto" href="#/lancamentos">Ver lançamentos</a></div>
+        <div id="graf-rosca"></div>
+      </div>
     </div>
 
-    <div class="grade g2">
-      <div class="cartao">
-        <div class="cartao-cab"><h2>O que merece atenção</h2>${h.alertas.length ? `<a class="btn-texto" href="#/ajustes">Configurar</a>` : ""}</div>
-        ${h.alertas.length ? h.alertas.map(alertaHTML).join("") : `<p class="mudo">Nenhum alerta agora. Bom sinal. 🌿</p>`}
-      </div>
-      <div class="cartao">
-        <div class="cartao-cab"><h2>Para onde foi o dinheiro</h2><a class="btn-texto" href="#/lancamentos">Ver lançamentos</a></div>
-        ${h.categorias.length ? `<div class="barras">${h.categorias.map((c) => `
-          <div class="barra-linha" title="${esc(c.nome)}: ${brl(c.total)} (${c.qtd} lançamentos)${c.ref ? ` · ${c.refNome} ${brl(c.ref)}` : ""}">
-            <span>${esc(c.nome)}${c.orcamento && c.total > c.orcamento ? ` <span class="tag duv">passou do orçado</span>` : ""}</span><span class="num">${brl(c.total)}</span>
-            <div class="trilho"><i style="width:${(c.total / maxCat) * 100}%"></i>${c.ref ? `<span class="media" style="left:${(c.ref / maxCat) * 100}%"></span>` : ""}</div>
-          </div>`).join("")}</div>
-          <div class="legenda-media"><i></i> orçado da categoria (sem orçado: média dos 3 meses anteriores)</div>` : `<p class="mudo">Sem gastos neste mês.</p>`}
-      </div>
+    <div class="cartao">
+      <div class="cartao-cab"><h2>O que merece atenção</h2>${h.alertas.length ? `<a class="btn-texto" href="#/ajustes">Configurar</a>` : ""}</div>
+      ${h.alertas.length ? h.alertas.map(alertaHTML).join("") : `<p class="mudo">Nenhum alerta agora. Bom sinal. 🌿</p>`}
     </div>
 
     <div class="grade g4">
@@ -398,7 +407,155 @@ TELAS.inicio = async (el) => {
     });
   }));
   graficoMeses($("#graf-meses", el), h.serie);
+  graficoSaldo($("#graf-saldo", el), $("#destaques-saldo", el), h.fluxo_diario, S.mes);
+  graficoFaturas($("#graf-faturas", el), h.faturas_futuras);
+  roscaCategorias($("#graf-rosca", el), h.categorias, h.gasto_total);
+  contarAte($(".valor-heroi", el), h.resultado_realizado);
 };
+
+// ---------------------------------------------------------------- gráficos do Início
+const SEM_MOVIMENTO = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// número do topo sobe até o valor (uma vez por mês visto; sem animação se o sistema pedir menos movimento)
+function contarAte(el, alvo) {
+  if (!el || SEM_MOVIMENTO || contarAte.visto === `${S.mes}:${alvo}`) return;
+  contarAte.visto = `${S.mes}:${alvo}`;
+  const t0 = performance.now(), dur = 700;
+  const passo = (t) => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = brl(Math.round(alvo * e), true);
+    if (k < 1 && el.isConnected) requestAnimationFrame(passo);
+  };
+  requestAnimationFrame(passo);
+}
+
+// balão dos gráficos, com várias linhas (o conteúdo já vem escapado por quem chama)
+function dicaRica(box, x, y, html) {
+  let d = $(".dica", box);
+  if (!d) { d = document.createElement("div"); d.className = "dica rica"; box.appendChild(d); }
+  d.className = "dica rica visivel"; d.innerHTML = html;
+  d.style.left = Math.min(Math.max(0, x - d.offsetWidth / 2), box.clientWidth - d.offsetWidth) + "px";
+  d.style.top = (y - d.offsetHeight - 14 < -40 ? y + 14 : y - d.offsetHeight - 14) + "px";
+}
+
+function graficoSaldo(box, destaques, pts, mes) {
+  if (!box || !pts?.length) return;
+  const ult = pts[pts.length - 1].dia;
+  const W = Math.max(300, box.clientWidth), H = 270, topo = 20, base = 28, esq = 56, dir = 18;
+  const vals = pts.map((p) => p.saldo), mn = Math.min(0, ...vals), mx = Math.max(0, ...vals);
+  const passoY = passoBonito((mx - mn) / 4 || 1), y0 = Math.floor(mn / passoY) * passoY, y1 = Math.ceil(mx / passoY) * passoY || passoY;
+  const x = (d) => esq + (d / ult) * (W - esq - dir), y = (v) => topo + (1 - (v - y0) / (y1 - y0)) * (H - topo - base);
+  const corte = pts.filter((p) => !p.previsto).length - 1;         // último ponto realizado
+  const degraus = (lista, ini) => lista.map((p, i) => i === 0 && ini ? `M${x(p.dia)},${y(p.saldo)}` : `H${x(p.dia)} V${y(p.saldo)}`).join(" ");
+  const real = pts.slice(0, corte + 1), prev = pts.slice(corte);
+  const caminho = degraus(pts, true);
+  const menor = pts.reduce((a, p) => (p.saldo < a.saldo ? p : a), pts[0]), fim = pts[pts.length - 1], hojeP = pts[corte];
+  const id = "gs" + mes.replace("-", "");
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Saldo das contas dia a dia: começa em ${brl(pts[0].saldo)}, menor saldo ${brl(menor.saldo)} no dia ${menor.dia}, termina em ${brl(fim.saldo)}">
+    <defs>
+      <linearGradient id="${id}a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--acento)" stop-opacity=".30"/><stop offset="1" stop-color="var(--acento)" stop-opacity=".02"/></linearGradient>
+      <linearGradient id="${id}b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--critico)" stop-opacity=".04"/><stop offset="1" stop-color="var(--critico)" stop-opacity=".24"/></linearGradient>
+      <clipPath id="${id}c"><rect x="${esq}" y="0" width="${W - esq}" height="${y(0)}"/></clipPath>
+      <clipPath id="${id}d"><rect x="${esq}" y="${y(0)}" width="${W - esq}" height="${H - y(0)}"/></clipPath>
+    </defs>`;
+  for (let v = y0; v <= y1 + 1; v += passoY) svg += `<line class="${v === 0 ? "eixo" : "grade-y"}" x1="${esq}" x2="${W - dir}" y1="${y(v)}" y2="${y(v)}"/><text x="${esq - 10}" y="${y(v) + 4}" text-anchor="end">${compacto(v)}</text>`;
+  [1, 5, 10, 15, 20, 25, ult].forEach((d) => { svg += `<text x="${x(d)}" y="${H - 6}" text-anchor="middle">${d}</text>`; });
+  const area = `${caminho} V${y(0)} H${x(0)} Z`;
+  svg += `<path d="${area}" fill="url(#${id}a)" clip-path="url(#${id}c)"/><path d="${area}" fill="url(#${id}b)" clip-path="url(#${id}d)"/>`;
+  if (real.length > 1) svg += `<path class="linha-serie tracar" d="${degraus(real, true)}"/>`;
+  if (prev.length > 1) svg += `<path class="linha-serie prevista" d="${degraus(prev, true)}"/>`;
+  if (corte > 0 && corte < pts.length - 1) svg += `<line class="mira" x1="${x(hojeP.dia)}" x2="${x(hojeP.dia)}" y1="${topo - 6}" y2="${H - base}" stroke-dasharray="2 4"/><text x="${x(hojeP.dia)}" y="${topo - 9}" text-anchor="middle">hoje</text>`;
+  pts.forEach((p) => { if (p.previsto && p.eventos.length) svg += `<circle class="evento" cx="${x(p.dia)}" cy="${y(p.saldo)}" r="4"/>`; });
+  svg += `<circle class="ponto" cx="${x(fim.dia)}" cy="${y(fim.saldo)}" r="5"/>`;
+  if (menor.saldo < 0 && menor !== fim) svg += `<circle class="ponto critico" cx="${x(menor.dia)}" cy="${y(menor.saldo)}" r="5"/>`;
+  svg += `<g class="foco" style="display:none"><line class="mira" y1="${topo}" y2="${H - base}"/><circle class="ponto" r="5"/></g>
+    <rect class="area-toque" x="${esq}" y="0" width="${W - esq}" height="${H}" fill="transparent" tabindex="0"/></svg>`;
+  box.innerHTML = svg;
+  const mesCurto = nomeMesCurto(mes).slice(0, 3).toLowerCase();
+  if (destaques) {
+    const chip = (rot, val, cls = "") => `<div class="destaque ${cls}"><span>${rot}</span><b class="num">${val}</b></div>`;
+    destaques.innerHTML = chip("Começou o mês com", brl(pts[0].saldo, true))
+      + (corte > 0 && corte < pts.length - 1 ? chip(`Hoje (dia ${hojeP.dia})`, brl(hojeP.saldo, true)) : "")
+      + (menor.saldo < 0 ? chip(`Menor saldo · dia ${menor.dia}`, brl(menor.saldo, true), "critico") : "")
+      + chip(fim.previsto ? "Previsão para o dia " + fim.dia : "Fechou o mês com", brl(fim.saldo, true), fim.saldo < 0 ? "critico" : "bom");
+  }
+  const foco = $(".foco", box), alvo = $(".area-toque", box);
+  const ver = (d) => {
+    const p = pts[Math.min(ult, Math.max(0, d))];
+    foco.style.display = ""; $("line", foco).setAttribute("x1", x(p.dia)); $("line", foco).setAttribute("x2", x(p.dia));
+    $("circle", foco).setAttribute("cx", x(p.dia)); $("circle", foco).setAttribute("cy", y(p.saldo));
+    const ev = p.eventos.slice(0, 4).map((e) => `<div class="dica-linha"><span>${esc(e.nome)}</span><b class="num">${brl(e.valor, true)}</b></div>`).join("")
+      + (p.eventos.length > 4 ? `<div class="dica-linha"><span>+ ${p.eventos.length - 4} outros</span></div>` : "");
+    dicaRica(box, x(p.dia), y(p.saldo), `<span>${p.dia ? `dia ${p.dia} de ${mesCurto}` : "início do mês"}${p.previsto ? " · previsão" : ""}</span><b class="num">${brl(p.saldo, true)}</b>`
+      + (p.entrou ? `<div class="dica-linha"><span><i class="tecla entrada"></i>entrou</span><b class="num">${brl(p.entrou)}</b></div>` : "")
+      + (p.saiu ? `<div class="dica-linha"><span><i class="tecla saida"></i>saiu</span><b class="num">${brl(p.saiu)}</b></div>` : "") + (ev ? `<hr>${ev}` : ""));
+  };
+  let dFoco = hojeP.dia;
+  alvo.addEventListener("pointermove", (e) => { const r = box.getBoundingClientRect(); dFoco = Math.round(((e.clientX - r.left - esq) / (W - esq - dir)) * ult); ver(dFoco); });
+  alvo.addEventListener("pointerleave", () => { foco.style.display = "none"; esconderDica(box); });
+  alvo.addEventListener("focus", () => ver(dFoco)); alvo.addEventListener("blur", () => { foco.style.display = "none"; esconderDica(box); });
+  alvo.addEventListener("keydown", (e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); dFoco = Math.min(ult, Math.max(0, dFoco + (e.key === "ArrowRight" ? 1 : -1))); ver(dFoco); } });
+}
+
+function graficoFaturas(box, lista) {
+  if (!box) return;
+  lista = (lista || []).filter((f, i) => i === 0 || f.total > 0);
+  if (!lista.some((f) => f.total > 0)) { box.innerHTML = `<p class="mudo">Sem faturas de cartão por aqui.</p>`; return; }
+  const W = Math.max(260, box.clientWidth), H = 330, topo = 26, base = 28;
+  const max = Math.max(1, ...lista.map((f) => f.total));
+  const y = (v) => topo + (1 - v / max) * (H - topo - base), banda = W / lista.length, larg = Math.min(34, banda * 0.56);
+  const barra = (x0, v0, v1, cor, arred) => {
+    const ya = y(v1), yb = y(v0), r = arred ? Math.min(4, (yb - ya) / 2) : 0;
+    return yb - ya < 0.5 ? "" : `<path d="M${x0},${yb} V${ya + r} Q${x0},${ya} ${x0 + r},${ya} H${x0 + larg - r} Q${x0 + larg},${ya} ${x0 + larg},${ya + r} V${yb} Z" fill="var(${cor})"/>`;
+  };
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Fatura do cartão nos próximos meses"><line class="eixo" x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}"/>`;
+  lista.forEach((f, i) => {
+    const cx = banda * i + banda / 2, x0 = cx - larg / 2, folga = f.parcelas && f.assinaturas ? (2 * max) / (H - topo - base) : 0;
+    svg += `<g class="col" tabindex="0" data-i="${i}"><rect x="${cx - banda / 2}" y="0" width="${banda}" height="${H - 20}" fill="transparent"/>
+      ${f.previsao ? barra(x0, 0, f.parcelas, "--cat-3", !f.assinaturas) + barra(x0, f.parcelas + folga, f.total, "--cat-4", true) : barra(x0, 0, f.total, "--serie-neutra", true)}
+      ${banda >= 46 || i < 2 ? `<text class="valor" x="${cx}" y="${y(f.total) - 7}" text-anchor="middle">${compacto(f.total)}</text>` : ""}</g>
+      <text x="${cx}" y="${H - 6}" text-anchor="middle">${banda >= 46 ? nomeMesCurto(f.mes) : nomeMesCurto(f.mes).slice(0, 3)}</text>`;
+  });
+  box.innerHTML = svg + "</svg>";
+  $$(".col", box).forEach((g) => {
+    const f = lista[+g.dataset.i], cx = banda * +g.dataset.i + banda / 2;
+    const ver = () => dicaRica(box, cx, y(f.total), `<span>${esc(nomeMes(f.mes))}${f.previsao ? " · previsão" : " · fatura"}</span><b class="num">${brl(f.total)}</b>`
+      + (f.previsao ? `<div class="dica-linha"><span><i class="tecla" style="background:var(--cat-3)"></i>parcelas</span><b class="num">${brl(f.parcelas)}</b></div><div class="dica-linha"><span><i class="tecla" style="background:var(--cat-4)"></i>assinaturas</span><b class="num">${brl(f.assinaturas)}</b></div>` : ""));
+    g.addEventListener("pointerenter", ver); g.addEventListener("focus", ver);
+    g.addEventListener("pointerleave", () => esconderDica(box)); g.addEventListener("blur", () => esconderDica(box));
+  });
+}
+
+function roscaCategorias(box, cats, total) {
+  if (!box) return;
+  if (!cats?.length || !total) { box.innerHTML = `<p class="mudo">Sem gastos neste mês.</p>`; return; }
+  const topo5 = cats.slice(0, 5), usados = new Set();
+  topo5.forEach((c) => { let k = c.id % 5; while (usados.has(k)) k = (k + 1) % 5; usados.add(k); c.slot = k + 1; });   // cor acompanha a categoria
+  const resto = total - topo5.reduce((t, c) => t + c.total, 0);
+  const fatias = [...topo5.map((c) => ({ nome: c.nome, total: c.total, cor: `var(--cat-${c.slot})`, passou: c.orcamento && c.total > c.orcamento })),
+    ...(resto > 0 ? [{ nome: "Outras categorias", total: resto, cor: "var(--cat-outros)" }] : [])];
+  const R = 74, esp = 22, C = 2 * Math.PI * R, folga = fatias.length > 1 ? 3 : 0;
+  let ac = 0;
+  const arcos = fatias.map((f, i) => {
+    const len = (f.total / total) * C, a = `<circle class="fatia" data-i="${i}" cx="100" cy="100" r="${R}" fill="none" stroke="${f.cor}" stroke-width="${esp}" stroke-dasharray="${Math.max(0.5, len - folga)} ${C}" stroke-dashoffset="${-ac}" transform="rotate(-90 100 100)"/>`;
+    ac += len; return a;
+  }).join("");
+  box.innerHTML = `<div class="rosca"><div class="rosca-graf"><svg viewBox="0 0 200 200" role="img" aria-label="Gastos por categoria (valores na lista ao lado)">${arcos}</svg>
+      <div class="rosca-centro"><span id="rosca-rot">Gastos do mês</span><b class="num" id="rosca-val">${brl(total)}</b><small id="rosca-pct"></small></div></div>
+    <ul class="rosca-lista">${fatias.map((f, i) => `<li data-i="${i}" tabindex="0"><i class="tecla" style="background:${f.cor}"></i><span>${esc(f.nome)}${f.passou ? ` <span class="tag duv">passou do orçado</span>` : ""}</span><b class="num">${brl(f.total)}</b><small class="num">${pct(f.total / total)}</small></li>`).join("")}</ul></div>`;
+  const foco = (i) => {
+    box.classList.toggle("com-foco", i != null);
+    $$(".fatia, .rosca-lista li", box).forEach((n) => n.classList.toggle("ativo", +n.dataset.i === i));
+    const f = i == null ? null : fatias[i];
+    $("#rosca-rot", box).textContent = f ? f.nome : "Gastos do mês";
+    $("#rosca-val", box).textContent = brl(f ? f.total : total);
+    $("#rosca-pct", box).textContent = f ? `${pct(f.total / total)} dos gastos` : "";
+  };
+  $$(".fatia, .rosca-lista li", box).forEach((n) => {
+    n.addEventListener("pointerenter", () => foco(+n.dataset.i)); n.addEventListener("focus", () => foco(+n.dataset.i));
+    n.addEventListener("pointerleave", () => foco(null)); n.addEventListener("blur", () => foco(null));
+  });
+}
 
 function novoPrevisto(p, depois) {
   const sentido = p.sentido || (p.valor > 0 ? "entrada" : "saida");
@@ -456,11 +613,11 @@ function editarPrevisto(i, depois) {
 
 function graficoMeses(box, serie) {
   if (!serie.length) { box.innerHTML = `<p class="mudo">Sem meses para comparar ainda.</p>`; return; }
-  const W = Math.max(280, box.clientWidth), H = 220, topo = 22, base = 26, esq = 48;
+  const W = Math.max(280, box.clientWidth), H = 300, topo = 22, base = 26, esq = 48;
   const max = Math.max(1, ...serie.flatMap((m) => [m.entradas, m.saidas]));
   const passoY = passoBonito(max / 3), maxY = Math.ceil(max / passoY) * passoY;
   const y = (v) => topo + (1 - v / maxY) * (H - topo - base);
-  const banda = (W - esq) / serie.length, larg = Math.min(22, banda * 0.28), gap = 2;
+  const banda = (W - esq) / serie.length, larg = Math.min(30, banda * 0.3), gap = 2;
   const col = (x, v, cor) => { const yy = y(v), r = Math.min(4, y(0) - yy); return `<path d="M${x},${y(0)} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + larg - r} Q${x + larg},${yy} ${x + larg},${yy + r} V${y(0)} Z" fill="var(${cor})"/>`; };
   let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Entradas e saídas por mês (números na tabela abaixo)">`;
   for (let v = 0; v <= maxY + 1; v += passoY) svg += `<line class="${v ? "grade-y" : "eixo"}" x1="${esq}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${esq - 8}" y="${y(v) + 4}" text-anchor="end">${compacto(v)}</text>`;
