@@ -882,3 +882,4 @@ dialog::backdrop { background: rgba(0,0,0,.32); backdrop-filter: blur(14px) satu
 }
 .rosca-centro b { font-size: 17px; white-space: nowrap; }
 .dica.rica { background: color-mix(in srgb, var(--sup) 95%, transparent); }
+@media (max-width: 900px) { .mes-nav h1 { font-size: 19px; white-space: nowrap; padding: 0; } }
