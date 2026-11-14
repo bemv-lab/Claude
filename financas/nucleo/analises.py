@@ -97,6 +97,13 @@ def faturas_do_cartao(con, c, ate: str) -> dict:
     anterior. Devolve {mes: {"fatura", "quitado", "a_pagar"}}."""
     compras = dict(con.execute("SELECT mes_ref, -SUM(valor) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
                                "GROUP BY mes_ref", (c["id"],)).fetchall())
+    atual = hoje().strftime("%Y-%m")
+    if ate > atual:      # faturas futuras: o que já veio importado + as parcelas que ainda vão cair nelas
+        for g in parcelamentos(con, todos=True):
+            if g["conta_id"] == c["id"]:
+                for o in g["ocorrencias"]:
+                    if o["prevista"] and atual < o["mes"] <= ate:
+                        compras[o["mes"]] = compras.get(o["mes"], 0) + o["valor"]
     meses = sorted(m for m in compras if m and m <= ate)
     if not meses:
         return {}
@@ -105,7 +112,7 @@ def faturas_do_cartao(con, c, ate: str) -> dict:
     for d, v in _pagamentos_do_cartao(con, c):
         alvo = antes if int(d[8:10]) <= fecha else depois
         alvo[d[:7]] = alvo.get(d[:7], 0) + v
-    out, ficou, sobrou, m, atual = {}, 0, 0, meses[0], hoje().strftime("%Y-%m")
+    out, ficou, sobrou, m = {}, 0, 0, meses[0]
     while m <= ate:
         f = ficou + compras.get(m, 0) - antes.get(m, 0) - sobrou
         pago = depois.get(m, 0)
@@ -131,7 +138,7 @@ def cartao_a_pagar(con, mes: str) -> list[dict]:
         if not f or f["fatura"] <= 0:
             continue
         out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "fatura": f["fatura"],
-                    "pago": f["quitado"], "a_pagar": f["a_pagar"],
+                    "pago": f["quitado"], "a_pagar": f["a_pagar"], "previsao": mes > hoje().strftime("%Y-%m"),
                     "qtd": con.execute("SELECT COUNT(*) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
                                        "AND mes_ref = ?", (c["id"], mes)).fetchone()[0]})
     return out

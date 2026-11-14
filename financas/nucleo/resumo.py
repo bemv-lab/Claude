@@ -71,10 +71,29 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
     """Visão de boletos do mês: uma linha por conta (energia, aluguel, empréstimo...) e uma só por cartão,
     com o total da fatura do mês. O detalhe das compras fica em Lançamentos."""
     out = []
-    for c in analises.cartao_a_pagar(con, mes):
+    cartoes = analises.cartao_a_pagar(con, mes)
+    if mes > hoje().strftime("%Y-%m"):
+        # fatura futura = parcelas que já vão cair nela + assinaturas no cartão (que saem do "a pagar" avulso)
+        assin = -sum(i["falta"] for i in itens if i["falta"] < 0 and i["status"] != "cancelado"
+                     and i.get("forma") in ("Cartão", "Pix no crédito"))
+        if assin:
+            if not cartoes:
+                c = con.execute("""SELECT c.* FROM contas c LEFT JOIN transacoes t ON t.conta_id = c.id
+                                   WHERE c.tipo = 'cartao' AND c.ativa = 1 GROUP BY c.id ORDER BY COUNT(t.id) DESC""").fetchone()
+                if c:
+                    cartoes = [{"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "fatura": 0,
+                                "pago": 0, "a_pagar": 0, "previsao": True, "qtd": 0}]
+            if cartoes:
+                principal = max(cartoes, key=lambda x: x["fatura"])
+                principal["parcelas"] = principal["fatura"]
+                principal["assinaturas"] = assin
+                principal["fatura"] += assin
+                principal["a_pagar"] += assin
+    for c in cartoes:
         pago = c["a_pagar"] == 0
         # o valor da fatura como o banco cobra (créditos, estornos e o que já foi abatido antes de fechar já saíram)
         out.append({"descricao": f"Fatura · {c['nome']}", "valor": c["fatura"], "pago": c["pago"],
+                    "previsao": c.get("previsao", False), "parcelas": c.get("parcelas"), "assinaturas": c.get("assinaturas"),
                     "dia": c["dia"], "status": "realizado" if pago else "previsto", "falta": c["a_pagar"],
                     "cartao": True, "qtd": c["qtd"], "conta_id": c["conta_id"]})
     for i in itens:
@@ -113,7 +132,8 @@ def home(con, mes: str | None = None) -> dict:
     # as assinaturas previstas no cartão já estão dentro da fatura e saem do "a pagar"
     no_cartao = -sum(i["falta"] for i in prev["itens"] if i["falta"] < 0 and i.get("forma") in ("Cartão", "Pix no crédito"))
     # a fatura do mês já está inteira nas saídas: o que falta pagar dela sai do "pago" e vai para o "a pagar"
-    cartao_falta = sum(c["a_pagar"] for c in analises.cartao_a_pagar(con, mes)) if mes >= hoje().strftime("%Y-%m") else 0
+    contas = contas_a_pagar(con, mes, prev["itens"])
+    cartao_falta = sum(c["falta"] for c in contas if c["cartao"]) if mes >= hoje().strftime("%Y-%m") else 0
     prev["a_pagar"] = prev["a_pagar"] - no_cartao + cartao_falta
     # marcado como já resolvido sem lançamento no extrato (ex.: recebi e não caiu como transação): conta como feito
     # pela parte que o extrato não mostrou, para não sumir do total
@@ -163,7 +183,7 @@ def home(con, mes: str | None = None) -> dict:
         "saude": saude(entradas_prev, saldo_prev, orc) if mes >= hoje().strftime("%Y-%m") else
                  saude(tot["receitas"], tot["receitas"] - tot["despesas"], dict(orc, mes_decorrido=1.0)),
         "previstos": prev["itens"],
-        "contas_a_pagar": contas_a_pagar(con, mes, prev["itens"]),
+        "contas_a_pagar": contas,
         "rendas": rendas.do_mes(con, mes),
         "serie": serie,
         "parcelas_mes": agenda,
