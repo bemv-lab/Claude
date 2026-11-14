@@ -11,77 +11,127 @@ from .util import hoje, limites_mes, normalizar, somar_meses
 FILTRO_REAL = "t.tipo = 'normal' AND c.tipo != 'beneficio'"
 
 
-# Modelo combinado com vocês:
-# - Entradas: tudo o que entra positivo nas contas E na fatura (salário, Pix, estorno, crédito/estorno no cartão,
-#   ajuste). O pagamento lançado na fatura não conta: é o mesmo dinheiro que saiu da conta.
-# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + o cartão pelo que foi pago a ele no mês (inclusive
-#   antecipações) + os créditos da fatura (que já entraram como entrada; assim o desconto não conta duas vezes).
-#   O que falta pagar da fatura vai para o "a pagar". A entrada usada para antecipar uma fatura vai para o mês
-#   do pagamento que ela cobriu (db.alinhar_antecipacoes).
-# - Fora dos dois lados: transferência entre as contas de vocês (com par), aplicação/resgate, o estorno de um
-#   pagamento de fatura e o Flash.
+# Modelo combinado com vocês (visão real: só o que de fato entrou, saiu e falta pagar):
+# - Entradas: o que entra nas contas (salário, Pix, estorno na conta). Crédito/estorno no cartão NÃO é entrada:
+#   ele só diminui a fatura.
+# - Saídas: o que sai das contas (gastos à vista, boletos, Pix) + o que foi pago ao cartão no mês. O que falta
+#   pagar da fatura vai para o "a pagar".
+# - Repasse: dinheiro que entrou e saiu no mesmo valor para pagar a fatura em até 3 dias (ex.: Facebook cobrado
+#   no cartão e reembolsado/pago na hora) fica fora dos dois lados: não é dinheiro de vocês nem gasto de vocês.
+# - Fora dos dois lados também: transferência entre as contas de vocês (com par), aplicação/resgate, o estorno
+#   de um pagamento de fatura e o Flash.
 _ESTORNO_DE_PAGAMENTO = ("UPPER(t.descricao) LIKE '%ESTORNO%' AND EXISTS (SELECT 1 FROM transacoes f WHERE "
                          "f.conta_id = t.conta_id AND f.tipo = 'fatura' AND f.valor = -t.valor AND f.mes_ref = t.mes_ref)")
 _MOVIMENTO_DA_CONTA = (f"c.tipo = 'corrente' AND t.tipo IN ('normal','transferencia') "
                        f"AND NOT (t.tipo = 'transferencia' AND t.par_id IS NOT NULL) AND NOT ({_ESTORNO_DE_PAGAMENTO})")
+# entrada que só passou pela conta para pagar a fatura (mesmo valor, mesma conta, até 3 dias antes do pagamento)
+_ENTRADA_DE_REPASSE = ("t.valor > 0 AND UPPER(t.descricao) NOT LIKE '%ESTORNO%' AND EXISTS (SELECT 1 FROM transacoes f "
+                       "WHERE f.conta_id = t.conta_id AND f.tipo = 'fatura' AND f.valor = -t.valor "
+                       "AND julianday(f.data) - julianday(t.data) BETWEEN 0 AND 3)")
+_PAGAMENTO_DE_REPASSE = ("t.valor < 0 AND EXISTS (SELECT 1 FROM transacoes e WHERE e.conta_id = t.conta_id "
+                         "AND e.tipo IN ('normal','transferencia') AND e.valor = -t.valor "
+                         "AND UPPER(e.descricao) NOT LIKE '%ESTORNO%' "
+                         "AND julianday(t.data) - julianday(e.data) BETWEEN 0 AND 3)")
+_TOLERANCIA = 500     # diferença de até R$ 5 entre o pago e a fatura é arredondamento/ajuste, não saldo
 
 
 def totais_mes(con, mes: str) -> dict:
     """Totais do mês pelo modelo acima. `cartao` continua sendo o total de compras da fatura do mês (alertas)."""
     r = con.execute(f"""
         SELECT
-          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 THEN t.valor END), 0)
-            + COALESCE(SUM(CASE WHEN c.tipo = 'cartao' AND t.tipo = 'normal' AND t.valor > 0 THEN t.valor END), 0)
-            AS receitas,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 AND NOT ({_ENTRADA_DE_REPASSE})
+                       THEN t.valor END), 0) AS receitas,
           COALESCE(SUM(CASE WHEN c.tipo = 'cartao' AND t.tipo = 'normal' AND t.valor > 0 THEN t.valor END), 0)
             AS cartao_creditos,
-          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 AND (cat.tipo IS NULL OR cat.tipo != 'receita')
-                       THEN t.valor END), 0) AS entradas_de_fora,
+          COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor > 0 AND NOT ({_ENTRADA_DE_REPASSE})
+                       AND (cat.tipo IS NULL OR cat.tipo != 'receita') THEN t.valor END), 0) AS entradas_de_fora,
           COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor < 0 THEN -t.valor END), 0) AS fora_cartao,
           COALESCE(SUM(CASE WHEN {_MOVIMENTO_DA_CONTA} AND t.valor < 0 AND cat.tipo = 'divida' THEN -t.valor END), 0)
             AS dividas_fora_cartao,
-          COALESCE(SUM(CASE WHEN t.tipo = 'fatura' AND c.tipo = 'corrente' AND t.valor < 0 THEN -t.valor END), 0)
+          COALESCE(SUM(CASE WHEN t.tipo = 'fatura' AND c.tipo = 'corrente' AND NOT ({_PAGAMENTO_DE_REPASSE})
+                       AND t.valor < 0 THEN -t.valor END), 0)
             - COALESCE(SUM(CASE WHEN c.tipo = 'corrente' AND t.valor > 0 AND {_ESTORNO_DE_PAGAMENTO} THEN t.valor END), 0)
             AS cartao_pago,
+          COALESCE(SUM(CASE WHEN t.tipo = 'fatura' AND c.tipo = 'corrente' AND {_PAGAMENTO_DE_REPASSE}
+                       THEN -t.valor END), 0) AS repasse,
           COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND cat.tipo = 'divida' THEN -t.valor END), 0) AS dividas,
           COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.escopo = 'negocio' AND cat.tipo = 'despesa' THEN -t.valor END), 0)
             AS negocio,
-          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.categoria_id IS NULL AND t.valor > 0 THEN t.valor END), 0)
-            AS entradas_pendentes,
+          COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND t.categoria_id IS NULL AND t.valor > 0 AND c.tipo = 'corrente'
+                       THEN t.valor END), 0) AS entradas_pendentes,
           COALESCE(SUM(CASE WHEN t.tipo = 'normal' AND c.tipo = 'cartao' THEN -t.valor END), 0) AS cartao
         FROM transacoes t JOIN contas c ON c.id = t.conta_id
         LEFT JOIN categorias cat ON cat.id = t.categoria_id
         WHERE c.tipo IN ('corrente','cartao') AND t.mes_ref = ?""", (mes,)).fetchone()
     out = dict(r)
     out["cartao_bruto"] = out["cartao"] + out["cartao_creditos"]      # compras da fatura, sem descontar créditos
-    out["despesas"] = out["fora_cartao"] + out["cartao_pago"] + out["cartao_creditos"]
+    out["despesas"] = out["fora_cartao"] + out["cartao_pago"]
+    return out
+
+
+def _pagamentos_do_cartao(con, c) -> list[tuple[str, int]]:
+    """(data, valor) de cada pagamento da fatura: os do extrato do banco do cartão e os que só aparecem na
+    fatura (o mesmo pagamento nos dois lados conta uma vez). Pagamento estornado pelo banco não conta."""
+    banco = [(r["data"], -r["valor"]) for r in con.execute(
+        """SELECT t.data, t.valor FROM transacoes t JOIN contas k ON k.id = t.conta_id
+           WHERE t.tipo = 'fatura' AND k.tipo = 'corrente' AND k.instituicao = ? AND t.valor < 0
+             AND NOT EXISTS (SELECT 1 FROM transacoes e WHERE e.conta_id = t.conta_id AND e.valor = -t.valor
+                             AND UPPER(e.descricao) LIKE '%ESTORNO%'
+                             AND julianday(e.data) - julianday(t.data) BETWEEN 0 AND 5)""", (c["instituicao"],))]
+    na_fatura = [(r["data"], r["valor"]) for r in con.execute(
+        "SELECT data, valor FROM transacoes WHERE conta_id = ? AND tipo = 'fatura' AND valor > 0", (c["id"],))]
+    livres = list(banco)
+    out = list(banco)
+    for d, v in na_fatura:
+        par = next((b for b in livres if b[1] == v and abs((date.fromisoformat(b[0]) - date.fromisoformat(d)).days) <= 1), None)
+        if par:
+            livres.remove(par)
+        else:
+            out.append((d, v))
+    return out
+
+
+def faturas_do_cartao(con, c, ate: str) -> dict:
+    """Valor de cada fatura do cartão até `ate`, como o banco calcula: compras do mês (já com os créditos e
+    estornos) + o que ficou da anterior − o que foi pago antes do fechamento − o que sobrou de pagamento da
+    anterior. Devolve {mes: {"fatura", "quitado", "a_pagar"}}."""
+    compras = dict(con.execute("SELECT mes_ref, -SUM(valor) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
+                               "GROUP BY mes_ref", (c["id"],)).fetchall())
+    meses = sorted(m for m in compras if m and m <= ate)
+    if not meses:
+        return {}
+    fecha = c["dia_fechamento"] or max(1, (c["dia_vencimento"] or 20) - 7)
+    antes, depois = {}, {}          # pagamentos até o fechamento (abatem a fatura em aberto) e depois (pagam a fechada)
+    for d, v in _pagamentos_do_cartao(con, c):
+        alvo = antes if int(d[8:10]) <= fecha else depois
+        alvo[d[:7]] = alvo.get(d[:7], 0) + v
+    out, ficou, sobrou, m, atual = {}, 0, 0, meses[0], hoje().strftime("%Y-%m")
+    while m <= ate:
+        f = ficou + compras.get(m, 0) - antes.get(m, 0) - sobrou
+        pago = depois.get(m, 0)
+        quitado = min(pago, max(f, 0))
+        resto = f - quitado
+        if resto > _TOLERANCIA:          # pago a menos: o resto passa para a próxima fatura
+            # (a fatura do mês atual ainda vai ser paga: não se soma de novo nas próximas)
+            ficou, sobrou = (resto if m < atual else 0), 0
+        else:                            # pago a mais (ou pago antes do que comprou): abate a próxima
+            ficou, sobrou = 0, pago - quitado + max(0, -f)
+            if sobrou <= _TOLERANCIA:
+                sobrou = 0
+        out[m] = {"fatura": max(f, 0), "quitado": quitado, "a_pagar": resto if resto > _TOLERANCIA else 0}
+        m = somar_meses(m, 1)
     return out
 
 
 def cartao_a_pagar(con, mes: str) -> list[dict]:
-    """Por cartão: compras da fatura do mês, o que já foi antecipado (pago no mês anterior além da fatura de
-    lá) e o que ainda falta pagar, descontados os pagamentos já feitos neste mês."""
+    """Por cartão: o valor da fatura do mês (o que o banco cobra), o que já foi pago dela e o que falta."""
     out = []
     for c in con.execute("SELECT * FROM contas WHERE tipo = 'cartao' AND ativa = 1"):
-        def compras(m):
-            return con.execute("SELECT COALESCE(-SUM(valor), 0) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
-                               "AND mes_ref = ?", (c["id"], m)).fetchone()[0]
-
-        def pagos(m):    # pagamentos de fatura nas contas do mesmo banco do cartão
-            return con.execute("""SELECT COALESCE(-SUM(t.valor), 0) FROM transacoes t JOIN contas k ON k.id = t.conta_id
-                                  WHERE t.tipo = 'fatura' AND k.tipo = 'corrente' AND k.instituicao = ? AND t.mes_ref = ?""",
-                               (c["instituicao"], m)).fetchone()[0]
-        fatura = compras(mes)
-        if fatura <= 0:
+        f = faturas_do_cartao(con, c, mes).get(mes)
+        if not f or f["fatura"] <= 0:
             continue
-        ant = somar_meses(mes, -1)
-        # pago a mais na fatura anterior = antecipado; pago a menos = saldo que passa para esta (com sinal, para
-        # que mudar um lançamento de uma fatura para a outra não altere o total a pagar)
-        antecipado = min(fatura, pagos(ant) - compras(ant)) if compras(ant) > 0 else 0
-        pago_no_mes = pagos(mes)
-        out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "compras": fatura,
-                    "antecipado": antecipado, "pago_no_mes": pago_no_mes,
-                    "a_pagar": max(0, fatura - antecipado - pago_no_mes),
+        out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "fatura": f["fatura"],
+                    "pago": f["quitado"], "a_pagar": f["a_pagar"],
                     "qtd": con.execute("SELECT COUNT(*) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
                                        "AND mes_ref = ?", (c["id"], mes)).fetchone()[0]})
     return out

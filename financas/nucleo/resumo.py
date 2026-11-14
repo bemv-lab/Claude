@@ -73,8 +73,8 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
     out = []
     for c in analises.cartao_a_pagar(con, mes):
         pago = c["a_pagar"] == 0
-        out.append({"descricao": f"Fatura · {c['nome']}", "valor": c["a_pagar"] or c["pago_no_mes"],
-                    "compras": c["compras"], "antecipado": c["antecipado"], "pago_no_mes": c["pago_no_mes"],
+        # o valor da fatura como o banco cobra (créditos, estornos e o que já foi abatido antes de fechar já saíram)
+        out.append({"descricao": f"Fatura · {c['nome']}", "valor": c["fatura"], "pago": c["pago"],
                     "dia": c["dia"], "status": "realizado" if pago else "previsto", "falta": c["a_pagar"],
                     "cartao": True, "qtd": c["qtd"], "conta_id": c["conta_id"]})
     for i in itens:

@@ -319,7 +319,7 @@ TELAS.inicio = async (el) => {
       const contas = h.contas_a_pagar || [];
       const total = contas.reduce((t, c) => t + c.valor, 0);
       const linha = (c) => `<div class="linha-ajuste"><div><b>${esc(c.descricao)}</b>
-          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : ""}compras ${brl(c.compras)}${c.antecipado > 0 ? ` · antecipado no mês anterior ${brl(c.antecipado)}` : c.antecipado < 0 ? ` · ficou da fatura anterior ${brl(-c.antecipado)}` : ""}${c.pago_no_mes ? ` · pago neste mês ${brl(c.pago_no_mes)}` : ""} · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>`
+          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : c.pago ? `pago ${brl(c.pago)} · falta ${brl(c.falta)} · ` : ""}valor da fatura · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>`
             : c.status === "realizado" ? "✓ pago" : c.falta && c.falta < c.valor ? `falta ${brl(c.falta)}` : "a pagar"}</p></div>
           <b class="num">${brl(c.valor)}</b></div>`;
       abrirModal(`<h3>Contas de ${esc(nome)}</h3>
@@ -454,7 +454,7 @@ TELAS.contas = async (el) => {
   const linha = (c, k) => {
     const pago = c.status === "realizado";
     const situacao = pago ? `<span class="tag ok">✓ paga</span>` : c.falta && c.falta < c.valor ? `<span class="tag duv">falta ${brl(c.falta)}</span>` : `<span class="tag duv">a pagar</span>`;
-    if (c.cartao) return `<tr><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">compras ${brl(c.compras)}${c.antecipado > 0 ? ` · antecipado ${brl(c.antecipado)}` : c.antecipado < 0 ? ` · ficou da fatura anterior ${brl(-c.antecipado)}` : ""}${c.pago_no_mes ? ` · pago neste mês ${brl(c.pago_no_mes)}` : ""} · vem da fatura importada</small><br><a class="btn-texto" href="#/lancamentos">ver compras</a></td>
+    if (c.cartao) return `<tr><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">valor da fatura${c.pago && c.falta ? ` · pago ${brl(c.pago)}` : ""} · vem da fatura importada</small><br><a class="btn-texto" href="#/lancamentos">ver compras</a></td>
       <td class="num"><b>${brl(c.valor)}</b></td><td>${situacao}</td></tr>`;
     return `<tr data-k="${k}"><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">${c.manual ? (c.repete ? "todo mês" : "só neste mês") : ORIGEM[c.origem] || ""}${c.ajuste_id && !pago ? " · valor ajustado neste mês" : ""}</small>
         <div class="acoes-conta">${pago ? (c.ajuste_id ? `<button class="btn-texto" data-desfazer>desfazer</button>` : "") : `<button class="btn-texto" data-pagar>marcar paga</button>`}<button class="btn-texto" data-editar>editar</button></div></td>
@@ -1276,7 +1276,7 @@ const MANUAL = [
       <dt>Marcar paga</dt><dd>Usa o valor que estiver no campo (o que de fato saiu). Quando o extrato traz o pagamento, a conta se marca sozinha. <i>Desfazer</i> volta para "a pagar".</dd>
       <dt>Editar</dt><dd>Muda nome, dia, repetição e valor de todos os meses, ou apaga a conta.</dd>
       <dt>Adicionar conta</dt><dd><i>Conta</i>, <i>Valor</i>, <i>Dia do vencimento</i> e <i>Repetir</i> (todo mês ou só neste).</dd>
-      <dt>Fatura do cartão</dt><dd>Não se edita aqui: o valor vem da fatura importada, menos o que já foi pago ou antecipado.</dd>
+      <dt>Fatura do cartão</dt><dd>Não se edita aqui: é o valor que a fatura fecha, igual ao do app do banco. Estornos, créditos e pagamentos feitos antes do fechamento já saíram dele.</dd>
       <dt>Integração</dt><dd>É a mesma lista de Saídas do Início. O que mudar aqui muda na hora o "a pagar", o provisionado, a previsão de fechamento e o Plano.</dd>
     </dl>`],
   ["Plano", `

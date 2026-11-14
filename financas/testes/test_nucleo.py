@@ -664,7 +664,7 @@ class TestAjusteDeEntradaNoMes(BaseBanco):
 
 
 class TestContasAPagar(BaseBanco):
-    """Dashboard de contas: uma linha por cartão, pelo valor a pagar (compras menos o que já foi antecipado)."""
+    """Dashboard de contas: uma linha por cartão, pelo valor que a fatura fecha (igual ao app do banco)."""
 
     def tx(self, mes_ref, data, valor, tipo="normal", conta="inter-cartao"):
         n = self.con.execute("SELECT COUNT(*) FROM transacoes").fetchone()[0]
@@ -673,16 +673,35 @@ class TestContasAPagar(BaseBanco):
                          (self.conta(conta), data, "X", "X", valor, tipo, f"c{n}", mes_ref))
         self.con.commit()
 
-    def test_cartao_numa_linha_descontando_antecipacao(self):
+    def test_cartao_pelo_valor_que_a_fatura_fecha(self):
         self.tx("2026-10", "2026-10-01", -400000)                 # fatura de outubro: 4.000
-        self.tx("2026-10", "2026-10-19", -450000, "fatura", "inter-conta")  # pagou 4.500 em out: 500 antecipados
-        self.tx("2026-11", "2026-10-20", -300000)                 # fatura de novembro: 3.000 + 2.000
+        self.tx("2026-10", "2026-10-19", -450000, "fatura", "inter-conta")  # pagou 4.500 em out: 500 a mais
+        self.tx("2026-11", "2026-10-20", -300000)                 # compras de novembro: 3.000 + 2.000
         self.tx("2026-11", "2026-10-25", -200000)
-        self.tx("2026-11", "2026-11-01", -100000, "fatura", "inter-conta")  # já pagou 1.000 em novembro
+        self.tx("2026-11", "2026-11-01", -100000, "fatura", "inter-conta")  # 1.000 pagos antes de fechar
         c = analises.cartao_a_pagar(self.con, "2026-11")[0]
-        self.assertEqual((c["compras"], c["antecipado"], c["pago_no_mes"], c["a_pagar"]), (500000, 50000, 100000, 350000))
+        self.assertEqual((c["fatura"], c["pago"], c["a_pagar"]), (350000, 0, 350000))   # 5.000 − 500 − 1.000
         tot = analises.totais_mes(self.con, "2026-10")            # o cartão sai pelo que foi pago no mês (4.500)
         self.assertEqual(tot["despesas"], 450000)
+
+    def test_fatura_paga_depois_de_fechar_fica_quitada(self):
+        self.tx("2026-10", "2026-09-20", -400000)
+        self.tx("2026-10", "2026-10-19", -400000, "fatura", "inter-conta")
+        self.tx("2026-10", "2026-10-19", 400000, "fatura")        # o mesmo pagamento na fatura: conta uma vez só
+        c = analises.cartao_a_pagar(self.con, "2026-10")[0]
+        self.assertEqual((c["fatura"], c["pago"], c["a_pagar"]), (400000, 400000, 0))
+
+    def test_cobranca_paga_na_hora_com_dinheiro_de_fora_some_dos_dois_lados(self):
+        """Facebook: cobrado no cartão e pago na hora com um Pix que entrou para isso. Não é entrada nem saída de
+        vocês, e não muda o valor da fatura."""
+        self.tx("2026-11", "2026-10-20", -500000)                 # compras do mês
+        self.tx("2026-11", "2026-11-09", -341538)                 # FACEBK
+        self.tx("2026-11", "2026-11-09", 341538, "fatura")        # pagamento na fatura
+        self.tx("2026-11", "2026-11-08", 341538, "transferencia", "inter-conta")  # Pix que entrou para pagar
+        self.tx("2026-11", "2026-11-09", -341538, "fatura", "inter-conta")       # e saiu para a fatura
+        tot = analises.totais_mes(self.con, "2026-11")
+        self.assertEqual((tot["receitas"], tot["despesas"]), (0, 0))
+        self.assertEqual(analises.cartao_a_pagar(self.con, "2026-11")[0]["fatura"], 500000)
 
     def test_entrada_que_antecipou_a_fatura_vai_para_o_mes_dela(self):
         """Pix recebido em 31/10 e usado em 01/11 para antecipar a fatura de novembro conta em novembro."""
@@ -703,8 +722,9 @@ class TestContasAPagar(BaseBanco):
         self.con.commit()
         self.assertEqual(analises.totais_mes(self.con, "2026-10")["receitas"], 100000)
 
-    def test_entrada_e_tudo_que_entra_positivo(self):
-        """Entrada é tudo o que entra positivo na conta e na fatura; o pagamento da fatura sai pelo lado da conta."""
+    def test_entrada_e_o_que_entra_na_conta(self):
+        """Entrada é o que entra positivo na conta. Estorno no cartão só diminui a fatura; o pagamento da fatura
+        sai pelo lado da conta."""
         n = [0]
         def tx(conta, valor, tipo="normal", desc="X"):
             n[0] += 1
@@ -712,14 +732,14 @@ class TestContasAPagar(BaseBanco):
                                 hash, mes_ref, criado_em) VALUES (?, '2026-10-10', ?, 'X', ?, ?, 'manual', ?, '2026-10',
                                 '2026-01-01')""", (self.conta(conta), desc, valor, tipo, f"z{n[0]}"))
         tx("inter-cartao", -5000)                    # compra
-        tx("inter-cartao", 2000)                     # estorno na fatura: é entrada (e a fatura sai pelo bruto)
+        tx("inter-cartao", 2000)                     # estorno na fatura: só diminui a fatura
         tx("inter-cartao", 3000, "fatura")           # pagamento lançado na fatura: não conta
         tx("inter-conta", -3000, "fatura")           # o mesmo pagamento saindo da conta: é a saída do cartão
         tx("inter-conta", 30000)                     # Pix recebido: entrada
         tx("inter-conta", -1000)                     # boleto pago na conta: saída
         self.con.commit()
         tot = analises.totais_mes(self.con, "2026-10")
-        self.assertEqual((tot["receitas"], tot["despesas"]), (32000, 6000))
+        self.assertEqual((tot["receitas"], tot["despesas"]), (30000, 4000))
         self.assertEqual(tot["receitas"] - tot["despesas"], 26000)     # o resultado não muda com o estorno
 
 
