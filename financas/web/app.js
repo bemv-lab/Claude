@@ -226,7 +226,7 @@ TELAS.inicio = async (el) => {
         ${fluxoHTML("Entradas", E.recebido, E.a_receber, E.previsto, "entrada", "recebido", "a receber")}
         ${fluxoHTML("Saídas", X.pago, X.a_pagar, X.previsto, "saida", "pago", "a pagar")}
       </div>
-      <div class="fech"><span>Fechamento das contas <small class="mudo">saldo do início do mês + realizado</small></span><b class="num">${brl(h.fechamento, true)}</b></div>
+      <div class="fech"><span>Fechamento das contas <small class="mudo">saldo do início do mês (${brl(h.saldo_contas)}) + realizado · <button class="btn-texto" id="editar-saldo" style="color:inherit;text-decoration:underline;padding:0;font-size:inherit">editar saldo</button></small></span><b class="num">${brl(h.fechamento, true)}</b></div>
       <div class="fech" style="border-top:0;padding-top:0"><span class="mudo">Previsão para o fim do mês <small>(+ provisionado)</small></span><b class="num mudo">${brl(h.fechamento_previsto, true)}</b></div>
     </section>
 
@@ -307,6 +307,17 @@ TELAS.inicio = async (el) => {
   </div>`;
   const porChave = Object.fromEntries(h.previstos.map((i) => [i.chave_auto || "m" + i.id, i]));
   $$("[data-prev]", el).forEach((b) => b.addEventListener("click", () => editarPrevisto(porChave[b.dataset.prev], render)));
+  $("#editar-saldo", el)?.addEventListener("click", () => abrirModal(`<h3>Saldo das contas no início do mês</h3>
+      <p class="mudo" style="margin:-6px 0 0">O quanto vocês tinham, somando todas as contas onde fica o dinheiro (Inter, BB, Itaú, Mercado Pago...), no dia 1º do mês. O fechamento parte daqui.</p>
+      <form id="f-saldo"><label class="campo">Saldo (R$)<input name="saldo_contas_atual" inputmode="decimal" value="${paraInput(h.saldo_contas || 0)}" required></label>
+      <div class="modal-acoes"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn btn-primario">Salvar</button></div></form>`, (m) => {
+    const campo = $("[name=saldo_contas_atual]", m); campo.focus(); campo.select();
+    $("#f-saldo", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await api("/api/config", { metodo: "PATCH", corpo: form(e.target) });
+      $("#modal").close(); toast("Saldo atualizado"); render();
+    });
+  }));
   $("[data-novo-prev]", el).addEventListener("click", () => novoPrevisto({ mes: S.mes }, render));
   $("[data-nova-renda]", el).addEventListener("click", () => editarRenda({}));
   $$("[data-renda]", el).forEach((b) => b.addEventListener("click", () => editarRenda(h.rendas.find((x) => x.id === +b.dataset.renda))));
@@ -1595,7 +1606,7 @@ TELAS.ajustes = async (el) => {
     <h2 style="font-size:22px">Ajustes</h2>
     <div class="cartao"><div class="cartao-cab"><h2>Orçamento do mês</h2></div>
       <form id="f-cfg" class="grade-form">
-        <label class="campo">Saldo das contas no início do mês <small>Inter + BB + Itaú, somados</small><input name="saldo_contas_atual" value="${paraInput(+cfg.saldo_contas_atual || 0)}" inputmode="decimal" placeholder="0,00"></label>
+        <label class="campo">Saldo das contas no início do mês <small>todas as contas onde fica o dinheiro, somadas (Inter, BB, Itaú, Mercado Pago...)</small><input name="saldo_contas_atual" value="${paraInput(+cfg.saldo_contas_atual || 0)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Renda mensal esperada <small>vazio = média dos últimos meses</small><input name="renda_mensal_esperada" value="${paraInput(+cfg.renda_mensal_esperada || null)}" inputmode="decimal" placeholder="automático"></label>
         <label class="campo">Guardar por mês<input name="meta_poupanca_mensal" value="${paraInput(+cfg.meta_poupanca_mensal || null)}" inputmode="decimal" placeholder="0,00"></label>
         <label class="campo">Limite combinado no cartão/mês<input name="limite_fatura_mensal" value="${paraInput(+cfg.limite_fatura_mensal || null)}" inputmode="decimal" placeholder="sem limite"></label>
