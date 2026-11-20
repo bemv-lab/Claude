@@ -83,8 +83,9 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
                 if c:
                     cartoes = [{"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "fatura": 0,
                                 "pago": 0, "a_pagar": 0, "previsao": True, "qtd": 0}]
-            if cartoes:
-                principal = max(cartoes, key=lambda x: x["fatura"])
+            alvo = [c for c in cartoes if c.get("previsao")]   # fatura já importada não ganha previsão por cima
+            if alvo:
+                principal = max(alvo, key=lambda x: x["fatura"])
                 principal["parcelas"] = principal["fatura"]
                 principal["assinaturas"] = assin
                 principal["fatura"] += assin

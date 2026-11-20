@@ -138,7 +138,9 @@ def cartao_a_pagar(con, mes: str) -> list[dict]:
         if not f or f["fatura"] <= 0:
             continue
         out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "fatura": f["fatura"],
-                    "pago": f["quitado"], "a_pagar": f["a_pagar"], "previsao": mes > hoje().strftime("%Y-%m"),
+                    "pago": f["quitado"], "a_pagar": f["a_pagar"], "previsao": mes > hoje().strftime("%Y-%m") and not con.execute(
+                        "SELECT 1 FROM transacoes WHERE conta_id = ? AND mes_ref = ? AND importacao_id IS NOT NULL LIMIT 1",
+                        (c["id"], mes)).fetchone(),         # fatura do mês já importada: vale o valor dela
                     "qtd": con.execute("SELECT COUNT(*) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
                                        "AND mes_ref = ?", (c["id"], mes)).fetchone()[0]})
     return out
