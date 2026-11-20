@@ -283,39 +283,51 @@ def parcelamentos(con, todos: bool = False) -> list[dict]:
         SELECT t.*, co.nome AS conta, p.nome AS pessoa FROM transacoes t
         JOIN contas co ON co.id = t.conta_id LEFT JOIN pessoas p ON p.id = t.pessoa_id
         WHERE t.parcela_total IS NOT NULL AND t.valor < 0 AND t.tipo = 'normal'
-        ORDER BY t.data, t.parcela_atual"""):
+        ORDER BY COALESCE(t.mes_ref, substr(t.data, 1, 7)), t.parcela_atual, t.data"""):
         valor = -r["valor"]
+        # mês em que a parcela é paga: no cartão, o da fatura em que ela veio (a fatura do Inter mostra cada parcela
+        # com a data da compra original, então a data sozinha não diz o mês)
+        mes_r = (r["mes_ref"] if contas[r["conta_id"]]["tipo"] == "cartao" and r["mes_ref"] else None) \
+            or mes_da_fatura(contas[r["conta_id"]], r["data"])
         candidatos = por_chave.setdefault((r["conta_id"], r["parcela_total"]), [])
 
         def serve(g):
             if abs(g["valor_parcela"] - valor) > max(100, g["valor_parcela"] * 0.03):
                 return False
             passo = r["parcela_atual"] - g["parcela_atual"]
-            meses = _meses_entre(g["ultima_data"][:7], r["data"][:7])
+            meses = _meses_entre(g["ultimo_mes"], mes_r)
             return passo > 0 and abs(passo - meses) <= 1
         g = next((g for g in candidatos if serve(g)), None)
         oc = {"id": r["id"], "data": r["data"], "k": r["parcela_atual"], "valor": valor, "prevista": False,
-              "mes": mes_da_fatura(contas[r["conta_id"]], r["data"])}
+              "mes": mes_r}
         if g is None:
             g = {"id": r["id"], "descricao": r["descricao"], "chave": r["chave"], "conta": r["conta"],
                  "conta_id": r["conta_id"], "conta_tipo": contas[r["conta_id"]]["tipo"],
                  "pessoa": r["pessoa"], "valor_parcela": valor, "parcela_atual": r["parcela_atual"],
-                 "parcela_total": r["parcela_total"], "ultima_data": r["data"], "primeira_vista": r["data"],
+                 "parcela_total": r["parcela_total"], "ultima_data": r["data"], "ultimo_mes": mes_r, "primeira_vista": r["data"],
                  "parcela_inicial": r["parcela_atual"], "produto": r["produto"], "categoria_id": r["categoria_id"],
                  "ocorrencias": [oc]}
             candidatos.append(g)
             grupos.append(g)
         else:
-            g.update(id=r["id"], valor_parcela=valor, parcela_atual=r["parcela_atual"], ultima_data=r["data"],
+            g.update(id=r["id"], valor_parcela=valor, parcela_atual=r["parcela_atual"], ultima_data=r["data"], ultimo_mes=mes_r,
                      chave=r["chave"], produto=g["produto"] or r["produto"])
             g["ocorrencias"].append(oc)
     ref = hoje()
+    # meses em que a fatura do cartão já foi importada: ela é a palavra final (a fatura aberta já traz todas as
+    # parcelas daquele mês). Parcela que devia estar lá e não está foi cancelada/estornada e não se projeta mais.
+    importados: dict[int, set] = {}
+    for r in con.execute("""SELECT DISTINCT t.conta_id, t.mes_ref FROM transacoes t JOIN contas c ON c.id = t.conta_id
+                            WHERE c.tipo = 'cartao' AND t.importacao_id IS NOT NULL AND t.mes_ref IS NOT NULL"""):
+        importados.setdefault(r["conta_id"], set()).add(r["mes_ref"])
     out = []
     for g in grupos:
         conta = contas[g["conta_id"]]
         oc = g["ocorrencias"]
         ult = oc[-1]
         for j in range(1, g["parcela_total"] - ult["k"] + 1):      # as que ainda não vieram em nenhum arquivo
+            if somar_meses(ult["mes"], j) in importados.get(g["conta_id"], ()):
+                break
             oc.append({"id": None, "data": None, "k": ult["k"] + j, "valor": g["valor_parcela"], "prevista": True,
                        "mes": somar_meses(ult["mes"], j)})
         for o in oc:
