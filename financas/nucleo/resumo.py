@@ -95,20 +95,23 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
         # "marcar paga" na fatura: vale o que vocês digitaram até o extrato do banco trazer o pagamento; o que o
         # extrato já mostra não conta de novo (só a parte que ainda não apareceu nele)
         x = marcados.get(f"cartao:{c['conta_id']}")
-        c["pago_manual"] = 0
-        if x and x["status"] == "realizado":
-            informado = min(abs(x["valor"]) or c["fatura"], c["fatura"])
-            c["pago_manual"] = max(0, informado - c["pago"])
-            c["pago"] += c["pago_manual"]
+        marcado = bool(x and x["status"] == "realizado")
+        informado = min(abs(x["valor"]) or c["fatura"], c["fatura"]) if marcado else 0
+        if informado > c["pago"]:
+            c["pago"] = informado
             c["a_pagar"] = max(0, c["fatura"] - c["pago"])
             if c["a_pagar"] <= 500:          # diferença de centavos/arredondamento não deixa a fatura em aberto
                 c["a_pagar"] = 0
+        # o que foi pago (pela marcação ou pelo pagamento que aparece na própria fatura) e o extrato do banco ainda
+        # não mostra: entra no "pago" do mês até o extrato chegar; aí só o extrato conta
+        c["pago_manual"] = max(0, c["pago"] - (c.get("pago_banco") or 0))
+        c["marcado"] = marcado
         c["ajuste_id"] = x["id"] if x else None
         pago = c["a_pagar"] == 0
         # o valor da fatura como o banco cobra (créditos, estornos e o que já foi abatido antes de fechar já saíram)
         out.append({"descricao": f"Fatura · {c['nome']}", "valor": c["fatura"], "pago": c["pago"],
                     "previsao": c.get("previsao", False), "parcelas": c.get("parcelas"), "assinaturas": c.get("assinaturas"),
-                    "chave": f"cartao:{c['conta_id']}", "ajuste_id": c.get("ajuste_id"), "pago_manual": c.get("pago_manual", 0),
+                    "chave": f"cartao:{c['conta_id']}", "ajuste_id": c.get("ajuste_id"), "pago_manual": c.get("pago_manual", 0), "marcado": c.get("marcado", False),
                     "dia": c["dia"], "status": "realizado" if pago else "previsto", "falta": c["a_pagar"],
                     "cartao": True, "qtd": c["qtd"], "conta_id": c["conta_id"]})
     for i in itens:

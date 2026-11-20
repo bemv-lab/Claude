@@ -69,10 +69,10 @@ def totais_mes(con, mes: str) -> dict:
     return out
 
 
-def _pagamentos_do_cartao(con, c) -> list[tuple[str, int]]:
-    """(data, valor) de cada pagamento da fatura: os do extrato do banco do cartão e os que só aparecem na
-    fatura (o mesmo pagamento nos dois lados conta uma vez). Pagamento estornado pelo banco não conta."""
-    banco = [(r["data"], -r["valor"]) for r in con.execute(
+def _pagamentos_do_cartao(con, c) -> list[tuple[str, int, bool]]:
+    """(data, valor, veio_do_banco) de cada pagamento da fatura: os do extrato do banco do cartão e os que só
+    aparecem na fatura (o mesmo pagamento nos dois lados conta uma vez). Pagamento estornado pelo banco não conta."""
+    banco = [(r["data"], -r["valor"], True) for r in con.execute(
         """SELECT t.data, t.valor FROM transacoes t JOIN contas k ON k.id = t.conta_id
            WHERE t.tipo = 'fatura' AND k.tipo = 'corrente' AND k.instituicao = ? AND t.valor < 0
              AND NOT EXISTS (SELECT 1 FROM transacoes e WHERE e.conta_id = t.conta_id AND e.valor = -t.valor
@@ -87,7 +87,7 @@ def _pagamentos_do_cartao(con, c) -> list[tuple[str, int]]:
         if par:
             livres.remove(par)
         else:
-            out.append((d, v))
+            out.append((d, v, False))
     return out
 
 
@@ -109,9 +109,12 @@ def faturas_do_cartao(con, c, ate: str) -> dict:
         return {}
     fecha = c["dia_fechamento"] or max(1, (c["dia_vencimento"] or 20) - 7)
     antes, depois = {}, {}          # pagamentos até o fechamento (abatem a fatura em aberto) e depois (pagam a fechada)
-    for d, v in _pagamentos_do_cartao(con, c):
+    depois_banco = {}               # dos que pagam a fechada, quanto já está no extrato do banco
+    for d, v, do_banco in _pagamentos_do_cartao(con, c):
         alvo = antes if int(d[8:10]) <= fecha else depois
         alvo[d[:7]] = alvo.get(d[:7], 0) + v
+        if do_banco and alvo is depois:
+            depois_banco[d[:7]] = depois_banco.get(d[:7], 0) + v
     out, ficou, sobrou, m = {}, 0, 0, meses[0]
     while m <= ate:
         f = ficou + compras.get(m, 0) - antes.get(m, 0) - sobrou
@@ -125,7 +128,8 @@ def faturas_do_cartao(con, c, ate: str) -> dict:
             ficou, sobrou = 0, pago - quitado + max(0, -f)
             if sobrou <= _TOLERANCIA:
                 sobrou = 0
-        out[m] = {"fatura": max(f, 0), "quitado": quitado, "a_pagar": resto if resto > _TOLERANCIA else 0}
+        out[m] = {"fatura": max(f, 0), "quitado": quitado, "a_pagar": resto if resto > _TOLERANCIA else 0,
+                  "quitado_banco": min(quitado, depois_banco.get(m, 0))}
         m = somar_meses(m, 1)
     return out
 
@@ -138,7 +142,7 @@ def cartao_a_pagar(con, mes: str) -> list[dict]:
         if not f or f["fatura"] <= 0:
             continue
         out.append({"conta_id": c["id"], "nome": c["nome"], "dia": c["dia_vencimento"], "fatura": f["fatura"],
-                    "pago": f["quitado"], "a_pagar": f["a_pagar"], "previsao": mes > hoje().strftime("%Y-%m") and not con.execute(
+                    "pago": f["quitado"], "pago_banco": f["quitado_banco"], "a_pagar": f["a_pagar"], "previsao": mes > hoje().strftime("%Y-%m") and not con.execute(
                         "SELECT 1 FROM transacoes WHERE conta_id = ? AND mes_ref = ? AND importacao_id IS NOT NULL LIMIT 1",
                         (c["id"], mes)).fetchone(),         # fatura do mês já importada: vale o valor dela
                     "qtd": con.execute("SELECT COUNT(*) FROM transacoes WHERE conta_id = ? AND tipo = 'normal' "
