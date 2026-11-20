@@ -89,11 +89,25 @@ def contas_a_pagar(con, mes: str, itens: list[dict]) -> list[dict]:
                 principal["assinaturas"] = assin
                 principal["fatura"] += assin
                 principal["a_pagar"] += assin
+    marcados = {k: v for k, v in previstos._ajustes(con, mes).items() if k.startswith("cartao:")}
     for c in cartoes:
+        # "marcar paga" na fatura: vale o que vocês digitaram até o extrato do banco trazer o pagamento; o que o
+        # extrato já mostra não conta de novo (só a parte que ainda não apareceu nele)
+        x = marcados.get(f"cartao:{c['conta_id']}")
+        c["pago_manual"] = 0
+        if x and x["status"] == "realizado":
+            informado = min(abs(x["valor"]) or c["fatura"], c["fatura"])
+            c["pago_manual"] = max(0, informado - c["pago"])
+            c["pago"] += c["pago_manual"]
+            c["a_pagar"] = max(0, c["fatura"] - c["pago"])
+            if c["a_pagar"] <= 500:          # diferença de centavos/arredondamento não deixa a fatura em aberto
+                c["a_pagar"] = 0
+        c["ajuste_id"] = x["id"] if x else None
         pago = c["a_pagar"] == 0
         # o valor da fatura como o banco cobra (créditos, estornos e o que já foi abatido antes de fechar já saíram)
         out.append({"descricao": f"Fatura · {c['nome']}", "valor": c["fatura"], "pago": c["pago"],
                     "previsao": c.get("previsao", False), "parcelas": c.get("parcelas"), "assinaturas": c.get("assinaturas"),
+                    "chave": f"cartao:{c['conta_id']}", "ajuste_id": c.get("ajuste_id"), "pago_manual": c.get("pago_manual", 0),
                     "dia": c["dia"], "status": "realizado" if pago else "previsto", "falta": c["a_pagar"],
                     "cartao": True, "qtd": c["qtd"], "conta_id": c["conta_id"]})
     for i in itens:
@@ -128,6 +142,11 @@ def fluxo_diario(con, mes: str, saldo_inicial: int, itens: list[dict], contas: l
                 d = min(max(1, i.get("dia") or 1), corte or ultimo, ultimo)
                 mov.setdefault(d, {"entrou": 0, "saiu": 0})
                 mov[d]["entrou" if i["valor"] > 0 else "saiu"] += fora
+    for c in contas:
+        if c.get("pago_manual"):
+            d = min(max(1, c.get("dia") or 1), corte or ultimo, ultimo)
+            mov.setdefault(d, {"entrou": 0, "saiu": 0})
+            mov[d]["saiu"] += c["pago_manual"]
     futuro: dict[int, list] = {}
 
     def agenda(dia, nome, valor):
@@ -191,8 +210,8 @@ def home(con, mes: str | None = None) -> dict:
     # regime de caixa no cartão: o que conta é o pagamento da fatura (já no extrato) e o que falta pagar dela;
     # as assinaturas previstas no cartão já estão dentro da fatura e saem do "a pagar"
     no_cartao = -sum(i["falta"] for i in prev["itens"] if i["falta"] < 0 and i.get("forma") in ("Cartão", "Pix no crédito"))
-    # a fatura do mês já está inteira nas saídas: o que falta pagar dela sai do "pago" e vai para o "a pagar"
     contas = contas_a_pagar(con, mes, prev["itens"])
+    # a fatura do mês já está inteira nas saídas: o que falta pagar dela sai do "pago" e vai para o "a pagar"
     cartao_falta = sum(c["falta"] for c in contas if c["cartao"]) if mes >= hoje().strftime("%Y-%m") else 0
     prev["a_pagar"] = prev["a_pagar"] - no_cartao + cartao_falta
     # marcado como já resolvido sem lançamento no extrato (ex.: recebi e não caiu como transação): conta como feito
@@ -200,6 +219,7 @@ def home(con, mes: str | None = None) -> dict:
     feitos = [i for i in prev["itens"] if i.get("ajuste_id") and i["status"] == "realizado"]
     recebido_fora = sum(max(0, abs(i["valor"]) - abs(i["realizado"])) for i in feitos if i["valor"] > 0)
     pago_fora = sum(max(0, abs(i["valor"]) - abs(i["realizado"])) for i in feitos if i["valor"] < 0)
+    pago_fora += sum(c.get("pago_manual") or 0 for c in contas if c["cartao"])
     recebido = tot["receitas"] + recebido_fora
     pago = tot["despesas"] + pago_fora
     entradas_prev = recebido + prev["a_receber"]

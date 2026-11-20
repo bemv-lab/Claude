@@ -684,6 +684,23 @@ class TestContasAPagar(BaseBanco):
         tot = analises.totais_mes(self.con, "2026-10")            # o cartão sai pelo que foi pago no mês (4.500)
         self.assertEqual(tot["despesas"], 450000)
 
+    def test_marcar_fatura_paga_sem_contar_duas_vezes(self):
+        """Pagaram a fatura e o extrato ainda não chegou: "marcar paga" tira do a pagar e entra no pago. Quando o
+        extrato traz o pagamento, ele não conta de novo."""
+        from nucleo import previstos, resumo
+        self.tx("2026-11", "2026-10-20", -400000)
+        cid = self.conta("inter-cartao")
+        def linha():
+            return [c for c in resumo.contas_a_pagar(self.con, "2026-11", []) if c["cartao"]][0]
+        self.assertEqual((linha()["falta"], linha()["status"]), (400000, "previsto"))
+        previstos.salvar(self.con, {"mes": "2026-11", "chave_auto": f"cartao:{cid}", "descricao": "Fatura",
+                                    "valor": -400000, "status": "realizado"})
+        c = linha()
+        self.assertEqual((c["valor"], c["pago"], c["falta"], c["status"], c["pago_manual"]), (400000, 400000, 0, "realizado", 400000))
+        self.tx("2026-11", "2026-11-20", -400000, "fatura", "inter-conta")    # o extrato chegou
+        c = linha()
+        self.assertEqual((c["pago"], c["falta"], c["pago_manual"]), (400000, 0, 0))
+
     def test_fatura_paga_depois_de_fechar_fica_quitada(self):
         self.tx("2026-10", "2026-09-20", -400000)
         self.tx("2026-10", "2026-10-19", -400000, "fatura", "inter-conta")

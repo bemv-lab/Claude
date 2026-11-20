@@ -385,8 +385,8 @@ TELAS.inicio = async (el) => {
       // uma linha por boleto (energia, aluguel, empréstimo...) e uma só por cartão; o detalhe fica em Lançamentos
       const contas = h.contas_a_pagar || [];
       const total = contas.reduce((t, c) => t + c.valor, 0);
-      const linha = (c) => `<div class="linha-ajuste"><div><b>${esc(c.descricao)}</b>
-          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : c.pago ? `pago ${brl(c.pago)} · falta ${brl(c.falta)} · ` : ""}${c.previsao ? `previsão: parcelas ${brl(c.parcelas ?? c.valor)}${c.assinaturas ? ` + assinaturas ${brl(c.assinaturas)}` : ""}` : "valor da fatura"} · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>`
+      const linha = (c, k) => `<div class="linha-ajuste"${c.cartao ? ` data-cartao="${k}"` : ""}><div><b>${esc(c.descricao)}</b>
+          <p>${c.dia ? `dia ${c.dia} · ` : ""}${c.cartao ? `${c.status === "realizado" ? "✓ paga · " : c.pago ? `pago ${brl(c.pago)} · falta ${brl(c.falta)} · ` : ""}${c.previsao ? `previsão: parcelas ${brl(c.parcelas ?? c.valor)}${c.assinaturas ? ` + assinaturas ${brl(c.assinaturas)}` : ""}` : "valor da fatura"} · <a href="#/lancamentos" data-fechar>ver ${c.qtd} compras</a>${c.previsao ? "" : c.status === "realizado" ? (c.ajuste_id ? ` · <button class="btn-texto" data-desfazer-fatura style="padding:0">desfazer</button>` : "") : ` · <button class="btn-texto" data-pagar-fatura style="padding:0">marcar paga</button>`}`
             : c.status === "realizado" ? "✓ pago" : c.falta && c.falta < c.valor ? `falta ${brl(c.falta)}` : "a pagar"}</p></div>
           <b class="num">${brl(c.valor)}</b></div>`;
       abrirModal(`<h3>Contas de ${esc(nome)}</h3>
@@ -395,6 +395,11 @@ TELAS.inicio = async (el) => {
         <div class="linha-ajuste"><div><b>Total</b></div><b class="num">${brl(total)}</b></div>
         <div class="modal-acoes"><button class="btn" data-fechar>Fechar</button><button class="btn btn-primario" id="novo-no-modal">+ Lançar saída</button></div>`, (m) => {
         $("#novo-no-modal", m).addEventListener("click", () => novoPrevisto({ mes: S.mes, sentido: tipo }, render));
+        $$("[data-cartao]", m).forEach((d) => {
+          const c = contas[+d.dataset.cartao];
+          $("[data-pagar-fatura]", d)?.addEventListener("click", () => pagarFatura(c, S.mes, render));
+          $("[data-desfazer-fatura]", d)?.addEventListener("click", () => { $("#modal").close(); desfazerFatura(c, render); });
+        });
       });
       return;
     }
@@ -656,6 +661,24 @@ const compacto = (c, sinal = false) => {
 };
 const passoBonito = (v) => { const e = 10 ** Math.floor(Math.log10(Math.max(v, 1))); const f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; };
 
+// Fatura do cartão: "marcar paga" pergunta quanto foi pago (padrão: o que falta) e guarda como ajuste do mês
+function pagarFatura(c, mes, depois) {
+  abrirModal(`<h3>Marcar fatura como paga</h3>
+    <p class="mudo" style="margin:-6px 0 0">${esc(c.descricao)} · fatura de ${brl(c.valor)}${c.pago ? `, já pago ${brl(c.pago)}` : ""}. Quando o extrato do banco trouxer o pagamento, ele não conta duas vezes.</p>
+    <form id="f-pagar-fatura"><label class="campo">Quanto foi pago (R$)<input name="valor" inputmode="decimal" value="${paraInput((c.pago || 0) + (c.falta || c.valor))}" required></label>
+    <div class="modal-acoes"><button type="button" class="btn" data-fechar>Cancelar</button><button class="btn btn-primario">Marcar como paga</button></div></form>`, (m) => {
+    const campo = $("[name=valor]", m); campo.focus(); campo.select();
+    $("#f-pagar-fatura", m).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await api("/api/previstos", { metodo: "POST", corpo: { chave_auto: c.chave, mes, descricao: c.descricao, sentido: "saida", valor: campo.value, status: "realizado", no_plano: false } });
+      $("#modal").close(); toast("Fatura marcada como paga"); depois();
+    });
+  });
+}
+async function desfazerFatura(c, depois) {
+  await api(`/api/previstos/${c.ajuste_id}`, { metodo: "DELETE" }); toast("Desfeito"); depois();
+}
+
 // Contas do mês: uma linha por boleto (aluguel, energia, empréstimos...) e uma por cartão. Usa os mesmos
 // previstos do Início: o que muda aqui muda Início, Plano e fechamento na hora.
 TELAS.contas = async (el) => {
@@ -669,7 +692,8 @@ TELAS.contas = async (el) => {
   const linha = (c, k) => {
     const pago = c.status === "realizado";
     const situacao = pago ? `<span class="tag ok">✓ paga</span>` : c.falta && c.falta < c.valor ? `<span class="tag duv">falta ${brl(c.falta)}</span>` : `<span class="tag duv">a pagar</span>`;
-    if (c.cartao) return `<tr><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">${c.previsao ? `previsão: parcelas ${brl(c.parcelas ?? c.valor)}${c.assinaturas ? ` + assinaturas ${brl(c.assinaturas)}` : ""} · compras novas entram quando a fatura for importada` : `valor da fatura${c.pago && c.falta ? ` · pago ${brl(c.pago)}` : ""} · vem da fatura importada`}</small><br><a class="btn-texto" href="#/lancamentos">ver compras</a></td>
+    if (c.cartao) return `<tr data-cartao="${k}"><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">${c.previsao ? `previsão: parcelas ${brl(c.parcelas ?? c.valor)}${c.assinaturas ? ` + assinaturas ${brl(c.assinaturas)}` : ""} · compras novas entram quando a fatura for importada` : `valor da fatura${c.pago && c.falta ? ` · pago ${brl(c.pago)}` : ""}${c.pago_manual ? " · pagamento marcado por vocês" : ""} · vem da fatura importada`}</small>
+        <div class="acoes-conta">${pago ? (c.ajuste_id ? `<button class="btn-texto" data-desfazer-fatura>desfazer</button>` : "") : `<button class="btn-texto" data-pagar-fatura>marcar paga</button>${c.ajuste_id ? `<button class="btn-texto" data-desfazer-fatura>desfazer</button>` : ""}`}<a class="btn-texto" href="#/lancamentos">ver compras</a></div></td>
       <td class="num"><b>${brl(c.valor)}</b></td><td>${situacao}</td></tr>`;
     return `<tr data-k="${k}"><td>${c.dia ? "dia " + c.dia : "—"}</td><td><b>${esc(c.descricao)}</b><br><small class="mudo">${c.manual ? (c.repete ? "todo mês" : "só neste mês") : ORIGEM[c.origem] || ""}${c.ajuste_id && !pago ? " · valor ajustado neste mês" : ""}</small>
         <div class="acoes-conta">${pago ? (c.ajuste_id ? `<button class="btn-texto" data-desfazer>desfazer</button>` : "") : `<button class="btn-texto" data-pagar>marcar paga</button>`}<button class="btn-texto" data-editar>editar</button></div></td>
@@ -700,6 +724,11 @@ TELAS.contas = async (el) => {
     await api("/api/previstos", { metodo: "POST", corpo: { chave_auto: c.chave, mes: S.mes, descricao: c.descricao, sentido: "saida", ...corpo } });
     toast(msg); recarregar();
   };
+  $$("tr[data-cartao]", el).forEach((tr) => {
+    const c = contas[+tr.dataset.cartao];
+    $("[data-pagar-fatura]", tr)?.addEventListener("click", () => pagarFatura(c, S.mes, recarregar));
+    $("[data-desfazer-fatura]", tr)?.addEventListener("click", () => desfazerFatura(c, recarregar));
+  });
   $$("tr[data-k]", el).forEach((tr) => {
     const c = contas[+tr.dataset.k], campo = $(".valor-conta", tr);
     campo.addEventListener("change", () => { if (campo.value.trim() && campo.value !== paraInput(c.valor)) ajustar(c, { valor: campo.value }, "Valor atualizado"); });
@@ -1491,7 +1520,7 @@ const MANUAL = [
       <dt>Marcar paga</dt><dd>Usa o valor que estiver no campo (o que de fato saiu). Quando o extrato traz o pagamento, a conta se marca sozinha. <i>Desfazer</i> volta para "a pagar".</dd>
       <dt>Editar</dt><dd>Muda nome, dia, repetição e valor de todos os meses, ou apaga a conta.</dd>
       <dt>Adicionar conta</dt><dd><i>Conta</i>, <i>Valor</i>, <i>Dia do vencimento</i> e <i>Repetir</i> (todo mês ou só neste).</dd>
-      <dt>Fatura do cartão</dt><dd>Não se edita aqui: é o valor que a fatura fecha, igual ao do app do banco. Estornos, créditos e pagamentos feitos antes do fechamento já saíram dele.</dd>
+      <dt>Fatura do cartão</dt><dd>O valor é o que a fatura fecha, igual ao do app do banco (estornos, créditos e pagamentos feitos antes do fechamento já saíram dele). Pagaram? <i>Marcar paga</i> pergunta quanto foi pago e já tira do "a pagar". Quando o extrato do banco trouxer o pagamento, ele não conta duas vezes. <i>Desfazer</i> volta para "a pagar".</dd>
       <dt>Integração</dt><dd>É a mesma lista de Saídas do Início. O que mudar aqui muda na hora o "a pagar", o provisionado, a previsão de fechamento e o Plano.</dd>
     </dl>`],
   ["Plano", `
